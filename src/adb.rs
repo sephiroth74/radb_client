@@ -32,6 +32,7 @@ impl Adb {
         self.as_ref()
     }
 
+    /// List connected devices
     pub async fn devices(&self) -> anyhow::Result<Vec<Box<dyn AdbDevice>>, anyhow::Error> {
         let output = CommandBuilder::new(self.0.as_path())
             .args(["devices", "-l"])

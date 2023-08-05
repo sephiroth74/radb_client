@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
+license = "MIT"
+homepage = "https://github.com/sephiroth74/radb_client"
+repository = "https://github.com/sephiroth74/radb_client"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
