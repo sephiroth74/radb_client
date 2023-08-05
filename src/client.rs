@@ -65,12 +65,7 @@ pub struct LogcatTag {
 
 #[allow(dead_code)]
 impl Client {
-    pub async fn logcat<'d, D>(
-        adb: &Adb,
-        device: D,
-        options: LogcatOptions,
-        recv: Option<IntoFuture<Receiver<()>>>,
-    ) -> Result<ProcessResult>
+    pub async fn logcat<'d, D>(adb: &Adb, device: D, options: LogcatOptions, recv: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
     where
         D: Into<&'d dyn AdbDevice>,
     {
@@ -159,12 +154,7 @@ impl Client {
         string.parse::<u8>().map_err(From::from)
     }
 
-    pub async fn pull<'a, 'd, T, D>(
-        adb: &Adb,
-        device: D,
-        src: T,
-        dst: &Path,
-    ) -> Result<ProcessResult>
+    pub async fn pull<'a, 'd, T, D>(adb: &Adb, device: D, src: T, dst: &Path) -> Result<ProcessResult>
     where
         T: Into<&'a str> + AsRef<OsStr>,
         D: Into<&'d dyn AdbDevice>,
@@ -177,12 +167,7 @@ impl Client {
             .await
     }
 
-    pub async fn push<'a, 'd, T, D>(
-        adb: &Adb,
-        device: D,
-        src: &Path,
-        dst: T,
-    ) -> Result<ProcessResult>
+    pub async fn push<'a, 'd, T, D>(adb: &Adb, device: D, src: &Path, dst: T) -> Result<ProcessResult>
     where
         T: Into<&'a str> + AsRef<OsStr>,
         D: Into<&'d dyn AdbDevice>,
@@ -215,18 +200,19 @@ impl Client {
         Ok(())
     }
 
-    pub async fn wait_for_device<'d, D>(
-        adb: &Adb,
-        device: D,
-        timeout: Option<Duration>,
-    ) -> Result<()>
+    pub async fn wait_for_device<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> Result<()>
     where
         D: Into<&'d dyn AdbDevice>,
     {
         CommandBuilder::device(adb, device)
-            .args(["wait-for-device", "shell", "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 143"])
+            .args([
+                "wait-for-device",
+                "shell",
+                "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 143",
+            ])
             .with_timeout(timeout)
-            .output().await?;
+            .output()
+            .await?;
         Ok(())
     }
 
@@ -361,11 +347,7 @@ impl Client {
         Ok(())
     }
 
-    pub async fn bug_report<'d, D>(
-        adb: &Adb,
-        device: D,
-        output: Option<&str>,
-    ) -> Result<ProcessResult>
+    pub async fn bug_report<'d, D>(adb: &Adb, device: D, output: Option<&str>) -> Result<ProcessResult>
     where
         D: Into<&'d dyn AdbDevice>,
     {

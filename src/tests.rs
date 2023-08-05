@@ -169,13 +169,9 @@ mod tests {
     async fn test_cat() {
         initialize();
         assert_connected!(&DEVICE);
-        let output = Shell::cat(
-            &ADB,
-            DEVICE.as_ref(),
-            "/timeshift/conf/tvlib-aot.properties",
-        )
-        .await
-        .expect("cat failed");
+        let output = Shell::cat(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+            .await
+            .expect("cat failed");
         assert!(output.lines().into_iter().all(|f| f.is_ok()));
         assert!(output
             .lines()
@@ -198,13 +194,9 @@ mod tests {
     async fn test_exists() {
         initialize();
         assert_connected!(&DEVICE);
-        let exists = Shell::exists(
-            &ADB,
-            DEVICE.as_ref(),
-            "/timeshift/conf/tvlib-aot.properties",
-        )
-        .await
-        .unwrap();
+        let exists = Shell::exists(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+            .await
+            .unwrap();
         assert_eq!(true, exists);
     }
 
@@ -212,13 +204,9 @@ mod tests {
     async fn test_is_file() {
         initialize();
         assert_connected!(&DEVICE);
-        let f1 = Shell::is_file(
-            &ADB,
-            DEVICE.as_ref(),
-            "/timeshift/conf/tvlib-aot.properties",
-        )
-        .await
-        .unwrap();
+        let f1 = Shell::is_file(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+            .await
+            .unwrap();
         assert_eq!(true, f1);
 
         let f2 = Shell::is_file(&ADB, DEVICE.as_ref(), "/timeshift/conf/")
@@ -231,13 +219,9 @@ mod tests {
     async fn test_is_dir() {
         initialize();
         assert_connected!(&DEVICE);
-        let f1 = Shell::is_dir(
-            &ADB,
-            DEVICE.as_ref(),
-            "/timeshift/conf/tvlib-aot.properties",
-        )
-        .await
-        .unwrap();
+        let f1 = Shell::is_dir(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+            .await
+            .unwrap();
         assert_eq!(false, f1);
         let f2 = Shell::is_dir(&ADB, DEVICE.as_ref(), "/timeshift/conf/")
             .await
@@ -419,11 +403,10 @@ mod tests {
         eprintln!("{:#?}", settings);
 
         for s in settings {
-            let value =
-                Shell::get_setting(&ADB, DEVICE.as_ref(), SettingsType::system, s.key.as_str())
-                    .await
-                    .expect("get setting failed")
-                    .expect("parse value failed");
+            let value = Shell::get_setting(&ADB, DEVICE.as_ref(), SettingsType::system, s.key.as_str())
+                .await
+                .expect("get setting failed")
+                .expect("parse value failed");
             eprintln!("{} = {} [{:}]", s.key, s.value, value);
         }
     }
@@ -432,14 +415,9 @@ mod tests {
     async fn test_list_dumpsys() {
         initialize();
         assert_connected!(&DEVICE);
-        let output = Shell::dumpsys_list(
-            &ADB,
-            DEVICE.as_ref(),
-            false,
-            Some(DumpsysPriority::CRITICAL),
-        )
-        .await
-        .expect("dumpsys failed");
+        let output = Shell::dumpsys_list(&ADB, DEVICE.as_ref(), false, Some(DumpsysPriority::CRITICAL))
+            .await
+            .expect("dumpsys failed");
 
         for line in output {
             trace!("{:?}", line);
@@ -595,15 +573,7 @@ mod tests {
             send.send(())
         });
 
-        match Shell::screen_record(
-            &ADB,
-            DEVICE.as_ref(),
-            Some(options),
-            remote_file.as_str(),
-            Some(recv.into_future()),
-        )
-        .await
-        {
+        match Shell::screen_record(&ADB, DEVICE.as_ref(), Some(options), remote_file.as_str(), Some(recv.into_future())).await {
             Ok(t) => trace!("Screen Record Ok: {:?}", t),
             Err(e) => {
                 error!("{:}", e)
@@ -613,14 +583,7 @@ mod tests {
         trace!("need to sleep a bit..");
         sleep(Duration::from_secs(2));
 
-        match Client::pull(
-            &ADB,
-            DEVICE.as_ref(),
-            remote_file.as_str(),
-            local_file.as_path(),
-        )
-        .await
-        {
+        match Client::pull(&ADB, DEVICE.as_ref(), remote_file.as_str(), local_file.as_path()).await {
             Ok(t) => {
                 debug!("Pull Ok: {:?}", t)
             }
@@ -645,47 +608,19 @@ mod tests {
         initialize();
         assert_connected!(&DEVICE);
         // KEYCODE_DPAD_RIGHT (action DOWN)
-        Shell::send_event(
-            &ADB,
-            DEVICE.as_ref(),
-            "/dev/input/event3",
-            0x0001,
-            0x006a,
-            0x00000001,
-        )
-        .await
-        .unwrap();
-        Shell::send_event(
-            &ADB,
-            DEVICE.as_ref(),
-            "/dev/input/event3",
-            0x0000,
-            0x0000,
-            0x00000000,
-        )
-        .await
-        .unwrap();
+        Shell::send_event(&ADB, DEVICE.as_ref(), "/dev/input/event3", 0x0001, 0x006a, 0x00000001)
+            .await
+            .unwrap();
+        Shell::send_event(&ADB, DEVICE.as_ref(), "/dev/input/event3", 0x0000, 0x0000, 0x00000000)
+            .await
+            .unwrap();
         // KEYCODE_DPAD_RIGHT (action UP)
-        Shell::send_event(
-            &ADB,
-            DEVICE.as_ref(),
-            "/dev/input/event3",
-            0x0001,
-            0x006a,
-            0x00000000,
-        )
-        .await
-        .unwrap();
-        Shell::send_event(
-            &ADB,
-            DEVICE.as_ref(),
-            "/dev/input/event3",
-            0x0000,
-            0x0000,
-            0x00000000,
-        )
-        .await
-        .unwrap();
+        Shell::send_event(&ADB, DEVICE.as_ref(), "/dev/input/event3", 0x0001, 0x006a, 0x00000000)
+            .await
+            .unwrap();
+        Shell::send_event(&ADB, DEVICE.as_ref(), "/dev/input/event3", 0x0000, 0x0000, 0x00000000)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -737,49 +672,26 @@ mod tests {
         file.write("hello world".as_bytes()).unwrap();
         file.flush().unwrap();
 
-        if Shell::exists(
-            &ADB,
-            DEVICE.as_ref(),
-            remote_path.as_path().to_str().unwrap(),
-        )
-        .await
-        .unwrap()
-        {
-            Shell::exec(
-                &ADB,
-                DEVICE.as_ref(),
-                vec!["rm", remote_path.as_path().to_str().unwrap()],
-                None,
-            )
+        if Shell::exists(&ADB, DEVICE.as_ref(), remote_path.as_path().to_str().unwrap())
             .await
-            .unwrap();
+            .unwrap()
+        {
+            Shell::exec(&ADB, DEVICE.as_ref(), vec!["rm", remote_path.as_path().to_str().unwrap()], None)
+                .await
+                .unwrap();
         }
 
-        let result = Client::push(
-            &ADB,
-            DEVICE.as_ref(),
-            local_path.as_path(),
-            remote_path.as_path().to_str().unwrap(),
-        )
-        .await
-        .unwrap();
+        let result = Client::push(&ADB, DEVICE.as_ref(), local_path.as_path(), remote_path.as_path().to_str().unwrap())
+            .await
+            .unwrap();
         trace!("{}", result);
 
-        assert!(Shell::exists(
-            &ADB,
-            DEVICE.as_ref(),
-            remote_path.as_path().to_str().unwrap()
-        )
-        .await
-        .unwrap());
-        Shell::exec(
-            &ADB,
-            DEVICE.as_ref(),
-            vec!["rm", remote_path.as_path().to_str().unwrap()],
-            None,
-        )
-        .await
-        .unwrap();
+        assert!(Shell::exists(&ADB, DEVICE.as_ref(), remote_path.as_path().to_str().unwrap())
+            .await
+            .unwrap());
+        Shell::exec(&ADB, DEVICE.as_ref(), vec!["rm", remote_path.as_path().to_str().unwrap()], None)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

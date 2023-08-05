@@ -44,8 +44,7 @@ impl DeviceAddress {
 
     pub fn from_ip(input: &str) -> anyhow::Result<DeviceAddress> {
         lazy_static! {
-            static ref RE: Regex =
-                Regex::new("([0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):?([0-9]*)?").unwrap();
+            static ref RE: Regex = Regex::new("([0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):?([0-9]*)?").unwrap();
         }
 
         let mut port: u16 = 5555;
@@ -67,10 +66,7 @@ impl DeviceAddress {
 
         match ip {
             None => Err(anyhow::Error::msg("Invalid ip address")),
-            Some(address) => Ok(DeviceAddress(AddressType::Ip(IpV4AddrAndPort {
-                ip: address,
-                port,
-            }))),
+            Some(address) => Ok(DeviceAddress(AddressType::Ip(IpV4AddrAndPort { ip: address, port }))),
         }
     }
 }
@@ -231,8 +227,7 @@ impl FromStr for IpV4AddrAndPort {
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
         lazy_static! {
-            static ref RE: Regex =
-                Regex::new("([0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):?([0-9]*)?").unwrap();
+            static ref RE: Regex = Regex::new("([0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):?([0-9]*)?").unwrap();
         }
         let mut port: u16 = 5555;
         let mut ip: Option<Ipv4Addr> = None;

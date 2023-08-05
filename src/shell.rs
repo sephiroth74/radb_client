@@ -60,12 +60,7 @@ pub enum SettingsType {
 }
 
 impl Shell {
-    pub async fn exec<'a, D, T>(
-        adb: &Adb,
-        device: D,
-        args: Vec<T>,
-        signal: Option<IntoFuture<Receiver<()>>>,
-    ) -> Result<ProcessResult>
+    pub async fn exec<'a, D, T>(adb: &Adb, device: D, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
     where
         T: Into<String> + AsRef<OsStr>,
         D: Into<&'a dyn AdbDevice>,
@@ -77,83 +72,40 @@ impl Shell {
             .await
     }
 
-    pub async fn list_settings<'a, D>(
-        adb: &Adb,
-        device: D,
-        settings_type: SettingsType,
-    ) -> Result<Vec<Property>>
+    pub async fn list_settings<'a, D>(adb: &Adb, device: D, settings_type: SettingsType) -> Result<Vec<Property>>
     where
         D: Into<&'a dyn AdbDevice>,
     {
-        let output = Shell::exec(
-            adb,
-            device,
-            vec!["settings", "list", settings_type.into()],
-            None,
-        )
-        .await?;
+        let output = Shell::exec(adb, device, vec!["settings", "list", settings_type.into()], None).await?;
         let result = props_rs::parse(&output.stdout())?;
         Ok(result)
     }
 
-    pub async fn get_setting<'a, D>(
-        adb: &Adb,
-        device: D,
-        settings_type: SettingsType,
-        key: &str,
-    ) -> Result<Option<String>>
+    pub async fn get_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str) -> Result<Option<String>>
     where
         D: Into<&'a dyn AdbDevice>,
     {
-        Shell::exec(
-            adb,
-            device,
-            vec!["settings", "get", settings_type.into(), key],
-            None,
-        )
-        .await?
-        .stdout()
-        .as_str()
-        .map(|s| Some(s.trim_end().to_string()))
-        .ok_or(Error::from("unexpected error"))
+        Shell::exec(adb, device, vec!["settings", "get", settings_type.into(), key], None)
+            .await?
+            .stdout()
+            .as_str()
+            .map(|s| Some(s.trim_end().to_string()))
+            .ok_or(Error::from("unexpected error"))
     }
 
-    pub async fn put_setting<'a, D>(
-        adb: &Adb,
-        device: D,
-        settings_type: SettingsType,
-        key: &str,
-        value: &str,
-    ) -> Result<()>
+    pub async fn put_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str, value: &str) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
-        Shell::exec(
-            adb,
-            device,
-            vec!["settings", "put", settings_type.into(), key, value],
-            None,
-        )
-        .await?;
+        Shell::exec(adb, device, vec!["settings", "put", settings_type.into(), key, value], None).await?;
         Ok(())
     }
 
-    pub async fn delete_setting<'a, D>(
-        adb: &Adb,
-        device: D,
-        settings_type: SettingsType,
-        key: &str,
-    ) -> Result<()>
+    pub async fn delete_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
-        Shell::exec(
-            adb,
-            device,
-            vec!["settings", "delete", settings_type.into(), key],
-            None,
-        )
-        .await?;
+        Shell::exec(adb, device, vec!["settings", "delete", settings_type.into(), key], None).await?;
         Ok(())
     }
 
@@ -169,12 +121,7 @@ impl Shell {
         Ok(lines)
     }
 
-    pub async fn dumpsys_list<'a, D>(
-        adb: &Adb,
-        device: D,
-        proto_only: bool,
-        priority: Option<DumpsysPriority>,
-    ) -> Result<Vec<String>>
+    pub async fn dumpsys_list<'a, D>(adb: &Adb, device: D, proto_only: bool, priority: Option<DumpsysPriority>) -> Result<Vec<String>>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -207,13 +154,7 @@ impl Shell {
         Ok(output)
     }
 
-    pub async fn screen_record<'a, D>(
-        adb: &Adb,
-        device: D,
-        options: Option<ScreenRecordOptions>,
-        output: &str,
-        signal: Option<IntoFuture<Receiver<()>>>,
-    ) -> Result<ProcessResult>
+    pub async fn screen_record<'a, D>(adb: &Adb, device: D, options: Option<ScreenRecordOptions>, output: &str, signal: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -243,13 +184,7 @@ impl Shell {
     where
         D: Into<&'a dyn AdbDevice>,
     {
-        let process_result = Shell::exec(
-            adb,
-            device,
-            vec!["dumpsys input_method | egrep 'mInteractive=(true|false)'"],
-            None,
-        )
-        .await?;
+        let process_result = Shell::exec(adb, device, vec!["dumpsys input_method | egrep 'mInteractive=(true|false)'"], None).await?;
         let result = process_result
             .stdout()
             .as_str()
@@ -258,14 +193,7 @@ impl Shell {
         Ok(result)
     }
 
-    pub async fn send_swipe<'a, D>(
-        adb: &Adb,
-        device: D,
-        from_pos: (i32, i32),
-        to_pos: (i32, i32),
-        duration: Option<Duration>,
-        source: Option<InputSource>,
-    ) -> Result<()>
+    pub async fn send_swipe<'a, D>(adb: &Adb, device: D, from_pos: (i32, i32), to_pos: (i32, i32), duration: Option<Duration>, source: Option<InputSource>) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -276,10 +204,7 @@ impl Shell {
 
         args.push("swipe");
 
-        let pos_string = format!(
-            "{:?} {:?} {:?} {:?}",
-            from_pos.0, from_pos.1, to_pos.0, to_pos.1
-        );
+        let pos_string = format!("{:?} {:?} {:?} {:?}", from_pos.0, from_pos.1, to_pos.0, to_pos.1);
         args.push(pos_string.as_str());
 
         #[allow(unused_assignments)]
@@ -294,12 +219,7 @@ impl Shell {
         Ok(())
     }
 
-    pub async fn send_tap<'a, D>(
-        adb: &Adb,
-        device: D,
-        position: (i32, i32),
-        source: Option<InputSource>,
-    ) -> Result<()>
+    pub async fn send_tap<'a, D>(adb: &Adb, device: D, position: (i32, i32), source: Option<InputSource>) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -320,12 +240,7 @@ impl Shell {
         Ok(())
     }
 
-    pub async fn send_text<'a, D>(
-        adb: &Adb,
-        device: D,
-        text: &str,
-        source: Option<InputSource>,
-    ) -> Result<()>
+    pub async fn send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -342,14 +257,7 @@ impl Shell {
         Ok(())
     }
 
-    pub async fn send_event<'a, D>(
-        adb: &Adb,
-        device: D,
-        event: &str,
-        code_type: i32,
-        code: i32,
-        value: i32,
-    ) -> Result<()>
+    pub async fn send_event<'a, D>(adb: &Adb, device: D, event: &str, code_type: i32, code: i32, value: i32) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -378,10 +286,7 @@ impl Shell {
             .stdout();
 
         lazy_static! {
-            static ref RE: Regex = Regex::new(
-                "^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?"
-            )
-            .unwrap();
+            static ref RE: Regex = Regex::new("^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?").unwrap();
         }
 
         let mut v: Vec<(String, String)> = vec![];
@@ -397,10 +302,7 @@ impl Shell {
                 let n = cap.name("name");
 
                 if e.is_some() && n.is_some() {
-                    v.push((
-                        e.unwrap().as_str().to_string(),
-                        n.unwrap().as_str().to_string(),
-                    ));
+                    v.push((e.unwrap().as_str().to_string(), n.unwrap().as_str().to_string()));
                 }
 
                 string = &string[cap[0].len()..]
@@ -411,26 +313,14 @@ impl Shell {
         Ok(v)
     }
 
-    pub async fn send_keyevent<'a, D>(
-        adb: &Adb,
-        device: D,
-        keycode: KeyCode,
-        event_type: Option<KeyEventType>,
-        source: Option<InputSource>,
-    ) -> Result<()>
+    pub async fn send_keyevent<'a, D>(adb: &Adb, device: D, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
         Shell::send_keyevents(adb, device, vec![keycode], event_type, source).await
     }
 
-    pub async fn send_keyevents<'a, D>(
-        adb: &Adb,
-        device: D,
-        keycodes: Vec<KeyCode>,
-        event_type: Option<KeyEventType>,
-        source: Option<InputSource>,
-    ) -> Result<()>
+    pub async fn send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Result<()>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -467,18 +357,13 @@ impl Shell {
     where
         D: Into<&'a dyn AdbDevice>,
     {
-        let output = Shell::exec(
-            adb,
-            device,
-            vec!["stat", "-L", "-c", "'%a'", format!("{:?}", path).as_str()],
-            None,
-        )
-        .await?
-        .stdout()
-        .as_str()
-        .ok_or(Error::from("stat failed"))?
-        .trim_end()
-        .parse::<u32>()?;
+        let output = Shell::exec(adb, device, vec!["stat", "-L", "-c", "'%a'", format!("{:?}", path).as_str()], None)
+            .await?
+            .stdout()
+            .as_str()
+            .ok_or(Error::from("stat failed"))?
+            .trim_end()
+            .parse::<u32>()?;
 
         let mode = file_mode::Mode::from(output);
         Ok(mode)
@@ -489,13 +374,7 @@ impl Shell {
         T: Into<&'a str> + AsRef<OsStr>,
         D: Into<&'b dyn AdbDevice>,
     {
-        let output = Shell::exec(
-            adb,
-            device,
-            vec![format!("test -{:} {:?} && echo 1 || echo 0", mode, path.as_ref()).as_str()],
-            None,
-        )
-        .await;
+        let output = Shell::exec(adb, device, vec![format!("test -{:} {:?} && echo 1 || echo 0", mode, path.as_ref()).as_str()], None).await;
 
         match output?.stdout().as_str() {
             Some(s) => Ok(s.trim_end() == "1"),
@@ -535,11 +414,7 @@ impl Shell {
         Shell::test_file(adb, device, path, "h").await
     }
 
-    pub async fn getprop<'a, D>(
-        adb: &Adb,
-        device: D,
-        key: &str,
-    ) -> std::result::Result<Vec<u8>, Error>
+    pub async fn getprop<'a, D>(adb: &Adb, device: D, key: &str) -> std::result::Result<Vec<u8>, Error>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -577,11 +452,7 @@ impl Shell {
         Ok(result)
     }
 
-    pub async fn cat<'a, 'b, T, D>(
-        adb: &Adb,
-        device: D,
-        path: T,
-    ) -> std::result::Result<Vec<u8>, Error>
+    pub async fn cat<'a, 'b, T, D>(adb: &Adb, device: D, path: T) -> std::result::Result<Vec<u8>, Error>
     where
         T: Into<&'a str> + AsRef<OsStr>,
         D: Into<&'b dyn AdbDevice>,

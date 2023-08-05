@@ -41,8 +41,10 @@ impl Adb {
             .map_err(anyhow::Error::msg)?;
 
         lazy_static! {
-            static ref RE: Regex =
-                Regex::new("(?P<ip>[^\\s]+)[\\s]+(device|offline) product:(?P<device_product>[^\\s]+)\\smodel:(?P<model>[^\\s]+)\\sdevice:(?P<device>[^\\s]+)\\stransport_id:(?P<transport_id>[^\\s]+)").unwrap();
+            static ref RE: Regex = Regex::new(
+                "(?P<ip>[^\\s]+)[\\s]+(device|offline) product:(?P<device_product>[^\\s]+)\\smodel:(?P<model>[^\\s]+)\\sdevice:(?P<device>[^\\s]+)\\stransport_id:(?P<transport_id>[^\\s]+)"
+            )
+            .unwrap();
         }
 
         let mut devices: Vec<Box<dyn AdbDevice>> = vec![];
@@ -62,8 +64,7 @@ impl Adb {
                             .as_str()
                             .parse::<u8>()
                             .unwrap();
-                        let device = Device::from_ip(ip).or(Device::from_transport_id(tr)
-                            .or(Device::from_serial(line_str.as_str())));
+                        let device = Device::from_ip(ip).or(Device::from_transport_id(tr).or(Device::from_serial(line_str.as_str())));
                         if let Ok(d) = device {
                             devices.push(Box::new(d))
                         }

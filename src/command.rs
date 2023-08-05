@@ -309,15 +309,11 @@ impl<'a> CommandBuilder {
         builder
     }
 
-    pub async fn pipe(
-        cmd1: &mut CommandBuilder,
-        cmd2: &mut CommandBuilder,
-    ) -> std::io::Result<Child> {
+    pub async fn pipe(cmd1: &mut CommandBuilder, cmd2: &mut CommandBuilder) -> std::io::Result<Child> {
         let child1 = cmd1.spawn().await?;
-        let out: ChildStdout = child1.stdout.ok_or(std::io::Error::new(
-            std::io::ErrorKind::InvalidData,
-            "child stdout unavailable",
-        ))?;
+        let out: ChildStdout = child1
+            .stdout
+            .ok_or(std::io::Error::new(std::io::ErrorKind::InvalidData, "child stdout unavailable"))?;
         let fd: Stdio = out.try_into()?;
         cmd2.stdin(fd);
         cmd2.spawn().await
