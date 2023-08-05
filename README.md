@@ -2,6 +2,8 @@
 
 ADB client written for rust.
 
+![crates.io](https://img.shields.io/crates/v/radb_client.svg)
+
 
 # Example
 
