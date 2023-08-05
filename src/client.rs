@@ -252,14 +252,14 @@ impl Client {
         output.is_ok()
     }
 
-    pub async fn connect<'d, D>(adb: &Adb, device: D) -> Result<bool>
+    pub async fn connect<'d, D>(adb: &Adb, device: D) -> anyhow::Result<()>
     where
         D: Into<&'d dyn AdbDevice>,
     {
         let d = device.into();
 
         if Client::is_connected(adb, d).await {
-            return Ok(true);
+            return Ok(());
         }
 
         let serial = d.addr().serial().expect("Host[:Port] required");
@@ -270,8 +270,8 @@ impl Client {
             .await?;
 
         match Client::is_connected(adb, d).await {
-            true => Ok(true),
-            false => Ok(false),
+            true => Ok(()),
+            false => Err(anyhow::Error::msg("Could not connect to device")),
         }
     }
 

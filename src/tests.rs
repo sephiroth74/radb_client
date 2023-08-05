@@ -4,7 +4,6 @@ mod tests {
     use std::fmt::{Display, Formatter};
     use std::fs::File;
     use std::io::{BufRead, Write};
-
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::path::PathBuf;
     use std::process::Stdio;
@@ -78,7 +77,11 @@ mod tests {
     #[tokio::test]
     async fn test_connect() {
         initialize();
-        assert_connected!(&DEVICE);
+
+        let adb = Adb::new().unwrap();
+        let device_ip = String::from("192.168.1.128");
+        let device = ADB.device(device_ip.as_str()).unwrap();
+        Client::connect(&adb, device.as_ref()).await.unwrap();
     }
 
     #[tokio::test]
