@@ -2,10 +2,10 @@
 #[cfg(test)]
 mod tests {
     use std::fmt::{Display, Formatter};
-    use std::fs::File;
+    use std::fs::{remove_file, File};
     use std::io::{BufRead, Write};
     use std::os::fd::{AsRawFd, FromRawFd};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::process::Stdio;
     use std::str::FromStr;
     use std::sync::Once;
@@ -13,64 +13,60 @@ mod tests {
     use std::time::Duration;
     use std::{env, fs};
 
+    use anyhow::anyhow;
     use chrono::Local;
-    use env_logger::fmt::Color;
     use futures::{StreamExt, TryFutureExt};
     use log::*;
     use once_cell::sync::Lazy;
     use regex::Regex;
+    use time::Instant;
     use tokio::process::Command;
     use tokio::sync::oneshot::{channel, Receiver, Sender};
     use tokio_util::codec::{FramedRead, LinesCodec};
 
-    use crate::client::LogcatOptions;
+    use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
     use crate::command::CommandBuilder;
     use crate::debug::CommandDebug;
+    use crate::scanner::Scanner;
     use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
     use crate::util::Vec8ToString;
-    use crate::{Adb, AdbDevice, Client, Shell};
+    use crate::{intent, Adb, AdbDevice, Client, SELinuxType, Shell};
 
     static INIT: Once = Once::new();
 
     static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-    static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.27"));
+    static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.24:5555"));
 
     static DEVICE: Lazy<Box<dyn AdbDevice>> = Lazy::new(|| ADB.device(DEVICE_IP.as_str()).unwrap());
 
     macro_rules! assert_connected {
         ($device:expr) => {
-            let o = Client::connect(&ADB, $device.as_ref()).await;
+            let o = Client::connect(&ADB, $device.as_ref(), None).await;
             trace!("output = {:?}", o);
             debug_assert!(o.is_ok(), "device not connected");
             trace!("connected!");
         };
     }
 
+    macro_rules! assert_root {
+        ($device:expr) => {
+            let result = Client::is_root(&ADB, $device.as_ref()).await;
+            debug_assert!(result.is_ok(), "failed to check is_root");
+            let is_root = result.unwrap();
+            debug!("is root: {:?}", is_root);
+
+            if !is_root {
+                let o = Client::root(&ADB, $device.as_ref()).await;
+                debug_assert!(o.is_ok(), "root failed");
+            }
+        };
+    }
+
     fn initialize() {
         INIT.call_once(|| {
-            env_logger::builder()
-                .default_format()
-                .format(|buf, record| {
-                    let mut buf_style = buf.style();
-                    let default_styled_level = buf.default_level_style(record.level());
-
-                    buf_style
-                        .set_color(Color::Ansi256(8))
-                        .set_dimmed(true)
-                        .set_intense(false);
-
-                    writeln!(
-                        buf,
-                        "{}{} {:>5}{} - {}",
-                        buf_style.value("["),
-                        default_styled_level.value(Local::now().format("%H:%M:%S:%3f")),
-                        buf.default_styled_level(record.level()),
-                        buf_style.value("]"),
-                        default_styled_level.value(record.args())
-                    )
-                })
-                .init();
+            //env_logger::builder().default_format().is_test(true).init();
+            simple_logger::SimpleLogger::new().env().init().unwrap();
         });
     }
 
@@ -78,10 +74,9 @@ mod tests {
     async fn test_connect() {
         initialize();
 
-        let adb = Adb::new().unwrap();
-        let device_ip = String::from("192.168.1.128");
+        let device_ip = String::from("192.168.1.24");
         let device = ADB.device(device_ip.as_str()).unwrap();
-        Client::connect(&adb, device.as_ref()).await.unwrap();
+        Client::connect(&ADB, device.as_ref(), None).await.unwrap();
     }
 
     #[tokio::test]
@@ -166,6 +161,34 @@ mod tests {
             .await
             .expect("getprop failed");
         assert_eq!("wlan0", output.as_str().unwrap().trim_end());
+
+        let stb_name = Shell::getprop(&ADB, DEVICE.as_ref(), "persist.sys.stb.name")
+            .await
+            .expect("failed to read persist.sys.stb.name");
+        debug!("stb name: `{:}`", stb_name.as_str().unwrap().trim_end());
+        assert!(stb_name.len() > 1);
+    }
+
+    #[tokio::test]
+    async fn test_get_device_mac_address() {
+        initialize();
+        assert_connected!(&DEVICE);
+        let address = Client::get_mac_address(&ADB, DEVICE.as_ref())
+            .await
+            .expect("failed to get mac address");
+        debug!("mac address: `{:?}`", address.to_string());
+    }
+
+    #[tokio::test]
+    async fn test_get_device_wlan_address() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let address = Client::get_wlan_address(&ADB, DEVICE.as_ref())
+            .await
+            .expect("failed to get wlan0 address");
+        debug!("wlan0 address: `{:?}`", address.to_string());
     }
 
     #[tokio::test]
@@ -433,12 +456,13 @@ mod tests {
         assert_connected!(&DEVICE);
         Client::root(&ADB, DEVICE.as_ref()).await.unwrap();
 
+        let device_ip = format!("{:?}", DEVICE.addr());
+
         tokio::join!(async {
             let child1 = Command::new("adb")
-                //.args(vec!["-s", "192.168.1.111:5555", "shell", "ls", "-la /timeshift/conf"])
                 .args(vec![
                     "-s",
-                    "192.168.1.111:5555",
+                    device_ip.as_str(),
                     "shell",
                     "while true; do screenrecord --output-format=h264 -; done",
                 ])
@@ -764,7 +788,7 @@ mod tests {
         let string = name.unwrap();
         assert!(string.len() > 0);
 
-        trace!("name: {:?}", string);
+        debug!("device name: {:?}", string);
     }
 
     #[tokio::test]
@@ -772,7 +796,41 @@ mod tests {
         initialize();
         assert_connected!(&DEVICE);
         let name = Client::version(&ADB, DEVICE.as_ref()).await.unwrap();
-        trace!("client version: {:?}", name);
+        debug!("client version: {:?}", name);
+    }
+
+    #[tokio::test]
+    async fn test_client_uuid() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let result = Shell::exec(&ADB, DEVICE.as_ref(), vec!["scmuuid_test"], None)
+            .await
+            .unwrap();
+        assert!(result.is_success());
+        assert!(result.has_stdout());
+
+        let stdout = String::from(result.stdout().as_str().expect("failed to get stdout"));
+        let output = stdout.as_str();
+
+        debug_assert!(output.len() > 0, "output is empty");
+
+        let chip_id = parse_scmuuid(output, ScmuuIdType::ChipId).expect("failed to get ChipId");
+        debug_assert!(!chip_id.is_empty(), "chip id is empty");
+
+        let verimatrix_chip_id = parse_scmuuid(output, ScmuuIdType::VerimatrixChipId).expect("failed to get VerimatrixChipId");
+        debug_assert!(!verimatrix_chip_id.is_empty(), "verimatrix chip id is empty");
+
+        let uid = parse_scmuuid(output, ScmuuIdType::UUID).expect("failed to get UUID");
+        debug_assert!(!uid.is_empty(), "uuid is empty");
+
+        debug!("chipId: {:}", chip_id);
+        debug!("verimatrixChipId: {:}", verimatrix_chip_id);
+        debug!("uuid: {:}", uid);
+
+        let uid_value = uuid::Uuid::from_str(uid.as_str()).unwrap();
+        debug!("UUID => {:#?}", uid_value);
     }
 
     #[tokio::test]
@@ -806,7 +864,7 @@ mod tests {
         tokio::spawn(async move {
             trace!("spawned...");
 
-            let sleep = tokio::time::sleep(Duration::from_secs(1));
+            let sleep = tokio::time::sleep(Duration::from_secs(5));
             tokio::select! {
                 _ = rx => {
                     warn!("CTRL+C received!");
@@ -827,5 +885,218 @@ mod tests {
         }
 
         debug!("Ok. done");
+    }
+
+    #[tokio::test]
+    async fn test_save_screencap_locally() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let tilde = shellexpand::tilde("~/Desktop/screencap.png").to_string();
+        let output = Path::new(tilde.as_str());
+        debug!("target file: {:?}", output.to_str());
+
+        if output.exists() {
+            remove_file(output).expect("Error deleting file");
+        }
+
+        File::create(output).expect("failed to create file");
+
+        let _result = Client::save_screencap(&ADB, DEVICE.as_ref(), output)
+            .await
+            .expect("failed to save screencap");
+        debug!("ok. done => {:?}", output);
+    }
+
+    #[tokio::test]
+    async fn test_copy_screencap() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+        Client::copy_screencap(&ADB, DEVICE.as_ref()).await.unwrap();
+        debug!("screencap copied");
+    }
+
+    #[tokio::test]
+    async fn test_get_boot_id() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let boot_id = Client::get_boot_id(&ADB, DEVICE.as_ref()).await.unwrap();
+        debug!("boot_id: {:#?}", boot_id)
+    }
+
+    #[tokio::test]
+    async fn test_send_broadcast() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let package_name = "com.swisscom.aot.library.standalone";
+        let mut intent = intent!["swisscom.android.tv.action.PRINT_SESSION_INFO"];
+        intent.component = Some(format!["{:}/.receiver.PropertiesReceiver", package_name]);
+        intent
+            .extra
+            .put_string_extra("swisscom.android.tv.extra.TAG", "SESSION_INFO");
+        intent.wait = true;
+
+        debug!("{:}", intent);
+        let _result = Shell::broadcast(&ADB, DEVICE.as_ref(), &intent)
+            .await
+            .unwrap();
+
+        let (send, recv): (Sender<()>, Receiver<()>) = channel::<()>();
+        tokio::spawn(async move {
+            tokio::signal::ctrl_c().await.unwrap();
+            trace!("Ctrl+c pressed!");
+            send.send(())
+        });
+
+        let timeout = Some(Duration::from_secs(5));
+        let since = Some(Local::now() - chrono::Duration::seconds(1));
+
+        let options = LogcatOptions {
+            expr: None,
+            dump: true,
+            filename: None,
+            tags: Some(vec![LogcatTag {
+                name: "SESSION_INFO".to_string(),
+                level: LogcatLevel::Info,
+            }]),
+            format: None,
+            since,
+            pid: None,
+            timeout,
+        };
+
+        let output = Client::logcat(&ADB, DEVICE.as_ref(), options, Some(recv.into_future())).await;
+        assert!(output.is_ok());
+
+        let o = output.unwrap();
+
+        assert!(o.is_success());
+        assert!(!o.is_kill());
+        assert!(!o.is_interrupt());
+
+        let stdout = o.stdout();
+
+        let re = Regex::new(".* SESSION_INFO:\\s*(?P<session>\\{[^}]+})").unwrap();
+        let line = stdout
+            .lines()
+            .map(|l| l.unwrap())
+            .filter_map(|line| {
+                if re.is_match(line.as_str()) {
+                    match re.captures(line.as_str()) {
+                        None => None,
+                        Some(captures) => match captures.name("session") {
+                            None => None,
+                            Some(c) => Some(c.as_str().to_string()),
+                        },
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(line.len(), 1);
+        debug!("line: {:#?}", line.first().unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_get_enforce() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let enforce = Shell::get_enforce(&ADB, DEVICE.as_ref()).await.unwrap();
+        debug!("enforce = {:}", enforce);
+    }
+
+    #[tokio::test]
+    async fn test_set_enforce() {
+        initialize();
+        assert_connected!(&DEVICE);
+        assert_root!(&DEVICE);
+
+        let enforce1 = Shell::get_enforce(&ADB, DEVICE.as_ref()).await.unwrap();
+        debug!("enforce = {:}", enforce1);
+
+        let _result = if enforce1 == SELinuxType::Permissive {
+            Shell::set_enforce(&ADB, DEVICE.as_ref(), SELinuxType::Enforcing)
+                .await
+                .unwrap();
+        } else {
+            Shell::set_enforce(&ADB, DEVICE.as_ref(), SELinuxType::Permissive)
+                .await
+                .unwrap();
+        };
+
+        Client::reboot(&ADB, DEVICE.as_ref(), None).await.unwrap();
+        Client::wait_for_device(&ADB, DEVICE.as_ref(), Some(Duration::from_secs(120)))
+            .await
+            .unwrap();
+
+        let enforce2 = Shell::get_enforce(&ADB, DEVICE.as_ref()).await.unwrap();
+        debug!("enforce2 = {:}", enforce2);
+
+        assert_ne!(enforce1, enforce2);
+    }
+
+    #[tokio::test]
+    async fn test_scan() {
+        initialize();
+
+        let scanner = Scanner::new();
+        let start = Instant::now();
+        let result = scanner.scan().await;
+        let elapsed = start.elapsed();
+
+        debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
+        debug!("Found {:} devices", result.len());
+
+        for device in result.iter() {
+            info!("device: {:?}", device);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_scan2() {
+        initialize();
+
+        let scanner = Scanner::new();
+        let start = Instant::now();
+        let result = scanner.scan2().await;
+        let elapsed = start.elapsed();
+
+        debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
+        debug!("Found {:} devices", result.len());
+
+        for device in result.iter() {
+            info!("device: {:?}", device);
+        }
+    }
+
+    fn parse_scmuuid(output: &str, scmuu_id_type: ScmuuIdType) -> anyhow::Result<String> {
+        let re = match scmuu_id_type {
+            ScmuuIdType::UUID => Regex::new("(?m)^UUID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
+            ScmuuIdType::VerimatrixChipId => Regex::new("(?m)^VMXCHIPID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
+            ScmuuIdType::ChipId => Regex::new("(?m)^CHIPID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
+        }?;
+
+        let captures = re.captures(output).ok_or(anyhow!("not found"))?;
+        Ok(captures
+            .name("id")
+            .ok_or(anyhow!("capture not found"))?
+            .as_str()
+            .to_string())
+    }
+
+    enum ScmuuIdType {
+        UUID,
+        VerimatrixChipId,
+        ChipId,
     }
 }

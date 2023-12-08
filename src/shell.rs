@@ -2,6 +2,7 @@ use std::ffi::OsStr;
 use std::io::BufRead;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use futures::future::IntoFuture;
 use lazy_static::lazy_static;
 use props_rs::Property;
@@ -11,8 +12,9 @@ use tokio::sync::oneshot::Receiver;
 
 use crate::command::{CommandBuilder, Error, ProcessResult, Result};
 use crate::input::{InputSource, KeyCode, KeyEventType};
+use crate::intent::Intent;
 use crate::util::Vec8ToString;
-use crate::{Adb, AdbDevice, Shell};
+use crate::{Adb, AdbDevice, SELinuxType, Shell};
 
 #[derive(IntoStaticStr)]
 #[allow(non_camel_case_types)]
@@ -486,6 +488,40 @@ impl Shell {
         match whoami {
             Some(s) => Ok(s.trim() == "root"),
             None => Ok(false),
+        }
+    }
+
+    pub async fn broadcast<'a, T>(adb: &Adb, device: T, intent: &Intent) -> anyhow::Result<()>
+    where
+        T: Into<&'a dyn AdbDevice>,
+    {
+        let _result = Shell::exec(adb, device, vec!["am", "broadcast", format!("{:}", intent).as_str()], None).await?;
+        Ok(())
+    }
+
+    pub async fn get_enforce<'a, T>(adb: &Adb, device: T) -> anyhow::Result<SELinuxType>
+    where
+        T: Into<&'a dyn AdbDevice>,
+    {
+        let result = Shell::exec(adb, device, vec!["getenforce"], None)
+            .await?
+            .stdout();
+        let enforce: SELinuxType = SELinuxType::try_from(result)?;
+        Ok(enforce)
+    }
+
+    pub async fn set_enforce<'a, T>(adb: &Adb, device: T, enforce: SELinuxType) -> anyhow::Result<()>
+    where
+        T: Into<&'a dyn AdbDevice>,
+    {
+        let new_value = match enforce {
+            SELinuxType::Permissive => "0",
+            SELinuxType::Enforcing => "1",
+        };
+
+        match Shell::exec(adb, device, vec!["setenforce", new_value], None).await {
+            Ok(_) => Ok(()),
+            Err(err) => Err(anyhow!(err)),
         }
     }
 }

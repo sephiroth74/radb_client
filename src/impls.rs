@@ -1,6 +1,7 @@
+use anyhow::anyhow;
 use std::ffi::OsStr;
 use std::fmt;
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 use std::net::{AddrParseError, Ipv4Addr};
 use std::num::ParseIntError;
 use std::str::FromStr;
@@ -10,8 +11,10 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::client::{LogcatLevel, LogcatTag, RebootType};
+use crate::intent::{Extra, Intent};
 use crate::shell::ScreenRecordOptions;
-use crate::{Adb, AdbDevice, AddressType, Device, DeviceAddress, IpV4AddrAndPort};
+use crate::util::Vec8ToString;
+use crate::{Adb, AdbDevice, AddressType, Device, DeviceAddress, IpV4AddrAndPort, SELinuxType};
 
 impl DeviceAddress {
     pub fn address_type(&self) -> &AddressType {
@@ -315,6 +318,245 @@ impl ScreenRecordOptions {
             bug_report: None,
             size: None,
             verbose: false,
+        }
+    }
+}
+
+impl Intent {
+    pub fn new() -> Intent {
+        Intent::default()
+    }
+    pub fn from_action(action: &str) -> Intent {
+        let mut intent = Intent::new();
+        intent.action = Some(action.to_string());
+        intent
+    }
+}
+
+impl Extra {
+    pub fn put_string_extra(&mut self, name: &str, value: &str) -> &mut Self {
+        self.es.insert(name.to_string(), value.to_string());
+        self
+    }
+
+    pub fn put_bool_extra(&mut self, name: &str, value: bool) -> &mut Self {
+        self.ez.insert(name.to_string(), value);
+        self
+    }
+
+    pub fn put_int_extra(&mut self, name: &str, value: i32) -> &mut Self {
+        self.ei.insert(name.to_string(), value);
+        self
+    }
+
+    pub fn put_long_extra(&mut self, name: &str, value: i64) -> &mut Self {
+        self.el.insert(name.to_string(), value);
+        self
+    }
+
+    pub fn put_string_array_extra(&mut self, name: &str, value: Vec<String>) -> &mut Self {
+        self.esa.insert(name.to_string(), value);
+        self
+    }
+}
+
+impl Display for Intent {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut args: Vec<String> = vec![];
+
+        if self.action.is_some() {
+            args.push(format!("-a {:}", self.action.as_ref().unwrap()));
+        }
+
+        if self.data.is_some() {
+            args.push(format!("-d {:}", self.data.as_ref().unwrap()));
+        }
+
+        if self.mime_type.is_some() {
+            args.push(format!("-t {:}", self.mime_type.as_ref().unwrap()));
+        }
+
+        if self.category.is_some() {
+            args.push(format!("-c {:}", self.category.as_ref().unwrap()));
+        }
+
+        if self.component.is_some() {
+            args.push(format!("-n {:}", self.component.as_ref().unwrap()));
+        }
+
+        if self.package.is_some() {
+            args.push(format!("-p {:}", self.package.as_ref().unwrap()));
+        }
+
+        if self.user_id.is_some() {
+            args.push(format!("--user {:}", self.user_id.as_ref().unwrap()));
+        }
+
+        if self.receiver_foreground {
+            args.push("--receiver-foreground".to_string());
+        }
+
+        if self.wait {
+            args.push("-W".to_string());
+        }
+
+        args.push(format!("{:}", self.extra));
+
+        write!(f, "{:}", args.join(" "))
+    }
+}
+
+impl Display for Extra {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut output: Vec<String> = Vec::new();
+
+        if !self.es.is_empty() {
+            self.es.iter().for_each(|entry| {
+                output.push(format!("--es {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.ez.is_empty() {
+            self.ez.iter().for_each(|entry| {
+                output.push(format!("--ez {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.ei.is_empty() {
+            self.ei.iter().for_each(|entry| {
+                output.push(format!("--ei {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.el.is_empty() {
+            self.el.iter().for_each(|entry| {
+                output.push(format!("--el {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.ef.is_empty() {
+            self.ef.iter().for_each(|entry| {
+                output.push(format!("--ef {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.eu.is_empty() {
+            self.eu.iter().for_each(|entry| {
+                output.push(format!("--eu {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.ecn.is_empty() {
+            self.ecn.iter().for_each(|entry| {
+                output.push(format!("--ecn {:} {:}", entry.0, entry.1));
+            });
+        }
+
+        if !self.eia.is_empty() {
+            self.eia.iter().for_each(|entry| {
+                output.push(format!(
+                    "--eia {:} {:}",
+                    entry.0,
+                    entry
+                        .1
+                        .iter()
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ));
+            });
+        }
+
+        if !self.ela.is_empty() {
+            self.ela.iter().for_each(|entry| {
+                output.push(format!(
+                    "--ela {:} {:}",
+                    entry.0,
+                    entry
+                        .1
+                        .iter()
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ));
+            });
+        }
+
+        if !self.efa.is_empty() {
+            self.efa.iter().for_each(|entry| {
+                output.push(format!(
+                    "--efa {:} {:}",
+                    entry.0,
+                    entry
+                        .1
+                        .iter()
+                        .map(|f| f.to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                ));
+            });
+        }
+
+        if !self.esa.is_empty() {
+            self.esa.iter().for_each(|entry| {
+                output.push(format!("--efa {:} {:}", entry.0, entry.1.join(",")));
+            });
+        }
+
+        if self.grant_read_uri_permission {
+            output.push("--grant-read-uri-permission".to_string());
+        }
+
+        if self.grant_write_uri_permission {
+            output.push("--grant-write-uri-permission".to_string());
+        }
+
+        if self.exclude_stopped_packages {
+            output.push("--exclude-stopped-packages".to_string());
+        }
+
+        if self.include_stopped_packages {
+            output.push("--include-stopped-packages".to_string());
+        }
+        write!(f, "{:}", output.join(" "))
+    }
+}
+
+impl Display for SELinuxType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            SELinuxType::Enforcing => write!(f, "Enforcing"),
+            SELinuxType::Permissive => write!(f, "Permissive"),
+        }
+    }
+}
+
+impl SELinuxType {
+    pub fn to_string(&self) -> String {
+        format!("{:}", self)
+    }
+}
+
+impl TryFrom<Vec<u8>> for SELinuxType {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+        let opt_string = value.as_str();
+        match opt_string {
+            None => Err(anyhow!("invalid string")),
+            Some(s) => s.try_into(),
+        }
+    }
+}
+
+impl TryFrom<&str> for SELinuxType {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.trim() {
+            "Enforcing" => Ok(SELinuxType::Enforcing),
+            "Permissive" => Ok(SELinuxType::Permissive),
+            _ => Err(anyhow!("not found")),
         }
     }
 }

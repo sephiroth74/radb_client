@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -26,8 +26,21 @@ strum_macros = "0.25.1"
 time = "0.3.21"
 tokio = { version = "1.28.0", features = ["full"] }
 tokio-util = { version = "0.7.8", features = ["full"] }
-which = "4.4.0"
-env_logger = "0.10.0"
+which = "5.0.0"
+test-env-log = "0.2.8"
+mac_address = "1.1.5"
+uuid = { version = "1.6.1", features = ["v4"] }
+shellexpand = "3.1.0"
+arboard = "3.3.0"
+image = "0.24.7"
+tokio-threadpool = "0.1.18"
+rayon = "1.8.0"
+tokio-rayon = "2.1.0"
+num_cpus = "1.16.0"
+
+[dev-dependencies]
+simple_logger = "4.3.0"
+
 
 [features]
 derive = []

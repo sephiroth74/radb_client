@@ -4,8 +4,8 @@ use std::path::PathBuf;
 
 pub mod command;
 pub mod debug;
+pub mod intent;
 
-#[cfg(feature = "derive")]
 pub mod macros;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -44,6 +44,12 @@ pub trait AdbDevice: Display + Debug + Send + Sync {
     fn args(&self) -> Vec<String>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum SELinuxType {
+    Enforcing,
+    Permissive,
+}
+
 pub mod adb;
 pub mod client;
 pub mod input;
@@ -51,4 +57,5 @@ pub mod shell;
 pub mod util;
 
 mod impls;
+mod scanner;
 mod tests;

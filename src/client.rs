@@ -1,15 +1,19 @@
+use std::borrow::Cow;
+use std::env::temp_dir;
 use std::ffi::OsStr;
-
 use std::fs::File;
-
 use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
+use anyhow::anyhow;
+use arboard::ImageData;
 use futures::future::IntoFuture;
 use log::debug;
+use mac_address::MacAddress;
 use tokio::process::Command;
 use tokio::sync::oneshot::Receiver;
+use uuid::Uuid;
 
 use crate::command::{CommandBuilder, Error, ProcessResult, Result};
 use crate::debug::CommandDebug;
@@ -122,6 +126,23 @@ impl Client {
             .await
     }
 
+    /// Retrieve the device name
+    ///
+    /// # Arguments
+    ///
+    /// * `adb`: the adb path
+    /// * `device`: the target device
+    ///
+    /// returns: Result<Option<String>, Error>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use radb_client::{Adb, Client};
+    /// let adb = Adb::new().unwrap();
+    /// let device = adb.device("192.168.1.24:5555");
+    /// let name = Client::name(&adb, &device).unwrap();
+    /// ```
     pub async fn name<'d, D>(adb: &Adb, device: D) -> Result<Option<String>>
     where
         D: Into<&'d dyn AdbDevice>,
@@ -200,6 +221,33 @@ impl Client {
         Ok(())
     }
 
+    pub async fn copy_screencap<'d, D>(adb: &Adb, device: D) -> anyhow::Result<()>
+    where
+        D: Into<&'d dyn AdbDevice>,
+    {
+        let mut dir = temp_dir();
+        let file_name = format!("{}.png", Uuid::new_v4());
+        dir.push(file_name);
+
+        let path = dir.as_path().to_owned();
+        let _file = File::create(path.as_path())?;
+        Client::save_screencap(adb, device, &path).await?;
+
+        let img = image::open(path.as_path())?;
+        let width = img.width();
+        let height = img.height();
+
+        let image_data = ImageData {
+            width: width as usize,
+            height: height as usize,
+            bytes: Cow::from(img.as_bytes()),
+        };
+
+        let mut clipboard = arboard::Clipboard::new()?;
+        clipboard.set_image(image_data)?;
+        Ok(())
+    }
+
     pub async fn wait_for_device<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> Result<()>
     where
         D: Into<&'d dyn AdbDevice>,
@@ -216,6 +264,13 @@ impl Client {
         Ok(())
     }
 
+    pub async fn is_root<'a, T>(adb: &Adb, device: T) -> Result<bool>
+    where
+        T: Into<&'a dyn AdbDevice>,
+    {
+        Shell::is_root(adb, device.into()).await
+    }
+
     /// Attempt to run adb as root
     pub async fn root<'a, T>(adb: &Adb, device: T) -> Result<bool>
     where
@@ -227,6 +282,7 @@ impl Client {
             return Ok(true);
         }
         CommandBuilder::device(adb, d).arg("root").output().await?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         Ok(true)
     }
 
@@ -252,7 +308,7 @@ impl Client {
         output.is_ok()
     }
 
-    pub async fn connect<'d, D>(adb: &Adb, device: D) -> anyhow::Result<()>
+    pub async fn connect<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> anyhow::Result<()>
     where
         D: Into<&'d dyn AdbDevice>,
     {
@@ -265,6 +321,7 @@ impl Client {
         let serial = d.addr().serial().expect("Host[:Port] required");
 
         CommandBuilder::new(adb.as_os_str())
+            .with_timeout(timeout)
             .args(["connect", serial.as_str()])
             .output()
             .await?;
@@ -370,5 +427,35 @@ impl Client {
             .output()
             .await?;
         Ok(())
+    }
+
+    pub async fn get_mac_address<'d, D>(adb: &Adb, device: D) -> anyhow::Result<MacAddress>
+    where
+        D: Into<&'d dyn AdbDevice>,
+    {
+        let output = Shell::cat(adb, device, "/sys/class/net/eth0/address").await?;
+        let mac_address_str = output.as_str().ok_or(anyhow!("invalid string"))?.trim_end();
+        let mac_address = MacAddress::try_from(mac_address_str)?;
+        Ok(mac_address)
+    }
+
+    pub async fn get_wlan_address<'d, D>(adb: &Adb, device: D) -> anyhow::Result<MacAddress>
+    where
+        D: Into<&'d dyn AdbDevice>,
+    {
+        let output = Shell::cat(adb, device, "/sys/class/net/wlan0/address").await?;
+        let mac_address_str = output.as_str().ok_or(anyhow!("invalid string"))?.trim_end();
+        let mac_address = MacAddress::try_from(mac_address_str)?;
+        Ok(mac_address)
+    }
+
+    pub async fn get_boot_id<'d, D>(adb: &Adb, device: D) -> anyhow::Result<uuid::Uuid>
+    where
+        D: Into<&'d dyn AdbDevice>,
+    {
+        let output = Shell::cat(adb, device, "/proc/sys/kernel/random/boot_id").await?;
+        let output_str = output.as_str().ok_or(anyhow!("invalid string"))?.trim();
+        let boot_id = output_str.try_into()?;
+        Ok(boot_id)
     }
 }

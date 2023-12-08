@@ -1,7 +1,5 @@
 use std::ffi::OsStr;
-
 use std::io::BufRead;
-
 use std::path::Path;
 
 use anyhow;
@@ -19,6 +17,24 @@ impl Adb {
     pub fn new() -> which::Result<Adb> {
         let adb = which("adb")?;
         Ok(Adb(adb))
+    }
+
+    pub async fn root(&self) -> anyhow::Result<()> {
+        CommandBuilder::new(self.0.as_path())
+            .args(["root"])
+            .output()
+            .await
+            .map_err(anyhow::Error::msg)
+            .map(|_| ())
+    }
+
+    pub async fn unroot(&self) -> anyhow::Result<()> {
+        CommandBuilder::new(self.0.as_path())
+            .args(["unroot"])
+            .output()
+            .await
+            .map_err(anyhow::Error::msg)
+            .map(|_| ())
     }
 
     pub fn from(path: &Path) -> which::Result<Adb> {

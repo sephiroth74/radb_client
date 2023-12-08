@@ -30,5 +30,12 @@ macro_rules! init_logger {
     };
 }
 
+#[macro_export]
+macro_rules! intent {
+    ($action:expr) => {
+        crate::intent::Intent::from_action($action)
+    };
+}
+
 #[allow(unused_imports)]
 pub(crate) use init_logger;

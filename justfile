@@ -38,7 +38,7 @@ udeps:
     cargo +nightly udeps --all-targets
 
 fix:
-    cargo fix --lib --allow-no-vcs
+    cargo fix --all-targets --allow-no-vcs
 
 # Tasks to make the code base comply with the rules. Mostly used in git hooks.
 comply: fmt lint test
