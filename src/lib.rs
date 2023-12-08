@@ -56,6 +56,7 @@ pub mod input;
 pub mod shell;
 pub mod util;
 
+mod future;
 mod impls;
 mod scanner;
 mod tests;

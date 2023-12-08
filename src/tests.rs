@@ -76,7 +76,7 @@ mod tests {
 
         let device_ip = String::from("192.168.1.24");
         let device = ADB.device(device_ip.as_str()).unwrap();
-        Client::connect(&ADB, device.as_ref(), None).await.unwrap();
+        Client::connect(&ADB, device.as_ref(), Some(Duration::from_secs(1))).await.unwrap();
     }
 
     #[tokio::test]
@@ -1058,24 +1058,7 @@ mod tests {
         debug!("Found {:} devices", result.len());
 
         for device in result.iter() {
-            info!("device: {:?}", device);
-        }
-    }
-
-    #[tokio::test]
-    async fn test_scan2() {
-        initialize();
-
-        let scanner = Scanner::new();
-        let start = Instant::now();
-        let result = scanner.scan2().await;
-        let elapsed = start.elapsed();
-
-        debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
-        debug!("Found {:} devices", result.len());
-
-        for device in result.iter() {
-            info!("device: {:?}", device);
+            info!("device: {:}", device);
         }
     }
 

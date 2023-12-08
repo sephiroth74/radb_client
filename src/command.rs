@@ -7,7 +7,7 @@ use std::process::{ExitStatus, Output, Stdio};
 use std::time::Duration;
 
 use futures::future::IntoFuture;
-use log::{debug, trace, warn};
+use log::{trace, warn};
 use string_builder::ToBytes;
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::signal::unix::SignalKind;
@@ -195,13 +195,10 @@ impl ProcessResult {
     fn try_from(value: std::io::Result<Output>) -> Result<Self> {
         match value {
             Ok(output) => {
-                //debug!("success: {}, code: {:?}, signal: {:?}", output.status.success(), output.status.code(), output.status.signal());
-
                 if output.status.success() {
                     Ok(output.into())
                 } else if output.status.signal().is_some() {
                     let signal = SignalKind::from_raw(output.status.signal().unwrap());
-                    debug!("signal = {:?}", signal);
 
                     if signal == SignalKind::interrupt() {
                         trace!("SIGINT(2)");
@@ -258,6 +255,7 @@ impl OutputResult for Output {
 
 #[derive(Debug)]
 pub struct CommandBuilder {
+    debug: bool,
     command: RefCell<Command>,
     timeout: Option<Duration>,
     signal: Option<IntoFuture<Receiver<()>>>,
@@ -287,7 +285,13 @@ impl<'a> CommandBuilder {
             command: RefCell::new(command),
             timeout: None,
             signal: None,
+            debug: true,
         }
+    }
+
+    pub fn with_debug(&mut self, debug: bool) -> &mut Self {
+        self.debug = debug;
+        self
     }
 
     pub fn device<'b, T>(adb: &Adb, device: T) -> Self
@@ -358,10 +362,6 @@ impl<'a> CommandBuilder {
         let has_signal = self.signal.is_some();
         let has_timeout = self.timeout.is_some();
 
-        if has_timeout || has_signal {
-            trace!("timeout: {:}, signal: {:}", has_timeout, has_signal);
-        }
-
         let sleep = self.timeout.map(tokio::time::sleep);
         tokio::select! {
             _ = (conditional_signal(self.signal.as_mut())), if has_signal => {
@@ -380,6 +380,15 @@ impl<'a> CommandBuilder {
         let output = child.wait_with_output().await;
         ProcessResult::try_from(output)
     }
+
+    pub async fn spawn(&mut self) -> std::io::Result<Child> {
+        if self.debug {
+            self.command.borrow_mut().debug().spawn()
+        } else {
+            self.command.borrow_mut().spawn()
+        }
+    }
+
     //
     //pub async fn process(&mut self) {
     //    self.command.borrow_mut().kill_on_drop(true);
@@ -402,10 +411,6 @@ impl<'a> CommandBuilder {
     //        println!("Line: {}", line?);
     //    }
     //}
-
-    pub async fn spawn(&mut self) -> std::io::Result<Child> {
-        self.command.borrow_mut().debug().spawn()
-    }
 }
 
 impl CommandDebug for CommandBuilder {

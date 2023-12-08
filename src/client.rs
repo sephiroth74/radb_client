@@ -171,7 +171,7 @@ impl Client {
         let string = result
             .as_str()
             .ok_or(Error::from("Failed to convert result into str"))?
-            .trim_end();
+            .trim();
         string.parse::<u8>().map_err(From::from)
     }
 
