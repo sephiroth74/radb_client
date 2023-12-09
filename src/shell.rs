@@ -1,5 +1,6 @@
 use std::ffi::OsStr;
 use std::io::BufRead;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use anyhow::anyhow;
@@ -176,11 +177,12 @@ impl Shell {
             .await
     }
 
-    pub async fn save_screencap<'a, D>(adb: &Adb, device: D, path: &str) -> Result<ProcessResult>
+    pub async fn save_screencap<'a, 't, D, T>(adb: &Adb, device: D, path: T) -> Result<ProcessResult>
     where
         D: Into<&'a dyn AdbDevice>,
+        T: Into<&'t str> + AsRef<OsStr> + Into<std::path::PathBuf>,
     {
-        Shell::exec(adb, device, vec!["screencap", "-p", path], None).await
+        Shell::exec(adb, device, vec!["screencap", "-p", path.into()], None).await
     }
 
     pub async fn is_screen_on<'a, D>(adb: &Adb, device: D) -> Result<bool>
@@ -387,10 +389,20 @@ impl Shell {
 
     pub async fn exists<'a, 'b, T, D>(adb: &Adb, device: D, path: T) -> Result<bool>
     where
-        T: Into<&'a str> + AsRef<OsStr>,
+        T: Into<&'a str> + AsRef<OsStr> + Into<PathBuf>,
         D: Into<&'b dyn AdbDevice>,
     {
         Shell::test_file(adb, device, path, "e").await
+    }
+
+    pub async fn rm<'a, 'b, T, D>(adb: &Adb, device: D, path: T) -> Result<bool>
+    where
+        T: Into<&'a str> + AsRef<OsStr> + Into<PathBuf>,
+        D: Into<&'b dyn AdbDevice>,
+    {
+        Shell::exec(adb, device, vec!["rm", path.into()], None)
+            .await
+            .map(|_| true)
     }
 
     pub async fn is_file<'a, 'b, T, D>(adb: &Adb, device: D, path: T) -> Result<bool>

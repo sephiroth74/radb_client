@@ -631,10 +631,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_command_pipe() {
-        initialize();
+        init_log!();
+        let client: AdbClient = client!();
 
         tokio::join!(async {
-            let mut cmd1 = CommandBuilder::shell(&ADB, DEVICE.as_ref());
+            let mut cmd1 = <AdbClient as Into<CommandBuilder>>::into(client);
+            //let mut cmd1 = CommandBuilder::shell(&ADB, DEVICE.as_ref());
             cmd1.arg("while true; do screenrecord --output-format=h264 -; done");
 
             let mut cmd2 = CommandBuilder::new("ffplay");
@@ -671,15 +673,33 @@ mod tests {
 
     #[tokio::test]
     async fn test_save_screencap() {
-        initialize();
-        assert_connected!(&DEVICE);
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
 
-        Shell::exists(&ADB, DEVICE.as_ref(), "/sdcard/Download")
+        assert!(client.shell().exists("/sdcard/Download").await.unwrap());
+
+        if client
+            .shell()
+            .exists("/sdcard/Download/screencap.png")
             .await
-            .unwrap();
-        Shell::save_screencap(&ADB, DEVICE.as_ref(), "/sdcard/Download/screencap.png")
+            .unwrap()
+        {
+            // remove the file
+            client
+                .shell()
+                .rm("/sdcard/Download/screencap.png")
+                .await
+                .unwrap();
+        }
+
+        client
+            .shell()
+            .save_screencap("/sdcard/Download/screencap.png")
             .await
             .expect("save screencap failed");
+
+        assert!(client.shell().exists("/sdcard/Download").await.unwrap());
     }
 
     #[tokio::test]

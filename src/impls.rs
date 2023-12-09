@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::net::{AddrParseError, SocketAddr};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -15,6 +16,7 @@ use regex::Regex;
 use tokio::process::Command;
 
 use crate::client::{LogcatLevel, LogcatTag, RebootType};
+use crate::command::{CommandBuilder, ProcessResult};
 use crate::intent::{Extra, Intent};
 use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 use crate::traits::AdbDevice;
@@ -233,6 +235,12 @@ impl Default for Adb {
 impl From<Adb> for Command {
     fn from(value: Adb) -> Self {
         Command::new(value.0.as_os_str())
+    }
+}
+
+impl From<AdbClient> for CommandBuilder {
+    fn from(value: AdbClient) -> Self {
+        CommandBuilder::shell(&value.adb, &value.device)
     }
 }
 
@@ -649,9 +657,16 @@ impl<'a> AdbShell<'a> {
 
     pub async fn exists<'t, T>(&self, path: T) -> crate::command::Result<bool>
     where
-        T: Into<&'t str> + AsRef<OsStr>,
+        T: Into<&'t str> + AsRef<OsStr> + Into<PathBuf>,
     {
         Shell::exists(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn rm<'t, T>(&self, path: T) -> crate::command::Result<bool>
+    where
+        T: Into<&'t str> + AsRef<OsStr> + Into<PathBuf>,
+    {
+        Shell::rm(&self.parent.adb, &self.parent.device, path).await
     }
 
     pub async fn is_file<'t, T>(&self, path: T) -> crate::command::Result<bool>
@@ -680,6 +695,13 @@ impl<'a> AdbShell<'a> {
         T: Into<&'t str> + AsRef<OsStr> + Into<std::path::PathBuf>,
     {
         Shell::list_dir(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn save_screencap<'t, T>(&self, path: T) -> crate::command::Result<ProcessResult>
+    where
+        T: Into<&'t str> + AsRef<OsStr> + Into<std::path::PathBuf>,
+    {
+        Shell::save_screencap(&self.parent.adb, &self.parent.device, path).await
     }
 
     ///
