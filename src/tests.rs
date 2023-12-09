@@ -1,9 +1,8 @@
 /// cargo test --color=always --bin randroid tests -- --test-threads=1 --show-output
 #[cfg(test)]
 mod tests {
-    use std::{env, fs};
     use std::fmt::{Display, Formatter};
-    use std::fs::{File, remove_file};
+    use std::fs::{remove_file, File};
     use std::io::{BufRead, Write};
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::path::{Path, PathBuf};
@@ -12,6 +11,7 @@ mod tests {
     use std::sync::Once;
     use std::thread::sleep;
     use std::time::Duration;
+    use std::{env, fs};
 
     use anyhow::anyhow;
     use chrono::Local;
@@ -24,7 +24,6 @@ mod tests {
     use tokio::sync::oneshot::{channel, Receiver, Sender};
     use tokio_util::codec::{FramedRead, LinesCodec};
 
-    use crate::{Adb, Client, Device, intent, SELinuxType, Shell};
     use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
     use crate::command::CommandBuilder;
     use crate::debug::CommandDebug;
@@ -33,6 +32,7 @@ mod tests {
     use crate::traits::AdbDevice;
     use crate::types::AdbClient;
     use crate::util::Vec8ToString;
+    use crate::{intent, Adb, Client, Device, SELinuxType, Shell};
 
     static INIT: Once = Once::new();
 
@@ -500,7 +500,9 @@ mod tests {
         assert_client_connected!(client);
         assert_client_root!(client);
 
-        let lines = client.shell().list_dir("/system")
+        let lines = client
+            .shell()
+            .list_dir("/system")
             .await
             .expect("list dir failed");
 
@@ -521,16 +523,23 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_settings() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let settings = Shell::list_settings(&ADB, DEVICE.as_ref(), SettingsType::system)
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert_client_root!(client);
+
+        let shell = client.shell();
+
+        let settings = shell
+            .list_settings(SettingsType::system)
             .await
             .expect("list settings failed");
         assert!(settings.len() > 0);
         eprintln!("{:#?}", settings);
 
         for s in settings {
-            let value = Shell::get_setting(&ADB, DEVICE.as_ref(), SettingsType::system, s.key.as_str())
+            let value = shell
+                .get_setting(SettingsType::system, s.key.as_str())
                 .await
                 .expect("get setting failed")
                 .expect("parse value failed");
@@ -540,9 +549,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_dumpsys() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let output = Shell::dumpsys_list(&ADB, DEVICE.as_ref(), false, Some(DumpsysPriority::CRITICAL))
+        init_log!();
+
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let output = client
+            .shell()
+            .dumpsys_list(false, Some(DumpsysPriority::CRITICAL))
             .await
             .expect("dumpsys failed");
 
@@ -553,14 +567,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_screen_mirror() {
-        initialize();
-        assert_connected!(&DEVICE);
-        Client::root(&ADB, DEVICE.as_ref()).await.unwrap();
+        init_log!();
 
-        let device_ip = format!("{:?}", DEVICE.addr());
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert_client_root!(client);
+
+        let adb = Adb::new().unwrap();
+        let device_ip = client.device.addr().to_string();
 
         tokio::join!(async {
-            let child1 = Command::new("adb")
+            let child1 = <Adb as Into<Command>>::into(adb)
                 .args(vec![
                     "-s",
                     device_ip.as_str(),

@@ -12,16 +12,16 @@ use lazy_static::lazy_static;
 use mac_address::MacAddress;
 use props_rs::Property;
 use regex::Regex;
-use which::Path;
+use tokio::process::Command;
 
-use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
-use crate::AddressType::Sock;
 use crate::client::{LogcatLevel, LogcatTag, RebootType};
 use crate::intent::{Extra, Intent};
-use crate::shell::ScreenRecordOptions;
+use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 use crate::traits::AdbDevice;
 use crate::types::{AdbClient, AdbShell};
 use crate::util::Vec8ToString;
+use crate::AddressType::Sock;
+use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
 
 impl DeviceAddress {
     pub fn address_type(&self) -> &AddressType {
@@ -221,6 +221,18 @@ impl TryFrom<&dyn AdbDevice> for Device {
 impl AsRef<OsStr> for Adb {
     fn as_ref(&self) -> &OsStr {
         self.0.as_os_str()
+    }
+}
+
+impl Default for Adb {
+    fn default() -> Self {
+        Adb::new().unwrap()
+    }
+}
+
+impl From<Adb> for Command {
+    fn from(value: Adb) -> Self {
+        Command::new(value.0.as_os_str())
     }
 }
 
@@ -664,9 +676,26 @@ impl<'a> AdbShell<'a> {
     }
 
     pub async fn list_dir<'t, T>(&self, path: T) -> crate::command::Result<Vec<String>>
-        where
-            T: Into<&'t str> + AsRef<OsStr> + Into<std::path::PathBuf>,
+    where
+        T: Into<&'t str> + AsRef<OsStr> + Into<std::path::PathBuf>,
     {
         Shell::list_dir(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    ///
+    /// Root is required
+    ///
+    pub async fn list_settings(&self, settings_type: SettingsType) -> crate::command::Result<Vec<Property>> {
+        Shell::list_settings(&self.parent.adb, &self.parent.device, settings_type).await
+    }
+
+    ///
+    /// Root is required
+    pub async fn get_setting(&self, settings_type: SettingsType, key: &str) -> crate::command::Result<Option<String>> {
+        Shell::get_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
+    }
+
+    pub async fn dumpsys_list(&self, proto_only: bool, priority: Option<DumpsysPriority>) -> crate::command::Result<Vec<String>> {
+        Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority).await
     }
 }
