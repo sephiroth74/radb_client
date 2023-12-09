@@ -1,20 +1,27 @@
-use anyhow::anyhow;
+use fmt::Debug;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::net::{AddrParseError, Ipv4Addr};
-use std::num::ParseIntError;
+use std::net::{AddrParseError, SocketAddr};
 use std::str::FromStr;
 use std::time::Duration;
 
+use anyhow::{anyhow, Context};
+use async_trait::async_trait;
 use lazy_static::lazy_static;
+use mac_address::MacAddress;
+use props_rs::Property;
 use regex::Regex;
+use which::Path;
 
+use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
+use crate::AddressType::Sock;
 use crate::client::{LogcatLevel, LogcatTag, RebootType};
 use crate::intent::{Extra, Intent};
 use crate::shell::ScreenRecordOptions;
+use crate::traits::AdbDevice;
+use crate::types::{AdbClient, AdbShell};
 use crate::util::Vec8ToString;
-use crate::{Adb, AdbDevice, AddressType, Device, DeviceAddress, IpV4AddrAndPort, SELinuxType};
 
 impl DeviceAddress {
     pub fn address_type(&self) -> &AddressType {
@@ -23,7 +30,7 @@ impl DeviceAddress {
 
     pub fn serial(&self) -> Option<String> {
         match &self.0 {
-            AddressType::Ip(ip) => Some(ip.to_string()),
+            AddressType::Sock(sock) => Some(sock.to_string()),
             AddressType::Name(name) => Some(name.to_string()),
             AddressType::Transport(_) => None,
         }
@@ -31,9 +38,8 @@ impl DeviceAddress {
 
     pub fn transport_id(&self) -> Option<u8> {
         match self.0 {
-            AddressType::Ip(_) => None,
-            AddressType::Name(_) => None,
             AddressType::Transport(id) => Some(id),
+            _ => None,
         }
     }
 
@@ -46,50 +52,30 @@ impl DeviceAddress {
     }
 
     pub fn from_ip(input: &str) -> anyhow::Result<DeviceAddress> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new("([0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):?([0-9]*)?").unwrap();
-        }
-
-        let mut port: u16 = 5555;
-        let mut ip: Option<Ipv4Addr> = None;
-
-        if !RE.is_match(input) {
-            let msg = format!("Invalid IP address: {}", input);
-            return Err(anyhow::Error::msg(msg));
-        }
-
-        for cap in RE.captures_iter(input) {
-            let input = &cap[1];
-            let address = input.parse().map_err(anyhow::Error::msg)?;
-            ip = Some(address);
-            if cap.get(2).is_some() && !cap[2].is_empty() {
-                port = cap[2].parse::<u16>()?;
-            }
-        }
-
-        match ip {
-            None => Err(anyhow::Error::msg("Invalid ip address")),
-            Some(address) => Ok(DeviceAddress(AddressType::Ip(IpV4AddrAndPort { ip: address, port }))),
+        let addr: anyhow::Result<SocketAddr> = input.parse().context("failed to parse ip address");
+        match addr {
+            Ok(addr) => Ok(DeviceAddress(AddressType::Sock(addr))),
+            Err(err) => Err(err),
         }
     }
 }
 
-impl fmt::Display for DeviceAddress {
+impl Display for DeviceAddress {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match &self.0 {
             AddressType::Name(name) => write!(f, "name:{}", name),
             AddressType::Transport(id) => write!(f, "transport_id:{}", id),
-            AddressType::Ip(ip) => write!(f, "ip:{}", ip),
+            AddressType::Sock(addr) => write!(f, "ip:{}", addr),
         }
     }
 }
 
-impl fmt::Debug for DeviceAddress {
+impl Debug for DeviceAddress {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match &self.0 {
             AddressType::Name(name) => write!(f, "{}", name),
             AddressType::Transport(id) => write!(f, "{}", id),
-            AddressType::Ip(ip) => write!(f, "{}", ip),
+            AddressType::Sock(addr) => write!(f, "{}", addr),
         }
     }
 }
@@ -97,7 +83,7 @@ impl fmt::Debug for DeviceAddress {
 impl Device {
     pub fn try_from_address(value: &DeviceAddress) -> anyhow::Result<Device> {
         match value.address_type() {
-            AddressType::Ip(ip) => Device::from_ip_and_port(ip),
+            AddressType::Sock(addr) => Device::from_sock_addr(addr),
             AddressType::Name(name) => Device::from_serial(name),
             AddressType::Transport(id) => Device::from_transport_id(*id),
         }
@@ -107,8 +93,8 @@ impl Device {
         DeviceAddress::from_ip(input).map(|address| Device(address))
     }
 
-    pub fn from_ip_and_port(input: &IpV4AddrAndPort) -> anyhow::Result<Device> {
-        Ok(Device(DeviceAddress(AddressType::Ip(input.clone()))))
+    pub fn from_sock_addr(input: &SocketAddr) -> anyhow::Result<Device> {
+        Ok(Device(DeviceAddress(AddressType::Sock(input.clone()))))
     }
 
     pub fn from_serial(input: &str) -> anyhow::Result<Device> {
@@ -141,7 +127,7 @@ impl Device {
 
     pub fn args(&self) -> Vec<String> {
         match &self.0 .0 {
-            AddressType::Ip(ip) => vec!["-s".to_string(), ip.to_string()],
+            AddressType::Sock(addr) => vec!["-s".to_string(), addr.to_string()],
             AddressType::Name(name) => vec!["-s".to_string(), name.to_string()],
             AddressType::Transport(id) => vec!["-t".to_string(), id.to_string()],
         }
@@ -154,18 +140,31 @@ impl From<&str> for Device {
     }
 }
 
-impl fmt::Display for Device {
+impl FromStr for Device {
+    type Err = AddrParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let addr: Result<SocketAddr, AddrParseError> = s.parse();
+        match addr {
+            Ok(a) => Ok(Self(DeviceAddress(Sock(a)))),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+impl Display for Device {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-impl fmt::Debug for Device {
+impl Debug for Device {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Device{{address={:?}}}", self.0)
     }
 }
 
+#[async_trait]
 impl AdbDevice for Device {
     fn addr(&self) -> &DeviceAddress {
         &self.0
@@ -193,7 +192,7 @@ impl RebootType {
     }
 }
 
-impl fmt::Display for LogcatLevel {
+impl Display for LogcatLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             LogcatLevel::Verbose => write!(f, "V"),
@@ -205,7 +204,7 @@ impl fmt::Display for LogcatLevel {
     }
 }
 
-impl fmt::Display for LogcatTag {
+impl Display for LogcatTag {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.name, self.level)
     }
@@ -216,44 +215,6 @@ impl TryFrom<&dyn AdbDevice> for Device {
 
     fn try_from(value: &dyn AdbDevice) -> Result<Self, Self::Error> {
         Device::try_from_address(value.addr())
-    }
-}
-
-impl fmt::Display for IpV4AddrAndPort {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.ip, self.port)
-    }
-}
-
-impl FromStr for IpV4AddrAndPort {
-    type Err = String;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        lazy_static! {
-            static ref RE: Regex = Regex::new("([0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}):?([0-9]*)?").unwrap();
-        }
-        let mut port: u16 = 5555;
-        let mut ip: Option<Ipv4Addr> = None;
-
-        if !RE.is_match(input) {
-            return Err(format!("Invalid IP address: {}", input));
-        }
-
-        for cap in RE.captures_iter(input) {
-            let input = &cap[1];
-            let address = input.parse().map_err(|e: AddrParseError| e.to_string())?;
-            ip = Some(address);
-            if cap.get(2).is_some() && !cap[2].is_empty() {
-                port = cap[2]
-                    .parse::<u16>()
-                    .map_err(|e: ParseIntError| e.to_string())?;
-            }
-        }
-
-        match ip {
-            None => Err("Invalid ip address".to_string()),
-            Some(address) => Ok(IpV4AddrAndPort { ip: address, port }),
-        }
     }
 }
 
@@ -558,5 +519,154 @@ impl TryFrom<&str> for SELinuxType {
             "Permissive" => Ok(SELinuxType::Permissive),
             _ => Err(anyhow!("not found")),
         }
+    }
+}
+
+impl TryFrom<Device> for AdbClient {
+    type Error = anyhow::Error;
+
+    fn try_from(value: Device) -> Result<Self, Self::Error> {
+        AdbClient::from_device(value)
+    }
+}
+
+impl AdbClient {
+    pub fn from_device(device: Device) -> anyhow::Result<AdbClient> {
+        match Adb::new().context("adb not found") {
+            Ok(adb) => Ok(AdbClient { adb, device }),
+            Err(err) => Err(err),
+        }
+    }
+
+    pub async fn is_connected(&self) -> bool {
+        Client::is_connected(&self.adb, &self.device).await
+    }
+
+    /// Try to connect to the inner device.
+    ///
+    /// # Arguments
+    ///
+    /// * `timeout`: optional timeout for connecting
+    ///
+    /// returns: Result<(), Error>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use radb_client::Device;
+    /// use radb_client::types::AdbClient;
+    ///
+    /// pub async fn connect() {
+    ///  let device: Device = "192.168.1.24:5555".parse().unwrap();
+    ///  let client: AdbClient = device.try_into().unwrap();
+    ///  client.connect(None).await.unwrap();
+    /// }
+    /// ```
+    pub async fn connect(&self, timeout: Option<std::time::Duration>) -> anyhow::Result<()> {
+        Client::connect(&self.adb, &self.device, timeout).await
+    }
+
+    pub async fn disconnect(&self) -> crate::command::Result<bool> {
+        Client::disconnect(&self.adb, &self.device).await
+    }
+
+    pub async fn root(&self) -> crate::command::Result<bool> {
+        Client::root(&self.adb, &self.device).await
+    }
+
+    pub async fn unroot(&self) -> crate::command::Result<bool> {
+        Client::unroot(&self.adb, &self.device).await
+    }
+
+    pub async fn is_root(&self) -> crate::command::Result<bool> {
+        Client::is_root(&self.adb, &self.device).await
+    }
+
+    pub async fn remount(&self) -> crate::command::Result<()> {
+        Client::remount(&self.adb, &self.device).await
+    }
+
+    ///
+    /// Root is required
+    ///
+    pub async fn disable_verity(&self) -> crate::command::Result<()> {
+        Client::disable_verity(&self.adb, &self.device).await
+    }
+
+    ///
+    /// Root is required
+    ///
+    pub async fn get_mac_address(&self) -> anyhow::Result<MacAddress> {
+        Client::get_mac_address(&self.adb, &self.device).await
+    }
+
+    ///
+    /// Root is required
+    pub async fn get_wlan_address(&self) -> anyhow::Result<MacAddress> {
+        Client::get_wlan_address(&self.adb, &self.device).await
+    }
+
+    pub fn shell(&self) -> AdbShell {
+        AdbShell { parent: self }
+    }
+}
+
+impl<'a> AdbShell<'a> {
+    pub async fn whoami(&self) -> crate::command::Result<Option<String>> {
+        Shell::whoami(&self.parent.adb, &self.parent.device).await
+    }
+
+    pub async fn which(&self, command: &str) -> crate::command::Result<Option<String>> {
+        Shell::which(&self.parent.adb, &self.parent.device, command).await
+    }
+
+    pub async fn getprop(&self, key: &str) -> crate::command::Result<Vec<u8>> {
+        Shell::getprop(&self.parent.adb, &self.parent.device, key).await
+    }
+
+    pub async fn cat<'t, T>(&self, path: T) -> crate::command::Result<Vec<u8>>
+    where
+        T: Into<&'t str> + AsRef<OsStr>,
+    {
+        Shell::cat(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn getprops(&self) -> crate::command::Result<Vec<Property>> {
+        Shell::getprops(&self.parent.adb, &self.parent.device).await
+    }
+
+    pub async fn exists<'t, T>(&self, path: T) -> crate::command::Result<bool>
+    where
+        T: Into<&'t str> + AsRef<OsStr>,
+    {
+        Shell::exists(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn is_file<'t, T>(&self, path: T) -> crate::command::Result<bool>
+    where
+        T: Into<&'t str> + AsRef<OsStr>,
+    {
+        Shell::is_file(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn is_dir<'t, T>(&self, path: T) -> crate::command::Result<bool>
+    where
+        T: Into<&'t str> + AsRef<OsStr>,
+    {
+        Shell::is_dir(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn is_symlink<'t, T>(&self, path: T) -> crate::command::Result<bool>
+    where
+        T: Into<&'t str> + AsRef<OsStr>,
+    {
+        Shell::is_symlink(&self.parent.adb, &self.parent.device, path).await
+    }
+
+    pub async fn list_dir<'t, T>(&self, path: T) -> crate::command::Result<Vec<String>>
+        where
+            T: Into<&'t str> + AsRef<OsStr> + Into<std::path::PathBuf>,
+    {
+        Shell::list_dir(&self.parent.adb, &self.parent.device, path).await
     }
 }

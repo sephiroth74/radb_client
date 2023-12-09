@@ -1,8 +1,9 @@
 /// cargo test --color=always --bin randroid tests -- --test-threads=1 --show-output
 #[cfg(test)]
 mod tests {
+    use std::{env, fs};
     use std::fmt::{Display, Formatter};
-    use std::fs::{remove_file, File};
+    use std::fs::{File, remove_file};
     use std::io::{BufRead, Write};
     use std::os::fd::{AsRawFd, FromRawFd};
     use std::path::{Path, PathBuf};
@@ -11,7 +12,6 @@ mod tests {
     use std::sync::Once;
     use std::thread::sleep;
     use std::time::Duration;
-    use std::{env, fs};
 
     use anyhow::anyhow;
     use chrono::Local;
@@ -24,13 +24,15 @@ mod tests {
     use tokio::sync::oneshot::{channel, Receiver, Sender};
     use tokio_util::codec::{FramedRead, LinesCodec};
 
+    use crate::{Adb, Client, Device, intent, SELinuxType, Shell};
     use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
     use crate::command::CommandBuilder;
     use crate::debug::CommandDebug;
     use crate::scanner::Scanner;
     use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
+    use crate::traits::AdbDevice;
+    use crate::types::AdbClient;
     use crate::util::Vec8ToString;
-    use crate::{intent, Adb, AdbDevice, Client, SELinuxType, Shell};
 
     static INIT: Once = Once::new();
 
@@ -40,12 +42,51 @@ mod tests {
 
     static DEVICE: Lazy<Box<dyn AdbDevice>> = Lazy::new(|| ADB.device(DEVICE_IP.as_str()).unwrap());
 
+    macro_rules! client {
+        () => {
+            DEVICE_IP
+                .as_str()
+                .parse::<Device>()
+                .unwrap()
+                .try_into()
+                .unwrap()
+        };
+
+        ($addr:expr) => {
+            $addr.parse::<Device>().unwrap().try_into().unwrap()
+        };
+    }
+
     macro_rules! assert_connected {
         ($device:expr) => {
             let o = Client::connect(&ADB, $device.as_ref(), None).await;
             trace!("output = {:?}", o);
             debug_assert!(o.is_ok(), "device not connected");
             trace!("connected!");
+        };
+    }
+
+    macro_rules! assert_client_connected {
+        ($client:expr) => {
+            let result = $client
+                .connect(Some(std::time::Duration::from_secs(1)))
+                .await;
+            debug_assert!(result.is_ok(), "failed to connect client: {:?}", $client);
+            trace!("connected!");
+        };
+    }
+
+    macro_rules! assert_client_root {
+        ($client:expr) => {
+            if let Ok(root) = $client.is_root().await {
+                if !root {
+                    let is_rooted = $client.root().await.expect("failed to root client (1)");
+                    debug_assert!(is_rooted, "failed to root client (2)");
+                }
+            } else {
+                let is_rooted = !$client.root().await.expect("failed to root client (3)");
+                debug_assert!(is_rooted, "failed to root client (4)");
+            }
         };
     }
 
@@ -63,6 +104,14 @@ mod tests {
         };
     }
 
+    macro_rules! init_log {
+        () => {
+            INIT.call_once(|| {
+                simple_logger::SimpleLogger::new().env().init().unwrap();
+            })
+        };
+    }
+
     fn initialize() {
         INIT.call_once(|| {
             //env_logger::builder().default_format().is_test(true).init();
@@ -72,81 +121,92 @@ mod tests {
 
     #[tokio::test]
     async fn test_connect() {
-        initialize();
-
-        let device_ip = String::from("192.168.1.24");
-        let device = ADB.device(device_ip.as_str()).unwrap();
-        Client::connect(&ADB, device.as_ref(), Some(Duration::from_secs(1))).await.unwrap();
+        init_log!();
+        let device: Device = "192.168.1.24:5555".parse().unwrap();
+        let client: AdbClient = device.try_into().unwrap();
+        client.connect(None).await.unwrap();
     }
 
     #[tokio::test]
     async fn test_is_connected() {
-        initialize();
-        assert_connected!(&DEVICE);
-        assert!(Client::is_connected(&ADB, DEVICE.as_ref()).await);
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert!(client.is_connected().await);
     }
 
     #[tokio::test]
     async fn test_whoami() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let output = Shell::whoami(&ADB, DEVICE.as_ref())
-            .await
-            .expect("whoami failed");
-        debug_assert!(output.is_some(), "unknown whoami");
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let whoami = client.shell().whoami().await.expect("whoami failed");
+        debug!("whoami: {:?}", whoami);
+        debug_assert!(whoami.is_some(), "unknown whoami");
     }
 
     #[tokio::test]
     async fn test_remount() {
-        initialize();
-        assert_connected!(&DEVICE);
-        Client::root(&ADB, DEVICE.as_ref())
-            .await
-            .expect("root failed");
-        Client::remount(&ADB, DEVICE.as_ref())
-            .await
-            .expect("remount failed");
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        client.root().await.expect("root failed");
+        client.remount().await.expect("remount failed");
     }
 
     #[tokio::test]
     async fn test_disable_verity() {
-        initialize();
-        assert_connected!(&DEVICE);
-        Client::root(&ADB, DEVICE.as_ref())
+        init_log!();
+
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert_client_root!(client);
+
+        client
+            .disable_verity()
             .await
-            .expect("root failed");
-        Client::disable_verity(&ADB, DEVICE.as_ref())
-            .await
-            .expect("disable-verity failed");
+            .expect("disable_verity failed");
     }
 
     #[tokio::test]
     async fn test_root() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let success = Client::root(&ADB, DEVICE.as_ref())
-            .await
-            .expect("Unable to root device");
+        init_log!();
+
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let success = client.root().await.expect("root failed");
         debug_assert!(success, "root failed");
-        sleep(Duration::from_secs(1));
     }
 
     #[tokio::test]
     async fn test_is_root() {
-        initialize();
-        assert_connected!(&DEVICE);
-        Shell::is_root(&ADB, DEVICE.as_ref())
-            .await
-            .expect("is_root failed");
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let was_rooted = client.is_root().await.expect("is_root failed");
+        debug!("is_root = {}", was_rooted);
+
+        if was_rooted {
+            client.unroot().await.expect("failed to unroot");
+        } else {
+            client.root().await.expect("failed to root");
+        }
+
+        let is_rooted = client.is_root().await.expect("is_root failed");
+        assert_ne!(is_rooted, was_rooted);
     }
 
     #[tokio::test]
     async fn test_which() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let w = Shell::which(&ADB, DEVICE.as_ref(), "busybox")
-            .await
-            .expect("which failed");
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let w = client.shell().which("busybox").await.expect("which failed");
         debug_assert!(w.is_some(), "which failed");
         let result = w.unwrap();
         trace!("result: {:?}", result);
@@ -155,14 +215,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_getprop() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let output = Shell::getprop(&ADB, DEVICE.as_ref(), "wifi.interface")
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert_client_root!(client);
+
+        let output = client
+            .shell()
+            .getprop("wifi.interface")
             .await
             .expect("getprop failed");
         assert_eq!("wlan0", output.as_str().unwrap().trim_end());
 
-        let stb_name = Shell::getprop(&ADB, DEVICE.as_ref(), "persist.sys.stb.name")
+        let stb_name = client
+            .shell()
+            .getprop("persist.sys.stb.name")
             .await
             .expect("failed to read persist.sys.stb.name");
         debug!("stb name: `{:}`", stb_name.as_str().unwrap().trim_end());
@@ -171,9 +238,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_device_mac_address() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let address = Client::get_mac_address(&ADB, DEVICE.as_ref())
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert_client_root!(client);
+
+        let address = client
+            .get_mac_address()
             .await
             .expect("failed to get mac address");
         debug!("mac address: `{:?}`", address.to_string());
@@ -181,11 +252,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_device_wlan_address() {
-        initialize();
-        assert_connected!(&DEVICE);
-        assert_root!(&DEVICE);
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert_client_root!(client);
 
-        let address = Client::get_wlan_address(&ADB, DEVICE.as_ref())
+        let address = client
+            .get_wlan_address()
             .await
             .expect("failed to get wlan0 address");
         debug!("wlan0 address: `{:?}`", address.to_string());
@@ -193,9 +266,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_cat() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let output = Shell::cat(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let output = client
+            .shell()
+            .cat("/timeshift/conf/tvlib-aot.properties")
             .await
             .expect("cat failed");
         assert!(output.lines().into_iter().all(|f| f.is_ok()));
@@ -204,23 +281,37 @@ mod tests {
             .into_iter()
             .filter(|f| f.is_ok())
             .all(|l| l.is_ok()));
+
+        trace!("output: {:?}", output.as_str());
     }
 
     #[tokio::test]
     async fn test_getprops() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let properties = Shell::getprops(&ADB, DEVICE.as_ref())
-            .await
-            .expect("getprops failed");
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let properties = client.shell().getprops().await.expect("getprops failed");
         assert!(properties.len() > 0);
+        trace!(
+            "properties: {:?}",
+            properties
+                .iter()
+                .map(|p| p.key.as_str().to_string())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[tokio::test]
     async fn test_exists() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let exists = Shell::exists(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+        init_log!();
+
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let exists = client
+            .shell()
+            .exists("/timeshift/conf/tvlib-aot.properties")
             .await
             .unwrap();
         assert_eq!(true, exists);
@@ -228,45 +319,49 @@ mod tests {
 
     #[tokio::test]
     async fn test_is_file() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let f1 = Shell::is_file(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let f1 = client
+            .shell()
+            .is_file("/timeshift/conf/tvlib-aot.properties")
             .await
             .unwrap();
         assert_eq!(true, f1);
 
-        let f2 = Shell::is_file(&ADB, DEVICE.as_ref(), "/timeshift/conf/")
-            .await
-            .unwrap();
+        let f2 = client.shell().is_file("/timeshift/conf/").await.unwrap();
         assert_eq!(false, f2);
     }
 
     #[tokio::test]
     async fn test_is_dir() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let f1 = Shell::is_dir(&ADB, DEVICE.as_ref(), "/timeshift/conf/tvlib-aot.properties")
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+
+        let f1 = client
+            .shell()
+            .is_dir("/timeshift/conf/tvlib-aot.properties")
             .await
             .unwrap();
         assert_eq!(false, f1);
-        let f2 = Shell::is_dir(&ADB, DEVICE.as_ref(), "/timeshift/conf/")
-            .await
-            .unwrap();
+        let f2 = client.shell().is_dir("/timeshift/conf/").await.unwrap();
         assert_eq!(true, f2);
     }
 
     #[tokio::test]
     async fn test_disconnect() {
-        initialize();
-        assert_connected!(&DEVICE);
-        assert!(Client::disconnect(&ADB, DEVICE.as_ref())
-            .await
-            .expect("disconnect failed"));
+        init_log!();
+        let client: AdbClient = client!();
+        assert_client_connected!(client);
+        assert!(client.disconnect().await.expect("disconnect failed"));
+        assert!(!client.is_connected().await);
     }
 
     #[tokio::test]
     async fn test_disconnect_all() {
-        initialize();
+        init_log!();
         assert!(Client::disconnect_all(&ADB)
             .await
             .expect("disconnect all failed"));
@@ -398,11 +493,17 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_dir() {
-        initialize();
-        assert_connected!(&DEVICE);
-        let lines = Shell::list_dir(&ADB, DEVICE.as_ref(), "/system")
+        init_log!();
+
+        let client: AdbClient = client!();
+
+        assert_client_connected!(client);
+        assert_client_root!(client);
+
+        let lines = client.shell().list_dir("/system")
             .await
             .expect("list dir failed");
+
         for line in lines {
             let file: Result<DeviceFile, ParseError> = DeviceFile::parse(line.as_str());
             if file.is_ok() {

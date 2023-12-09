@@ -9,7 +9,7 @@ use std::time::Duration;
 use anyhow::anyhow;
 use arboard::ImageData;
 use futures::future::IntoFuture;
-use log::debug;
+use log::trace;
 use mac_address::MacAddress;
 use tokio::process::Command;
 use tokio::sync::oneshot::Receiver;
@@ -17,9 +17,10 @@ use uuid::Uuid;
 
 use crate::command::{CommandBuilder, Error, ProcessResult, Result};
 use crate::debug::CommandDebug;
+use crate::traits::AdbDevice;
 use crate::util::Vec8ToString;
+use crate::Client;
 use crate::{Adb, Shell};
-use crate::{AdbDevice, Client};
 
 pub enum RebootType {
     Bootloader,
@@ -217,7 +218,7 @@ impl Client {
             .status()
             .await?;
 
-        debug!("output: {:}", output);
+        trace!("output: {:}", output);
         Ok(())
     }
 

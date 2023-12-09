@@ -34,6 +34,7 @@ arboard = "3.3.0"
 image = "0.24.7"
 tokio-threadpool = "0.1.18"
 num_cpus = "1.16.0"
+async-trait = "0.1.74"
 
 [dev-dependencies]
 simple_logger = "4.3.0"

@@ -14,8 +14,9 @@ use tokio::signal::unix::SignalKind;
 use tokio::sync::oneshot::Receiver;
 use tokio::time::error::Elapsed;
 
+use crate::traits::AdbDevice;
 use crate::util::Vec8ToString;
-use crate::{Adb, AdbDevice};
+use crate::Adb;
 
 use super::debug::CommandDebug;
 
@@ -361,7 +362,6 @@ impl<'a> CommandBuilder {
         let mut child = self.spawn().await?;
         let has_signal = self.signal.is_some();
         let has_timeout = self.timeout.is_some();
-
         let sleep = self.timeout.map(tokio::time::sleep);
         tokio::select! {
             _ = (conditional_signal(self.signal.as_mut())), if has_signal => {

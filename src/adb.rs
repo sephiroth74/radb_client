@@ -8,7 +8,7 @@ use regex::Regex;
 use which::which;
 
 use crate::command::CommandBuilder;
-use crate::AdbDevice;
+use crate::traits::AdbDevice;
 
 use super::Adb;
 use super::Device;

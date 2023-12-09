@@ -13,8 +13,9 @@ use tokio::sync::oneshot::Receiver;
 use crate::command::{CommandBuilder, Error, ProcessResult, Result};
 use crate::input::{InputSource, KeyCode, KeyEventType};
 use crate::intent::Intent;
+use crate::traits::AdbDevice;
 use crate::util::Vec8ToString;
-use crate::{Adb, AdbDevice, SELinuxType, Shell};
+use crate::{Adb, SELinuxType, Shell};
 
 #[derive(IntoStaticStr)]
 #[allow(non_camel_case_types)]
@@ -416,7 +417,7 @@ impl Shell {
         Shell::test_file(adb, device, path, "h").await
     }
 
-    pub async fn getprop<'a, D>(adb: &Adb, device: D, key: &str) -> std::result::Result<Vec<u8>, Error>
+    pub async fn getprop<'a, D>(adb: &Adb, device: D, key: &str) -> Result<Vec<u8>>
     where
         D: Into<&'a dyn AdbDevice>,
     {
@@ -454,7 +455,7 @@ impl Shell {
         Ok(result)
     }
 
-    pub async fn cat<'a, 'b, T, D>(adb: &Adb, device: D, path: T) -> std::result::Result<Vec<u8>, Error>
+    pub async fn cat<'a, 'b, T, D>(adb: &Adb, device: D, path: T) -> Result<Vec<u8>>
     where
         T: Into<&'a str> + AsRef<OsStr>,
         D: Into<&'b dyn AdbDevice>,
@@ -472,12 +473,33 @@ impl Shell {
         output.map(|s| s.stdout().as_str().map(|ss| String::from(ss.trim_end())))
     }
 
+    /// Returns the current user runnign adb
+    ///
+    /// # Arguments
+    ///
+    /// * `adb`: adb path
+    /// * `device`: connected device
+    ///
+    /// returns: Result<Option<String>, Error>
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use radb_client::Device;
+    /// use radb_client::types::AdbClient;
+    ///
+    /// async fn get_user() {
+    ///     let client: AdbClient = "192.168.1.24:5555".parse::<Device>().unwrap().try_into().unwrap();
+    ///     client.connect(None).await.unwrap();
+    ///     let output = client.shell().whoami().unwrap();
+    /// }
+    /// ```
     pub async fn whoami<'a, T>(adb: &Adb, device: T) -> Result<Option<String>>
     where
         T: Into<&'a dyn AdbDevice>,
     {
         let result = Shell::exec(adb, device, vec!["whoami"], None).await?;
-        Ok(result.stdout().as_str().map(|s| s.to_string()))
+        Ok(result.stdout().as_str().map(|s| s.trim().to_string()))
     }
 
     pub async fn is_root<'a, T>(adb: &Adb, device: T) -> Result<bool>
@@ -486,7 +508,7 @@ impl Shell {
     {
         let whoami = Shell::whoami(adb, device).await?;
         match whoami {
-            Some(s) => Ok(s.trim() == "root"),
+            Some(s) => Ok(s == "root"),
             None => Ok(false),
         }
     }
