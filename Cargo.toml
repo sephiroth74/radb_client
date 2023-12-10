@@ -35,6 +35,8 @@ image = "0.24.7"
 tokio-threadpool = "0.1.18"
 num_cpus = "1.16.0"
 async-trait = "0.1.74"
+thiserror = "1.0.50"
+rustix = "0.38.28"
 
 [dev-dependencies]
 simple_logger = "4.3.0"

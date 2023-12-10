@@ -27,9 +27,9 @@ pub struct Client {}
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AddressType {
-    Sock(SocketAddr),
-    Name(String),
-    Transport(u8),
+	Sock(SocketAddr),
+	Name(String),
+	Transport(u8),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -43,8 +43,9 @@ pub struct Device(DeviceAddress);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SELinuxType {
-    Enforcing,
-    Permissive,
+	Enforcing,
+	Permissive,
 }
 
+mod errors;
 mod tests;
