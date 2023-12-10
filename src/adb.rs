@@ -8,7 +8,7 @@ use which::which;
 
 use crate::command::CommandBuilder;
 use crate::errors::AdbError;
-use crate::errors::AdbError::AdbNotFoundError;
+use crate::errors::AdbError::WhichError;
 use crate::traits::AdbDevice;
 
 use super::Adb;
@@ -30,7 +30,7 @@ impl Adb {
 
 	pub fn from(path: &Path) -> Result<Adb, AdbError> {
 		if !path.exists() {
-			return Err(AdbNotFoundError(which::Error::CannotFindBinaryPath));
+			return Err(WhichError(which::Error::CannotFindBinaryPath));
 		}
 		Ok(Adb(path.to_path_buf()))
 	}

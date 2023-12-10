@@ -37,7 +37,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.2:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.3:5555"));
 
 	macro_rules! client {
 		() => {
@@ -67,6 +67,20 @@ mod tests {
 			} else {
 				let is_rooted = !$client.root().await.expect("failed to root client (3)");
 				debug_assert!(is_rooted, "failed to root client (4)");
+			}
+		};
+	}
+
+	macro_rules! assert_client_unroot {
+		($client:expr) => {
+			if let Ok(root) = $client.is_root().await {
+				if root {
+					let success = $client.unroot().await.expect("failed to unroot client (1)");
+					debug_assert!(success, "failed to unroot client (2)");
+				}
+			} else {
+				let success = !$client.unroot().await.expect("failed to unroot client (3)");
+				debug_assert!(success, "failed to unroot client (4)");
 			}
 		};
 	}
@@ -212,12 +226,15 @@ mod tests {
 		init_log!();
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
+		assert_client_root!(client);
 
 		let output = client.shell().cat("/timeshift/conf/tvlib-aot.properties").await.expect("cat failed");
 		assert!(output.lines().into_iter().all(|f| f.is_ok()));
 		assert!(output.lines().into_iter().filter(|f| f.is_ok()).all(|l| l.is_ok()));
 
 		trace!("output: {:?}", output.as_str());
+
+		assert_client_unroot!(client);
 	}
 
 	#[tokio::test]
@@ -513,13 +530,12 @@ mod tests {
 
 		tokio::join!(async {
 			let mut cmd1 = <AdbClient as Into<CommandBuilder>>::into(client);
-			//let mut cmd1 = CommandBuilder::shell(&ADB, DEVICE.as_ref());
 			cmd1.arg("while true; do screenrecord --output-format=h264 -; done");
 
 			let mut cmd2 = CommandBuilder::new("ffplay");
-			cmd2.args(vec!["-framerate", "60", "-probesize", "32", "-sync", "video", "-"]);
+			cmd2.args(vec!["-framerate", "30", "-probesize", "32", "-sync", "video", "-vf", "scale=800:-1", "-"]);
 
-			let output = CommandBuilder::pipe(&mut cmd1, &mut cmd2).await.unwrap().wait_with_output().await.unwrap();
+			let output = CommandBuilder::pipe_with_timeout(&mut cmd1, &mut cmd2, Duration::from_secs(10)).await.unwrap();
 
 			trace!("exit status: {:?}", output.status);
 
@@ -534,6 +550,36 @@ mod tests {
 			}
 		});
 	}
+	//
+	//#[tokio::test]
+	//async fn test_command_pipe2() {
+	//	init_log!();
+	//	let client: AdbClient = client!();
+	//
+	//	tokio::join!(async {
+	//		let mut cmd1 = <AdbClient as Into<CommandBuilder>>::into(client);
+	//		cmd1.with_timeout(Some(Duration::from_secs(3)));
+	//		cmd1.arg("while true; do screenrecord --output-format=h264 -; done");
+	//
+	//		let mut cmd2 = CommandBuilder::new("ffplay");
+	//		cmd1.with_timeout(Some(Duration::from_secs(3)));
+	//		cmd2.args(vec!["-framerate", "60", "-probesize", "32", "-sync", "video", "-"]);
+	//
+	//		let output = CommandBuilder::pipe_with_timeout(&mut cmd1, &mut cmd2, Duration::from_secs(3)).await.unwrap();
+	//
+	//		trace!("exit status: {:?}", output.status);
+	//
+	//		if output.status.success() {
+	//			for line in output.stdout.lines() {
+	//				debug!("stdout => {:}", line.unwrap().trim_end());
+	//			}
+	//		} else {
+	//			for line in output.stderr.lines() {
+	//				warn!("stderr => {:}", line.unwrap().trim_end());
+	//			}
+	//		}
+	//	});
+	//}
 
 	#[tokio::test]
 	async fn test_save_screencap() {
@@ -725,6 +771,8 @@ mod tests {
 
 		assert!(shell.exists(remote_path.as_path().to_str().unwrap()).await.unwrap());
 		shell.exec(vec!["rm", remote_path.as_path().to_str().unwrap()], None).await.unwrap();
+
+		remove_file(local_path.as_path()).unwrap();
 	}
 
 	#[tokio::test]

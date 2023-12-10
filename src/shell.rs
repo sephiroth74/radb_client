@@ -2,7 +2,6 @@ use std::ffi::OsStr;
 use std::io::BufRead;
 use std::time::Duration;
 
-use anyhow::Context;
 use futures::future::IntoFuture;
 use lazy_static::lazy_static;
 use props_rs::Property;
@@ -374,12 +373,12 @@ impl Shell {
 		Shell::test_file(adb, device, path, "e").await
 	}
 
-	pub async fn rm<'d, 't, D, T>(adb: &Adb, device: D, path: T) -> anyhow::Result<bool>
+	pub async fn rm<'d, 't, D, T>(adb: &Adb, device: D, path: T) -> Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Arg,
 	{
-		Shell::exec(adb, device, vec!["rm", path.as_str()?], None).await.map(|_| true).context("rm failed")
+		Shell::exec(adb, device, vec!["rm", path.as_str()?], None).await.map(|_| true)
 	}
 
 	pub async fn is_file<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> Result<bool>

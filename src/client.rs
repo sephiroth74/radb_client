@@ -6,7 +6,6 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 
-use anyhow::anyhow;
 use arboard::ImageData;
 use futures::future::IntoFuture;
 use log::trace;
@@ -371,22 +370,22 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn get_mac_address<'d, D>(adb: &Adb, device: D) -> anyhow::Result<MacAddress>
+	pub async fn get_mac_address<'d, D>(adb: &Adb, device: D) -> Result<MacAddress>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let output = Shell::cat(adb, device, "/sys/class/net/eth0/address").await?;
-		let mac_address_str = Vec8ToString::as_str(&output).ok_or(anyhow!("invalid string"))?.trim_end();
+		let mac_address_str = Arg::as_str(&output)?.trim_end();
 		let mac_address = MacAddress::try_from(mac_address_str)?;
 		Ok(mac_address)
 	}
 
-	pub async fn get_wlan_address<'d, D>(adb: &Adb, device: D) -> anyhow::Result<MacAddress>
+	pub async fn get_wlan_address<'d, D>(adb: &Adb, device: D) -> Result<MacAddress>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let output = Shell::cat(adb, device, "/sys/class/net/wlan0/address").await?;
-		let mac_address_str = Vec8ToString::as_str(&output).ok_or(anyhow!("invalid string"))?.trim_end();
+		let mac_address_str = Arg::as_str(&output)?.trim_end();
 		let mac_address = MacAddress::try_from(mac_address_str)?;
 		Ok(mac_address)
 	}

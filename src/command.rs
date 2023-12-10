@@ -1,14 +1,12 @@
 use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::fmt::{Debug, Display, Formatter};
-
 use std::os::unix::process::ExitStatusExt;
 use std::process::{Output, Stdio};
 use std::time::Duration;
 
 use futures::future::IntoFuture;
 use log::{trace, warn};
-
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::signal::unix::SignalKind;
 use tokio::sync::oneshot::Receiver;
@@ -16,7 +14,6 @@ use tokio::sync::oneshot::Receiver;
 use crate::errors::AdbError::CmdError;
 use crate::errors::{AdbError, CommandError};
 use crate::traits::AdbDevice;
-
 use crate::Adb;
 
 use super::debug::CommandDebug;
@@ -204,6 +201,25 @@ impl<'a> CommandBuilder {
 		cmd2.spawn().await
 	}
 
+	pub async fn pipe_with_timeout(cmd1: &mut CommandBuilder, cmd2: &mut CommandBuilder, timeout: Duration) -> std::io::Result<Output> {
+		let child1 = cmd1.spawn().await?;
+		let out: ChildStdout = child1.stdout.ok_or(std::io::Error::new(std::io::ErrorKind::InvalidData, "child stdout unavailable"))?;
+		let fd: Stdio = out.try_into()?;
+
+		cmd2.stdin(fd);
+		let mut child2 = cmd2.spawn().await?;
+
+		if let Err(_) = tokio::time::timeout(timeout, child2.wait()).await {
+			trace!("Got timeout!");
+			let _ = child2.start_kill().unwrap();
+		} else {
+			trace!("No timeout");
+			let _ = child2.wait();
+		}
+
+		child2.wait_with_output().await
+	}
+
 	pub fn with_timeout(&mut self, duration: Option<Duration>) -> &mut Self {
 		self.timeout = duration;
 		self
@@ -263,9 +279,9 @@ impl<'a> CommandBuilder {
 
 	pub async fn spawn(&mut self) -> std::io::Result<Child> {
 		if self.debug {
-			self.command.borrow_mut().debug().spawn()
+			self.command.borrow_mut().kill_on_drop(true).debug().spawn()
 		} else {
-			self.command.borrow_mut().spawn()
+			self.command.borrow_mut().kill_on_drop(true).spawn()
 		}
 	}
 

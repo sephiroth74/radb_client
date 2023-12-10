@@ -8,7 +8,6 @@ use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::Context;
 use async_trait::async_trait;
 use futures::future::IntoFuture;
 use lazy_static::lazy_static;
@@ -21,6 +20,7 @@ use tokio::sync::oneshot::Receiver;
 
 use crate::client::{LogcatLevel, LogcatOptions, LogcatTag, RebootType};
 use crate::command::{CommandBuilder, ProcessResult};
+use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::intent::{Extra, Intent};
 use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
@@ -57,8 +57,8 @@ impl DeviceAddress {
 		Ok(DeviceAddress(AddressType::Transport(id)))
 	}
 
-	pub fn from_ip(input: &str) -> anyhow::Result<DeviceAddress> {
-		let addr: anyhow::Result<SocketAddr> = input.parse().context("failed to parse ip address");
+	pub fn from_ip(input: &str) -> Result<DeviceAddress, AddrParseError> {
+		let addr: Result<SocketAddr, AddrParseError> = input.parse();
 		match addr {
 			Ok(addr) => Ok(DeviceAddress(AddressType::Sock(addr))),
 			Err(err) => Err(err),
@@ -95,7 +95,7 @@ impl Device {
 		}
 	}
 
-	pub fn try_from_ip(input: &str) -> anyhow::Result<Device> {
+	pub fn try_from_ip(input: &str) -> Result<Device, AddrParseError> {
 		DeviceAddress::from_ip(input).map(|address| Device(address))
 	}
 
@@ -112,7 +112,7 @@ impl Device {
 	}
 
 	#[allow(dead_code)]
-	fn try_from_device(input: &str) -> anyhow::Result<Device> {
+	fn try_from_device(input: &str) -> Result<Device, AdbError> {
 		lazy_static! {
 			static ref RE: Regex =
 				Regex::new("(?P<ip>[^\\s]+)[\\s]+device product:(?P<device_product>[^\\s]+)\\smodel:(?P<model>[^\\s]+)\\sdevice:(?P<device>[^\\s]+)\\stransport_id:(?P<transport_id>[^\\s]+)").unwrap();
@@ -120,12 +120,12 @@ impl Device {
 
 		if !RE.is_match(input) {
 			let msg = format!("Invalid IP address: {}", input);
-			return Err(anyhow::Error::msg(msg));
+			return Err(InvalidDeviceError(msg));
 		}
 
 		let cap = RE.captures(input).unwrap();
-		let ip = cap.name("ip").ok_or(anyhow::Error::msg("Device serial not found"))?.as_str();
-		DeviceAddress::from_ip(ip).map(|address| Device(address))
+		let ip = cap.name("ip").ok_or(InvalidDeviceError("Device serial not found".to_string()))?.as_str();
+		DeviceAddress::from_ip(ip).map(|address| Device(address)).map_err(|e| AdbError::from(e))
 	}
 
 	pub fn args(&self) -> Vec<String> {
@@ -516,7 +516,7 @@ impl TryFrom<&str> for SELinuxType {
 }
 
 impl TryFrom<Device> for AdbClient {
-	type Error = anyhow::Error;
+	type Error = AdbError;
 
 	fn try_from(value: Device) -> Result<Self, Self::Error> {
 		AdbClient::try_from_device(value)
@@ -524,8 +524,8 @@ impl TryFrom<Device> for AdbClient {
 }
 
 impl AdbClient {
-	pub fn try_from_device(device: Device) -> anyhow::Result<AdbClient> {
-		match Adb::new().context("adb not found") {
+	pub fn try_from_device(device: Device) -> Result<AdbClient, AdbError> {
+		match Adb::new() {
 			Ok(adb) => Ok(AdbClient { adb, device }),
 			Err(err) => Err(err),
 		}
@@ -589,13 +589,13 @@ impl AdbClient {
 	///
 	/// Root is required
 	///
-	pub async fn get_mac_address(&self) -> anyhow::Result<MacAddress> {
+	pub async fn get_mac_address(&self) -> crate::command::Result<MacAddress> {
 		Client::get_mac_address(&self.adb, &self.device).await
 	}
 
 	///
 	/// Root is required
-	pub async fn get_wlan_address(&self) -> anyhow::Result<MacAddress> {
+	pub async fn get_wlan_address(&self) -> crate::command::Result<MacAddress> {
 		Client::get_wlan_address(&self.adb, &self.device).await
 	}
 
@@ -685,7 +685,7 @@ impl<'a> AdbShell<'a> {
 		Shell::exists(&self.parent.adb, &self.parent.device, path).await
 	}
 
-	pub async fn rm<'s, S: Arg>(&self, path: S) -> anyhow::Result<bool> {
+	pub async fn rm<'s, S: Arg>(&self, path: S) -> crate::command::Result<bool> {
 		Shell::rm(&self.parent.adb, &self.parent.device, path).await
 	}
 

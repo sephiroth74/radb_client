@@ -1,9 +1,11 @@
 use std::fmt::{Debug, Display, Formatter};
+use std::net::AddrParseError;
 use std::num::ParseIntError;
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
 
 use image::ImageError;
+use mac_address::MacParseError;
 use nom::error::Error;
 use rustix::io::Errno;
 use string_builder::ToBytes;
@@ -41,7 +43,7 @@ impl From<Errno> for ParseSELinuxTypeError {
 #[derive(Error, Debug)]
 pub enum AdbError {
 	#[error(transparent)]
-	AdbNotFoundError(#[from] which::Error),
+	WhichError(#[from] which::Error),
 
 	#[error("invalid device address `{0}`")]
 	InvalidDeviceAddressError(String),
@@ -75,6 +77,15 @@ pub enum AdbError {
 
 	#[error(transparent)]
 	ParseSELinuxTypeError(#[from] ParseSELinuxTypeError),
+
+	#[error(transparent)]
+	MacParseError(#[from] MacParseError),
+
+	#[error(transparent)]
+	AddrParseError(#[from] AddrParseError),
+
+	#[error("invalid device: {0}")]
+	InvalidDeviceError(String),
 
 	#[error("unknown error: {0}")]
 	Unknown(String),
