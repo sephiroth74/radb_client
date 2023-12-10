@@ -2,7 +2,7 @@ use std::ffi::OsStr;
 use std::io::BufRead;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use futures::future::IntoFuture;
 use lazy_static::lazy_static;
 use props_rs::Property;
@@ -494,7 +494,7 @@ impl Shell {
 		}
 	}
 
-	pub async fn broadcast<'a, T>(adb: &Adb, device: T, intent: &Intent) -> anyhow::Result<()>
+	pub async fn broadcast<'a, T>(adb: &Adb, device: T, intent: &Intent) -> Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -502,7 +502,7 @@ impl Shell {
 		Ok(())
 	}
 
-	pub async fn get_enforce<'a, T>(adb: &Adb, device: T) -> anyhow::Result<SELinuxType>
+	pub async fn get_enforce<'a, T>(adb: &Adb, device: T) -> Result<SELinuxType>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -511,7 +511,7 @@ impl Shell {
 		Ok(enforce)
 	}
 
-	pub async fn set_enforce<'a, T>(adb: &Adb, device: T, enforce: SELinuxType) -> anyhow::Result<()>
+	pub async fn set_enforce<'a, T>(adb: &Adb, device: T, enforce: SELinuxType) -> Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -520,9 +520,6 @@ impl Shell {
 			SELinuxType::Enforcing => "1",
 		};
 
-		match Shell::exec(adb, device, vec!["setenforce", new_value], None).await {
-			Ok(_) => Ok(()),
-			Err(err) => Err(anyhow!(err)),
-		}
+		Shell::exec(adb, device, vec!["setenforce", new_value], None).await.map(|_| ())
 	}
 }

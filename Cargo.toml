@@ -37,11 +37,12 @@ num_cpus = "1.16.0"
 async-trait = "0.1.74"
 thiserror = "1.0.50"
 rustix = "0.38.28"
+dirs = "5.0.1"
 
 [dev-dependencies]
 simple_logger = "4.3.0"
 test-env-log = "0.2.8"
 
-
 [features]
 derive = []
+

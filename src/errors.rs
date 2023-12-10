@@ -1,9 +1,10 @@
-use nom::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::num::ParseIntError;
 use std::os::unix::process::ExitStatusExt;
 use std::process::ExitStatus;
 
+use image::ImageError;
+use nom::error::Error;
 use rustix::io::Errno;
 use string_builder::ToBytes;
 use thiserror::Error;
@@ -15,6 +16,26 @@ use crate::util::Vec8ToString;
 pub struct CommandError {
 	pub status: Option<ExitStatus>,
 	pub msg: Vec<u8>,
+}
+
+#[derive(Error, Clone, PartialEq, Eq, Debug)]
+pub struct ParseSELinuxTypeError {
+	pub msg: Option<String>,
+}
+
+impl Display for ParseSELinuxTypeError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		match self.msg.as_ref() {
+			Some(m) => write!(f, "{:}", m),
+			None => write!(f, "ParseSELinuxTypeError"),
+		}
+	}
+}
+
+impl From<Errno> for ParseSELinuxTypeError {
+	fn from(value: Errno) -> Self {
+		ParseSELinuxTypeError { msg: Some(value.to_string()) }
+	}
 }
 
 #[derive(Error, Debug)]
@@ -40,12 +61,21 @@ pub enum AdbError {
 	#[error("errno")]
 	Errno(#[from] Errno),
 
-	#[error("data store disconnected")]
-	Disconnect(#[from] std::io::Error),
-	#[error("the data for key `{0}` is not available")]
-	Redaction(String),
-	#[error("invalid header (expected {expected:?}, found {found:?})")]
-	InvalidHeader { expected: String, found: String },
+	#[error(transparent)]
+	ImageError(#[from] ImageError),
+
+	#[error(transparent)]
+	IoError(#[from] std::io::Error),
+
+	#[error(transparent)]
+	ClipbardError(#[from] arboard::Error),
+
+	#[error(transparent)]
+	UuidError(#[from] uuid::Error),
+
+	#[error(transparent)]
+	ParseSELinuxTypeError(#[from] ParseSELinuxTypeError),
+
 	#[error("unknown error: {0}")]
 	Unknown(String),
 }

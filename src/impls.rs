@@ -2,12 +2,13 @@ use fmt::Debug;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Display, Formatter};
+use std::fs::File;
 use std::net::{AddrParseError, SocketAddr};
 use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use async_trait::async_trait;
 use futures::future::IntoFuture;
 use lazy_static::lazy_static;
@@ -20,12 +21,11 @@ use tokio::sync::oneshot::Receiver;
 
 use crate::client::{LogcatLevel, LogcatOptions, LogcatTag, RebootType};
 use crate::command::{CommandBuilder, ProcessResult};
-use crate::errors::AdbError;
+use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::intent::{Extra, Intent};
 use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 use crate::traits::AdbDevice;
 use crate::types::{AdbClient, AdbShell};
-use crate::util::Vec8ToString;
 use crate::AddressType::Sock;
 use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
 
@@ -493,25 +493,24 @@ impl SELinuxType {
 }
 
 impl TryFrom<Vec<u8>> for SELinuxType {
-	type Error = anyhow::Error;
+	type Error = ParseSELinuxTypeError;
 
 	fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-		let opt_string = Vec8ToString::as_str(&value);
-		match opt_string {
-			None => Err(anyhow!("invalid string")),
-			Some(s) => s.try_into(),
-		}
+		let opt_string = Arg::as_str(&value)?;
+		opt_string.try_into()
 	}
 }
 
 impl TryFrom<&str> for SELinuxType {
-	type Error = anyhow::Error;
+	type Error = ParseSELinuxTypeError;
 
 	fn try_from(value: &str) -> Result<Self, Self::Error> {
 		match value.trim() {
 			"Enforcing" => Ok(SELinuxType::Enforcing),
 			"Permissive" => Ok(SELinuxType::Permissive),
-			_ => Err(anyhow!("not found")),
+			o => Err(ParseSELinuxTypeError {
+				msg: Some(format!("invalid value: {:}", o)),
+			}),
 		}
 	}
 }
@@ -636,6 +635,26 @@ impl AdbClient {
 		Client::name(&self.adb, &self.device).await
 	}
 
+	pub async fn save_screencap(&self, output: File) -> crate::command::Result<()> {
+		Client::save_screencap(&self.adb, &self.device, output).await
+	}
+
+	pub async fn copy_screencap(&self) -> crate::command::Result<()> {
+		Client::copy_screencap(&self.adb, &self.device).await
+	}
+
+	pub async fn get_boot_id(&self) -> crate::command::Result<uuid::Uuid> {
+		Client::get_boot_id(&self.adb, &self.device).await
+	}
+
+	pub async fn reboot(&self, reboot_type: Option<RebootType>) -> crate::command::Result<()> {
+		Client::reboot(&self.adb, &self.device, reboot_type).await
+	}
+
+	pub async fn wait_for_device(&self, timeout: Option<Duration>) -> crate::command::Result<()> {
+		Client::wait_for_device(&self.adb, &self.device, timeout).await
+	}
+
 	pub fn shell(&self) -> AdbShell {
 		AdbShell { parent: self }
 	}
@@ -733,5 +752,17 @@ impl<'a> AdbShell<'a> {
 		T: Into<String> + AsRef<OsStr>,
 	{
 		Shell::exec(&self.parent.adb, &self.parent.device, args, signal).await
+	}
+
+	pub async fn broadcast(&self, intent: &Intent) -> crate::command::Result<()> {
+		Shell::broadcast(&self.parent.adb, &self.parent.device, intent).await
+	}
+
+	pub async fn get_enforce(&self) -> crate::command::Result<SELinuxType> {
+		Shell::get_enforce(&self.parent.adb, &self.parent.device).await
+	}
+
+	pub async fn set_enforce(&self, enforce: SELinuxType) -> crate::command::Result<()> {
+		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce).await
 	}
 }

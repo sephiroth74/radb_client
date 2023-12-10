@@ -6,7 +6,7 @@ mod tests {
 	use std::fs::{read_to_string, remove_file, File};
 	use std::io::{BufRead, Write};
 	use std::os::fd::{AsRawFd, FromRawFd};
-	use std::path::{Path, PathBuf};
+	use std::path::PathBuf;
 	use std::process::Stdio;
 	use std::str::FromStr;
 	use std::sync::Once;
@@ -31,15 +31,13 @@ mod tests {
 	use crate::traits::AdbDevice;
 	use crate::types::AdbClient;
 	use crate::util::Vec8ToString;
-	use crate::{intent, Adb, Client, Device, SELinuxType, Shell};
+	use crate::{intent, Adb, Client, Device, SELinuxType};
 
 	static INIT: Once = Once::new();
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
 	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.2:5555"));
-
-	static DEVICE: Lazy<Box<dyn AdbDevice>> = Lazy::new(|| ADB.device(DEVICE_IP.as_str()).unwrap());
 
 	macro_rules! client {
 		() => {
@@ -48,15 +46,6 @@ mod tests {
 
 		($addr:expr) => {
 			$addr.parse::<Device>().unwrap().try_into().unwrap()
-		};
-	}
-
-	macro_rules! assert_connected {
-		($device:expr) => {
-			let o = Client::connect(&ADB, $device.as_ref(), None).await;
-			trace!("output = {:?}", o);
-			debug_assert!(o.is_ok(), "device not connected");
-			trace!("connected!");
 		};
 	}
 
@@ -82,33 +71,12 @@ mod tests {
 		};
 	}
 
-	macro_rules! assert_root {
-		($device:expr) => {
-			let result = Client::is_root(&ADB, $device.as_ref()).await;
-			debug_assert!(result.is_ok(), "failed to check is_root");
-			let is_root = result.unwrap();
-			debug!("is root: {:?}", is_root);
-
-			if !is_root {
-				let o = Client::root(&ADB, $device.as_ref()).await;
-				debug_assert!(o.is_ok(), "root failed");
-			}
-		};
-	}
-
 	macro_rules! init_log {
 		() => {
 			INIT.call_once(|| {
 				simple_logger::SimpleLogger::new().env().init().unwrap();
 			})
 		};
-	}
-
-	fn initialize() {
-		INIT.call_once(|| {
-			//env_logger::builder().default_format().is_test(true).init();
-			simple_logger::SimpleLogger::new().env().init().unwrap();
-		});
 	}
 
 	#[tokio::test]
@@ -583,6 +551,8 @@ mod tests {
 		client.shell().save_screencap("/sdcard/Download/screencap.png").await.expect("save screencap failed");
 
 		assert!(client.shell().exists("/sdcard/Download").await.unwrap());
+
+		client.shell().rm("/sdcard/Download/screencap.png").await.unwrap();
 	}
 
 	#[tokio::test]
@@ -879,15 +849,16 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_stream() {
-		initialize();
-		assert_connected!(&DEVICE);
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
 
 		trace!("ok, connected...");
 
-		let mut cmd = CommandBuilder::new("adb");
+		let mut cmd: CommandBuilder = client.into();
 		cmd.arg("logcat");
-
 		cmd.stdout(Stdio::piped());
+
 		trace!("Now spawning the child...");
 
 		//let output = cmd.output();
@@ -930,48 +901,53 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_save_screencap_locally() {
-		initialize();
-		assert_connected!(&DEVICE);
-		assert_root!(&DEVICE);
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
 
-		let tilde = shellexpand::tilde("~/Desktop/screencap.png").to_string();
-		let output = Path::new(tilde.as_str());
-		debug!("target file: {:?}", output.to_str());
+		let tilde = dirs::desktop_dir().unwrap().join("screencap.png");
+		let output = tilde.as_path();
+		debug!("target local file: {:?}", output.to_str());
 
 		if output.exists() {
 			remove_file(output).expect("Error deleting file");
 		}
 
-		File::create(output).expect("failed to create file");
-
-		let _result = Client::save_screencap(&ADB, DEVICE.as_ref(), output).await.expect("failed to save screencap");
+		let file = File::create(output).expect("failed to create file");
+		let _result = client.save_screencap(file).await.expect("failed to save screencap");
 		debug!("ok. done => {:?}", output);
 	}
 
 	#[tokio::test]
 	async fn test_copy_screencap() {
-		initialize();
-		assert_connected!(&DEVICE);
-		assert_root!(&DEVICE);
-		Client::copy_screencap(&ADB, DEVICE.as_ref()).await.unwrap();
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		client.copy_screencap().await.unwrap();
 		debug!("screencap copied");
 	}
 
 	#[tokio::test]
 	async fn test_get_boot_id() {
-		initialize();
-		assert_connected!(&DEVICE);
-		assert_root!(&DEVICE);
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
 
-		let boot_id = Client::get_boot_id(&ADB, DEVICE.as_ref()).await.unwrap();
+		let boot_id = client.get_boot_id().await.expect("failed to get boot id");
 		debug!("boot_id: {:#?}", boot_id)
 	}
 
 	#[tokio::test]
 	async fn test_send_broadcast() {
-		initialize();
-		assert_connected!(&DEVICE);
-		assert_root!(&DEVICE);
+		init_log!();
+		let client: AdbClient = client!();
+		let shell = client.shell();
+		assert_client_connected!(client);
+		assert_client_root!(client);
 
 		let package_name = "com.swisscom.aot.library.standalone";
 		let mut intent = intent!["swisscom.android.tv.action.PRINT_SESSION_INFO"];
@@ -979,8 +955,8 @@ mod tests {
 		intent.extra.put_string_extra("swisscom.android.tv.extra.TAG", "SESSION_INFO");
 		intent.wait = true;
 
-		debug!("{:}", intent);
-		let _result = Shell::broadcast(&ADB, DEVICE.as_ref(), &intent).await.unwrap();
+		trace!("{:}", intent);
+		let _result = shell.broadcast(&intent).await.unwrap();
 
 		let (send, recv): (Sender<()>, Receiver<()>) = channel::<()>();
 		tokio::spawn(async move {
@@ -1006,7 +982,7 @@ mod tests {
 			timeout,
 		};
 
-		let output = Client::logcat(&ADB, DEVICE.as_ref(), options, Some(recv.into_future())).await;
+		let output = client.logcat(options, Some(recv.into_future())).await;
 		assert!(output.is_ok());
 
 		let o = output.unwrap();
@@ -1042,36 +1018,34 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_get_enforce() {
-		initialize();
-		assert_connected!(&DEVICE);
-		assert_root!(&DEVICE);
+		init_log!();
+		let client: AdbClient = client!();
+		let shell = client.shell();
+		assert_client_connected!(client);
+		assert_client_root!(client);
 
-		let enforce = Shell::get_enforce(&ADB, DEVICE.as_ref()).await.unwrap();
+		let enforce = shell.get_enforce().await.unwrap();
 		debug!("enforce = {:}", enforce);
 	}
 
 	#[tokio::test]
 	async fn test_set_enforce() {
-		initialize();
-		assert_connected!(&DEVICE);
-		assert_root!(&DEVICE);
+		init_log!();
+		let client: AdbClient = client!();
+		let shell = client.shell();
 
-		let enforce1 = Shell::get_enforce(&ADB, DEVICE.as_ref()).await.unwrap();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let enforce1 = shell.get_enforce().await.unwrap();
 		debug!("enforce = {:}", enforce1);
 
 		let _result = if enforce1 == SELinuxType::Permissive {
-			Shell::set_enforce(&ADB, DEVICE.as_ref(), SELinuxType::Enforcing).await.unwrap();
+			shell.set_enforce(SELinuxType::Enforcing).await.unwrap();
 		} else {
-			Shell::set_enforce(&ADB, DEVICE.as_ref(), SELinuxType::Permissive).await.unwrap();
+			shell.set_enforce(SELinuxType::Permissive).await.unwrap();
 		};
-
-		Client::reboot(&ADB, DEVICE.as_ref(), None).await.unwrap();
-		Client::wait_for_device(&ADB, DEVICE.as_ref(), Some(Duration::from_secs(120))).await.unwrap();
-
-		let enforce2 = Shell::get_enforce(&ADB, DEVICE.as_ref()).await.unwrap();
-		debug!("enforce2 = {:}", enforce2);
-
-		assert_ne!(enforce1, enforce2);
+		assert_ne!(enforce1, shell.get_enforce().await.unwrap());
 	}
 
 	#[tokio::test]

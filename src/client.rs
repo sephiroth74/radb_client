@@ -179,13 +179,12 @@ impl Client {
 		CommandBuilder::device(adb, device).arg("push").arg(src.as_ref()).arg(dst.as_ref()).output().await
 	}
 
-	pub async fn save_screencap<'d, D>(adb: &Adb, device: D, output: &Path) -> Result<()>
+	pub async fn save_screencap<'d, D>(adb: &Adb, device: D, output: File) -> Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let args = vec!["exec-out", "screencap", "-p"];
-		let file = File::create(output)?;
-		let pipe_out = Stdio::from(file);
+		let pipe_out = Stdio::from(output);
 		let output = Command::new(adb.as_os_str())
 			.args(device.into().args())
 			.args(args)
@@ -199,7 +198,7 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn copy_screencap<'d, D>(adb: &Adb, device: D) -> anyhow::Result<()>
+	pub async fn copy_screencap<'d, D>(adb: &Adb, device: D) -> Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -209,7 +208,7 @@ impl Client {
 
 		let path = dir.as_path().to_owned();
 		let _file = File::create(path.as_path())?;
-		Client::save_screencap(adb, device, &path).await?;
+		Client::save_screencap(adb, device, _file).await?;
 
 		let img = image::open(path.as_path())?;
 		let width = img.width();
@@ -392,12 +391,12 @@ impl Client {
 		Ok(mac_address)
 	}
 
-	pub async fn get_boot_id<'d, D>(adb: &Adb, device: D) -> anyhow::Result<uuid::Uuid>
+	pub async fn get_boot_id<'d, D>(adb: &Adb, device: D) -> Result<Uuid>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let output = Shell::cat(adb, device, "/proc/sys/kernel/random/boot_id").await?;
-		let output_str = Vec8ToString::as_str(&output).ok_or(anyhow!("invalid string"))?.trim();
+		let output_str = Arg::as_str(&output)?.trim();
 		let boot_id = output_str.try_into()?;
 		Ok(boot_id)
 	}
