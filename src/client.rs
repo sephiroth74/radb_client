@@ -335,28 +335,28 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn mount<'d, D>(adb: &Adb, device: D, dir: &str) -> Result<()>
+	pub async fn mount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["mount -o rw,remount", dir], None).await?;
+		Shell::exec(adb, device, vec!["mount -o rw,remount", dir.as_str()?], None).await?;
 		Ok(())
 	}
 
-	pub async fn unmount<'d, D>(adb: &Adb, device: D, dir: &str) -> Result<()>
+	pub async fn unmount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["mount -o ro,remount", dir], None).await?;
+		Shell::exec(adb, device, vec!["mount -o ro,remount", dir.as_str()?], None).await?;
 		Ok(())
 	}
 
-	pub async fn bug_report<'d, D>(adb: &Adb, device: D, output: Option<&str>) -> Result<ProcessResult>
+	pub async fn bug_report<'d, D, T: Arg>(adb: &Adb, device: D, output: Option<T>) -> Result<ProcessResult>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let args = match output {
-			Some(s) => vec!["bugreport", s],
+		let args = match output.as_ref() {
+			Some(s) => vec!["bugreport", s.as_str()?],
 			None => vec!["bugreport"],
 		};
 		CommandBuilder::device(adb, device).args(args).output().await

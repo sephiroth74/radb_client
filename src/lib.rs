@@ -48,4 +48,5 @@ pub enum SELinuxType {
 }
 
 mod errors;
+mod pm;
 mod tests;

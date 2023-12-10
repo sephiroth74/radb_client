@@ -23,6 +23,7 @@ use crate::command::{CommandBuilder, ProcessResult};
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::intent::{Extra, Intent};
+use crate::pm::PackageManager;
 use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 use crate::traits::AdbDevice;
 use crate::types::{AdbClient, AdbShell};
@@ -579,6 +580,18 @@ impl AdbClient {
 		Client::remount(&self.adb, &self.device).await
 	}
 
+	pub async fn mount<T: Arg>(&self, dir: T) -> crate::command::Result<()> {
+		Client::mount(&self.adb, &self.device, dir).await
+	}
+
+	pub async fn unmount<T: Arg>(&self, dir: T) -> crate::command::Result<()> {
+		Client::unmount(&self.adb, &self.device, dir).await
+	}
+
+	pub async fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::command::Result<ProcessResult> {
+		Client::bug_report(&self.adb, &self.device, output).await
+	}
+
 	///
 	/// Root is required
 	///
@@ -658,9 +671,23 @@ impl AdbClient {
 	pub fn shell(&self) -> AdbShell {
 		AdbShell { parent: self }
 	}
+
+	pub fn pm(&self) -> PackageManager {
+		PackageManager { parent: AdbShell { parent: self } }
+	}
+}
+
+impl<'a> Into<AdbShell<'a>> for &'a AdbClient {
+	fn into(self: &'a AdbClient) -> AdbShell<'a> {
+		self.shell()
+	}
 }
 
 impl<'a> AdbShell<'a> {
+	pub fn pm(&self) -> PackageManager {
+		PackageManager { parent: self.clone() }
+	}
+
 	pub async fn whoami(&self) -> crate::command::Result<Option<String>> {
 		Shell::whoami(&self.parent.adb, &self.parent.device).await
 	}
