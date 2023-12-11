@@ -1374,6 +1374,57 @@ mod tests {
 		trace!("result: {:#?}", result);
 	}
 
+	#[tokio::test]
+	async fn test_pm_grant_runtime_permissions() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		client.pm().grant(package_name, Some("1000"), "android.permission.ACCESS_FINE_LOCATION").await.unwrap();
+		assert!(client
+			.pm()
+			.dump_runtime_permissions(package_name)
+			.await
+			.unwrap()
+			.iter()
+			.any(|p| p.name == "android.permission.ACCESS_FINE_LOCATION"));
+	}
+
+	#[tokio::test]
+	async fn test_pm_revoke_runtime_permissions() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		client.pm().revoke(package_name, Some("1000"), "android.permission.ACCESS_FINE_LOCATION").await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_pm_disable() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		client.pm().disable(package_name, Some("1000")).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_pm_enable() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		client.pm().enable(package_name, Some("1000")).await.unwrap();
+	}
+
 	//
 	//#[test]
 	//fn test_proto() {

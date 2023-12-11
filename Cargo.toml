@@ -37,6 +37,7 @@ async-trait = "0.1.74"
 thiserror = "1.0.50"
 rustix = "0.38.28"
 dirs = "5.0.1"
+itertools = "0.12.0"
 
 [dev-dependencies]
 simple_logger = "4.3.0"

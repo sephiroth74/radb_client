@@ -306,13 +306,13 @@ impl Display for ListPackageFilter {
 }
 
 impl<'a> PackageManager<'a> {
-	pub async fn uninstall<T: Arg>(&self, package_name: T, options: Option<UninstallOptions>) -> crate::command::Result<ProcessResult> {
+	pub async fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> crate::command::Result<ProcessResult> {
 		let mut args = vec!["cmd package uninstall".to_string()];
 		match options {
 			None => {}
 			Some(options) => args.extend(options.as_args()),
 		}
-		args.push(package_name.as_str()?.into());
+		args.push(package_name.to_string());
 		self.parent.exec(args, None).await
 	}
 
@@ -433,6 +433,75 @@ impl<'a> PackageManager<'a> {
 		let output = Arg::as_str(&result)?.trim_end();
 		let split = output.split_once("package:").map(|s| s.1.to_string()).ok_or(AdbError::NameNotFoundError(package_name.to_string()));
 		split
+	}
+
+	pub async fn grant(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::command::Result<()> {
+		let mut args = vec!["pm grant"];
+		if let Some(u) = user {
+			args.extend(vec!["--user", u]);
+		}
+		args.push(package_name);
+		args.push(permission);
+		self.parent.exec(args, None).await.map(|_f| ())
+	}
+
+	pub async fn revoke(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::command::Result<()> {
+		let mut args = vec!["pm revoke"];
+		if let Some(u) = user {
+			args.extend(vec!["--user", u]);
+		}
+		args.push(package_name);
+		args.push(permission);
+		self.parent.exec(args, None).await.map(|_f| ())
+	}
+
+	pub async fn enable(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("enable", package_or_component, user).await
+	}
+
+	pub async fn disable(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("disable", package_or_component, user).await
+	}
+
+	pub async fn disable_user(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("disable-user", package_or_component, user).await
+	}
+
+	pub async fn disable_until_used(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("disable-until-used", package_or_component, user).await
+	}
+
+	pub async fn default_state(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("default-state", package_or_component, user).await
+	}
+
+	pub async fn hide(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("hide", package_or_component, user).await
+	}
+
+	pub async fn unhide(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("unhide", package_or_component, user).await
+	}
+
+	pub async fn suspend(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("suspend", package_or_component, user).await
+	}
+
+	pub async fn unsuspend(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		self.op("unsuspend", package_or_component, user).await
+	}
+
+	pub async fn reset_permissions(&self, _package_or_component: &str, _user: Option<&str>) -> crate::command::Result<()> {
+		self.parent.exec(vec!["pm", "reset-permissions"], None).await.map(|_f| ())
+	}
+
+	async fn op(&self, operation: &str, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		let mut args = vec!["pm", operation];
+		if let Some(u) = user {
+			args.extend(vec!["--user", u]);
+		}
+		args.push(package_or_component);
+		self.parent.exec(args, None).await.map(|_f| ())
 	}
 
 	pub async fn list_packages(&self, filters: Option<ListPackageFilter>, display: Option<ListPackageDisplayOptions>, name_filter: Option<&str>) -> Result<Vec<Package>, AdbError> {
