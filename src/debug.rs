@@ -25,7 +25,7 @@ impl CommandDebug for Command {
 			a
 		});
 		log!(
-			log::Level::Debug,
+			log::Level::Trace,
 			"Executing `{} {}`...",
 			path.file_name().unwrap().to_str().unwrap(),
 			s.join(OsString::from(" ").as_os_str()).to_str().unwrap().trim()

@@ -781,6 +781,13 @@ impl<'a> AdbShell<'a> {
 		Shell::exec(&self.parent.adb, &self.parent.device, args, signal).await
 	}
 
+	pub async fn exec_timeout<T>(&self, args: Vec<T>, timeout: Option<Duration>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult>
+	where
+		T: Into<String> + AsRef<OsStr>,
+	{
+		Shell::exec_timeout(&self.parent.adb, &self.parent.device, args, timeout, signal).await
+	}
+
 	pub async fn broadcast(&self, intent: &Intent) -> crate::command::Result<()> {
 		Shell::broadcast(&self.parent.adb, &self.parent.device, intent).await
 	}

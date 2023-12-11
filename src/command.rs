@@ -14,6 +14,7 @@ use tokio::sync::oneshot::Receiver;
 use crate::errors::AdbError::CmdError;
 use crate::errors::{AdbError, CommandError};
 use crate::traits::AdbDevice;
+
 use crate::Adb;
 
 use super::debug::CommandDebug;
@@ -93,10 +94,10 @@ impl ProcessResult {
 						trace!("SIGKILL(9)");
 						Ok(output.into())
 					} else {
-						Err(CmdError(CommandError::from_err(output.status, output.stderr)))
+						Err(CmdError(CommandError::from_err(output.status, output.stdout, output.stderr)))
 					}
 				} else {
-					Err(CmdError(CommandError::from_err(output.status, output.stderr)))
+					Err(CmdError(CommandError::from_err(output.status, output.stdout, output.stderr)))
 				}
 			}
 
@@ -115,7 +116,7 @@ impl OutputResult for Output {
 		if self.status.success() && self.stderr.is_empty() {
 			Ok(self.stdout.to_owned())
 		} else {
-			Err(CmdError(CommandError::from_err(self.status, self.stderr.to_owned())))
+			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
 		}
 	}
 
@@ -128,7 +129,7 @@ impl OutputResult for Output {
 		if self.status.code().is_none() && self.stderr.is_empty() {
 			Ok(self.stdout.to_owned())
 		} else {
-			Err(CmdError(CommandError::from_err(self.status, self.stderr.to_owned())))
+			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
 		}
 	}
 }
@@ -188,8 +189,7 @@ impl<'a> CommandBuilder {
 		T: Into<&'b dyn AdbDevice>,
 	{
 		let builder = CommandBuilder::new(adb);
-		builder.command.borrow_mut().args(device.into().args());
-		builder.command.borrow_mut().arg("shell");
+		builder.command.borrow_mut().args(device.into().args()).arg("shell");
 		builder
 	}
 
@@ -262,14 +262,16 @@ impl<'a> CommandBuilder {
 		tokio::select! {
 			_ = (conditional_signal(self.signal.as_mut())), if has_signal => {
 				trace!("Ctrl+c received");
-				child.kill().await?
+				let _ = child.start_kill();
+				//let _ = child.kill().await;
 			},
 			_ = child.wait() => {
 				//trace!("Child exited normally")
 			},
 			_ = (conditional_sleeper(sleep)), if has_timeout => {
 				trace!("Timeout expired!");
-				child.kill().await?
+				let _ = child.start_kill();
+				//let _ = child.kill().await;
 			},
 		}
 

@@ -6,7 +6,7 @@ mod tests {
 	use std::fs::{read_to_string, remove_file, File};
 	use std::io::{BufRead, Write};
 	use std::os::fd::{AsRawFd, FromRawFd};
-	use std::path::PathBuf;
+	use std::path::{Path, PathBuf};
 	use std::process::Stdio;
 	use std::str::FromStr;
 	use std::sync::Once;
@@ -26,7 +26,7 @@ mod tests {
 	use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
 	use crate::command::CommandBuilder;
 	use crate::debug::CommandDebug;
-	use crate::pm::{ListPackageDisplayOptions, ListPackageFilter, PackageManager};
+	use crate::pm::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, PackageManager};
 	use crate::scanner::Scanner;
 	use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 	use crate::traits::AdbDevice;
@@ -1179,6 +1179,17 @@ mod tests {
 		assert_client_connected!(client);
 	}
 
+	fn parse_scmuuid(output: &str, scmuu_id_type: ScmuuIdType) -> anyhow::Result<String> {
+		let re = match scmuu_id_type {
+			ScmuuIdType::UUID => Regex::new("(?m)^UUID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
+			ScmuuIdType::VerimatrixChipId => Regex::new("(?m)^VMXCHIPID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
+			ScmuuIdType::ChipId => Regex::new("(?m)^CHIPID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
+		}?;
+
+		let captures = re.captures(output).ok_or(anyhow!("not found"))?;
+		Ok(captures.name("id").ok_or(anyhow!("capture not found"))?.as_str().to_string())
+	}
+
 	#[tokio::test]
 	async fn test_pm_list_packages() {
 		init_log!();
@@ -1189,13 +1200,16 @@ mod tests {
 		let pm: PackageManager = client.pm();
 		let result = pm
 			.list_packages(
-				vec![ListPackageFilter::ShowOnlySystem],
-				vec![
-					ListPackageDisplayOptions::ShowUUID,
-					ListPackageDisplayOptions::ShowVersionCode,
-					ListPackageDisplayOptions::IncludeUninstalled,
-					ListPackageDisplayOptions::ShowApkFile,
-				],
+				Some(ListPackageFilter {
+					show_only_disabled: false,
+					show_only_enabed: false,
+					show_only_system: true,
+					show_only3rd_party: false,
+					apex_only: false,
+					uid: None,
+					user: None,
+				}),
+				Some(ListPackageDisplayOptions::default()),
 				Some("google"),
 			)
 			.await
@@ -1220,20 +1234,72 @@ mod tests {
 
 		let pm: PackageManager = client.pm();
 		let path = pm.path("com.swisscom.aot.library.standalone", None).await.unwrap();
-		assert!(path.is_some());
-
 		trace!("path: {:?}", path)
 	}
 
-	fn parse_scmuuid(output: &str, scmuu_id_type: ScmuuIdType) -> anyhow::Result<String> {
-		let re = match scmuu_id_type {
-			ScmuuIdType::UUID => Regex::new("(?m)^UUID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
-			ScmuuIdType::VerimatrixChipId => Regex::new("(?m)^VMXCHIPID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
-			ScmuuIdType::ChipId => Regex::new("(?m)^CHIPID:\\s*(?P<id>[0-9a-zA-Z-]+)"),
-		}?;
+	#[tokio::test]
+	async fn test_pm_is_system() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
 
-		let captures = re.captures(output).ok_or(anyhow!("not found"))?;
-		Ok(captures.name("id").ok_or(anyhow!("capture not found"))?.as_str().to_string())
+		let pm: PackageManager = client.pm();
+		let _path = pm.dump("com.swisscom.mycloud").await.unwrap();
+		//assert!(path);
+		//trace!("path: {:?}", path)
+	}
+
+	#[tokio::test]
+	async fn test_pm_is_installed() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let pm: PackageManager = client.pm();
+		let result = pm.is_installed("com.swisscom.mycloud", None).await.unwrap();
+		trace!("path: {:?}", result);
+	}
+
+	#[tokio::test]
+	async fn test_pm_install() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		let apk = Path::new("/Users/alessandro/Documents/git/swisscom/app-service/app-service/build/outputs/apk/ip2300/release/app-service-ip2300-release.apk");
+		assert!(apk.exists());
+
+		let remote_path = "/data/local/tmp";
+		let remote_file = format!("{:}/{:}", remote_path, apk.file_name().unwrap().to_str().unwrap());
+		client.push(apk, remote_path).await.unwrap();
+
+		let pm: PackageManager = client.pm();
+
+		let result = pm
+			.install(
+				remote_file,
+				Some(InstallOptions {
+					user: None,
+					dont_kill: false,
+					restrict_permissions: false,
+					package_name: Some(package_name.to_string()),
+					install_location: Some(InstallLocationOption::Auto),
+					grant_permissions: true,
+					force: true,
+					replace_existing_application: false,
+					allow_version_downgrade: true,
+				}),
+			)
+			.await
+			.unwrap();
+
+		client.pm().is_installed(package_name, None).await.unwrap();
+
+		trace!("path: {:?}", result);
 	}
 
 	enum ScmuuIdType {

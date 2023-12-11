@@ -72,13 +72,14 @@ impl Shell {
 	{
 		CommandBuilder::shell(adb, device).args(args).with_signal(signal).output().await
 	}
-	//
-	//pub async fn exec_cmd<'a, D, T: Arg>(adb: &Adb, device: D, cmd: &str, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
-	//    where
-	//        D: Into<&'a dyn AdbDevice>,
-	//{
-	//    CommandBuilder::shell(adb, device).arg(cmd).args(args).with_signal(signal).output().await
-	//}
+
+	pub async fn exec_timeout<'a, D, T>(adb: &Adb, device: D, args: Vec<T>, timeout: Option<Duration>, signal: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
+	where
+		T: Into<String> + AsRef<OsStr>,
+		D: Into<&'a dyn AdbDevice>,
+	{
+		CommandBuilder::shell(adb, device).args(args).with_timeout(timeout).with_signal(signal).output().await
+	}
 
 	pub async fn list_settings<'a, D>(adb: &Adb, device: D, settings_type: SettingsType) -> Result<Vec<Property>>
 	where
