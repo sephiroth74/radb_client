@@ -26,7 +26,7 @@ mod tests {
 	use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
 	use crate::command::CommandBuilder;
 	use crate::debug::CommandDebug;
-	use crate::pm::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, PackageManager};
+	use crate::pm::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, PackageManager, UninstallOptions};
 	use crate::scanner::Scanner;
 	use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 	use crate::traits::AdbDevice;
@@ -38,7 +38,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.2:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.128:5555"));
 
 	macro_rules! client {
 		() => {
@@ -1245,9 +1245,33 @@ mod tests {
 		assert_client_root!(client);
 
 		let pm: PackageManager = client.pm();
-		let _path = pm.dump("com.swisscom.mycloud").await.unwrap();
-		//assert!(path);
-		//trace!("path: {:?}", path)
+		let result = pm.is_system("com.swisscom.aot.library.standalone").await.unwrap();
+		trace!("result: {:#?}", result)
+	}
+
+	#[tokio::test]
+	async fn test_pm_get_package_flags() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.webclient";
+
+		let pm: PackageManager = client.pm();
+		let result = pm.dump_package_flags(package_name).await.unwrap();
+		trace!("result: {:#?}", result);
+
+		let path = pm.path(package_name, None).await.unwrap();
+		trace!("path: {:#?}", path);
+
+		if result.contains(&PackageFlags::System) && result.contains(&PackageFlags::UpdatedSystemApp) {
+			assert!(!path.starts_with("/system/"))
+		} else if result.contains(&PackageFlags::System) {
+			assert!(path.starts_with("/system/"))
+		} else {
+			assert!(path.starts_with("/data/"))
+		}
 	}
 
 	#[tokio::test]
@@ -1258,7 +1282,7 @@ mod tests {
 		assert_client_root!(client);
 
 		let pm: PackageManager = client.pm();
-		let result = pm.is_installed("com.swisscom.mycloud", None).await.unwrap();
+		let result = pm.is_installed("com.swisscom.aot.library.standalone", None).await.unwrap();
 		trace!("path: {:?}", result);
 	}
 
@@ -1301,6 +1325,65 @@ mod tests {
 
 		trace!("path: {:?}", result);
 	}
+
+	#[tokio::test]
+	async fn test_pm_uninstall() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		let installed = client.pm().is_installed(package_name, None).await.unwrap();
+
+		if !installed {
+			warn!("package `{:}` not installed", package_name);
+			return;
+		}
+
+		assert!(installed);
+
+		let package = client.pm().list_packages(None, None, Some(package_name)).await.unwrap().first().unwrap().to_owned();
+
+		client
+			.pm()
+			.uninstall(
+				package_name,
+				Some(UninstallOptions {
+					keep_data: false,
+					user: Some("0".to_string()),
+					version_code: package.version_code,
+				}),
+			)
+			.await
+			.unwrap();
+
+		assert!(!client.pm().is_installed(package_name, None).await.unwrap());
+	}
+
+	#[tokio::test]
+	async fn test_pm_runtime_permissions() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		let result = client.pm().dump_runtime_permissions(package_name).await.unwrap();
+		assert!(result.len() > 0);
+		trace!("result: {:#?}", result);
+	}
+
+	//
+	//#[test]
+	//fn test_proto() {
+	//    protoc_rust::Codegen::new()
+	//        .out_dir("/Users/alessandro/Desktop/swisscom/protobuffers/dst")
+	//        .inputs(&["/Users/alessandro/Desktop/swisscom/protobuffers/dump.buffer"])
+	//        .include("/Users/alessandro/Desktop/swisscom/protobuffers/")
+	//        .run()
+	//        .expect("Running protoc failed.");
+	//}
 
 	enum ScmuuIdType {
 		UUID,

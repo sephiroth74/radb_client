@@ -259,20 +259,23 @@ impl<'a> CommandBuilder {
 		let has_signal = self.signal.is_some();
 		let has_timeout = self.timeout.is_some();
 		let sleep = self.timeout.map(tokio::time::sleep);
-		tokio::select! {
-			_ = (conditional_signal(self.signal.as_mut())), if has_signal => {
-				trace!("Ctrl+c received");
-				let _ = child.start_kill();
-				//let _ = child.kill().await;
-			},
-			_ = child.wait() => {
-				//trace!("Child exited normally")
-			},
-			_ = (conditional_sleeper(sleep)), if has_timeout => {
-				trace!("Timeout expired!");
-				let _ = child.start_kill();
-				//let _ = child.kill().await;
-			},
+
+		if has_signal || has_timeout || sleep.is_some() {
+			tokio::select! {
+				_ = (conditional_signal(self.signal.as_mut())), if has_signal => {
+					trace!("Ctrl+c received");
+					let _ = child.start_kill();
+					//let _ = child.kill().await;
+				},
+				_ = child.wait() => {
+					//trace!("Child exited normally")
+				},
+				_ = (conditional_sleeper(sleep)), if has_timeout => {
+					trace!("Timeout expired!");
+					let _ = child.start_kill();
+					//let _ = child.kill().await;
+				},
+			}
 		}
 
 		let output = child.wait_with_output().await;
