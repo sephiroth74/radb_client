@@ -1,7 +1,6 @@
 /// cargo test --color=always --bin randroid tests -- --test-threads=1 --show-output
 #[cfg(test)]
 mod tests {
-	use std::env;
 	use std::fmt::{Display, Formatter};
 	use std::fs::{read_to_string, remove_file, File};
 	use std::io::{BufRead, Write};
@@ -11,6 +10,7 @@ mod tests {
 	use std::str::FromStr;
 	use std::sync::Once;
 	use std::time::Duration;
+	use std::{env, vec};
 
 	use anyhow::anyhow;
 	use chrono::Local;
@@ -18,6 +18,7 @@ mod tests {
 	use log::*;
 	use once_cell::sync::Lazy;
 	use regex::Regex;
+	use rustix::path::Arg;
 	use time::Instant;
 	use tokio::process::Command;
 	use tokio::sync::oneshot::{channel, Receiver, Sender};
@@ -26,6 +27,8 @@ mod tests {
 	use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
 	use crate::command::CommandBuilder;
 	use crate::debug::CommandDebug;
+	use crate::dump_util::SimplePackageReader;
+	use crate::input::{InputSource, KeyCode, KeyEventType};
 	use crate::pm::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, PackageManager, UninstallOptions};
 	use crate::scanner::Scanner;
 	use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
@@ -193,11 +196,43 @@ mod tests {
 		assert_client_root!(client);
 
 		let output = client.shell().getprop("wifi.interface").await.expect("getprop failed");
-		assert_eq!("wlan0", output.as_str().unwrap().trim_end());
+		assert_eq!("wlan0", output.trim_end());
 
 		let stb_name = client.shell().getprop("persist.sys.stb.name").await.expect("failed to read persist.sys.stb.name");
-		debug!("stb name: `{:}`", stb_name.as_str().unwrap().trim_end());
+		debug!("stb name: `{:}`", stb_name.trim_end());
 		assert!(stb_name.len() > 1);
+	}
+
+	#[tokio::test]
+	async fn test_setprop() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+
+		let prop = shell.getprop("dalvik.vm.heapsize").await.unwrap();
+		assert!(!prop.is_empty());
+
+		shell.setprop("dalvik.vm.heapsize", "512m").await.unwrap();
+		assert_eq!(shell.getprop("dalvik.vm.heapsize").await.unwrap(), "512m");
+
+		shell.setprop("debug.hwui.overdraw", "").await.unwrap();
+		assert_eq!(shell.getprop("debug.hwui.overdraw").await.unwrap(), "");
+	}
+
+	#[tokio::test]
+	async fn test_getprop_type() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		for prop in client.shell().getprops().await.unwrap() {
+			let prop_type = client.shell().getprop_type(prop.key.as_str()).await.unwrap();
+			trace!("{:} = {:}", prop.key, prop_type);
+		}
 	}
 
 	#[tokio::test]
@@ -233,7 +268,7 @@ mod tests {
 		assert!(output.lines().into_iter().all(|f| f.is_ok()));
 		assert!(output.lines().into_iter().filter(|f| f.is_ok()).all(|l| l.is_ok()));
 
-		trace!("output: {:?}", output.as_str());
+		trace!("output: {:?}", Vec8ToString::as_str(&output));
 
 		assert_client_unroot!(client);
 	}
@@ -246,7 +281,10 @@ mod tests {
 
 		let properties = client.shell().getprops().await.expect("getprops failed");
 		assert!(properties.len() > 0);
-		trace!("properties: {:?}", properties.iter().map(|p| p.key.as_str().to_string()).collect::<Vec<_>>());
+
+		for prop in properties {
+			trace!("property: {:?}", prop);
+		}
 	}
 
 	#[tokio::test]
@@ -882,7 +920,7 @@ mod tests {
 		assert!(result.is_success());
 		assert!(result.has_stdout());
 
-		let stdout = String::from(result.stdout().as_str().expect("failed to get stdout"));
+		let stdout = Arg::as_str(&result.stdout()).unwrap().to_string();
 		let output = stdout.as_str();
 
 		debug_assert!(output.len() > 0, "output is empty");
@@ -1259,7 +1297,7 @@ mod tests {
 		let package_name = "com.swisscom.aot.webclient";
 
 		let pm: PackageManager = client.pm();
-		let result = pm.dump_package_flags(package_name).await.unwrap();
+		let result = pm.package_flags(package_name).await.unwrap();
 		trace!("result: {:#?}", result);
 
 		let path = pm.path(package_name, None).await.unwrap();
@@ -1433,10 +1471,136 @@ mod tests {
 		assert_client_root!(client);
 
 		let package_name = "com.swisscom.aot.library.appservice";
-		let requested_permissions = client.pm().dump_requested_permissions(package_name).await.unwrap();
+		let requested_permissions = client.pm().requested_permissions(package_name).await.unwrap();
 		assert!(requested_permissions.len() > 0);
 
 		trace!("requested permissions: {:#?}", requested_permissions);
+	}
+
+	#[tokio::test]
+	async fn test_pm_install_permissions() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		let result = client.pm().install_permissions(package_name).await.unwrap();
+		assert!(result.len() > 0);
+		trace!("result: {:#?}", result);
+	}
+
+	#[tokio::test]
+	async fn test_pm_operations() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		client.pm().clear(package_name, None).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_pm_package_reader() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		let dump = client.pm().dump(package_name).await.unwrap();
+		let reader = SimplePackageReader::new(dump.as_str()).unwrap();
+
+		let mut result = reader.get_version_name().await.unwrap();
+		trace!("version_name: {:#?}", result);
+
+		result = reader.get_first_install_time().await.unwrap();
+		trace!("first_install_time: {:#?}", result);
+
+		result = reader.get_last_update_time().await.unwrap();
+		trace!("last_update_time: {:#?}", result);
+
+		result = reader.get_timestamp().await.unwrap();
+		trace!("timestamp: {:#?}", result);
+
+		result = reader.get_data_dir().await.unwrap();
+		trace!("dataDir: {:#?}", result);
+
+		result = reader.get_user_id().await.unwrap();
+		trace!("userId: {:#?}", result);
+
+		result = reader.get_code_path().await.unwrap();
+		trace!("codePath: {:#?}", result);
+
+		result = reader.get_resource_path().await.unwrap();
+		trace!("resourcePath: {:#?}", result);
+
+		let version_code = reader.get_version_code().await.unwrap();
+		trace!("versionCode: {:#?}", version_code);
+	}
+
+	#[tokio::test]
+	async fn test_am_broadcast() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.standalone";
+		let mut intent = intent!["swisscom.android.tv.action.PRINT_SESSION_INFO"];
+		intent.component = Some(format!["{:}/.receiver.PropertiesReceiver", package_name]);
+		intent.extra.put_string_extra("swisscom.android.tv.extra.TAG", "SESSION_INFO");
+		intent.wait = true;
+
+		trace!("{:}", intent);
+		let _result = client.am().broadcast(&intent).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_am_start() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let mut intent = intent!["android.intent.action.VIEW"];
+		intent.data = Some("http://www.google.com".to_string());
+		intent.wait = true;
+
+		trace!("{:}", intent);
+		let _result = client.am().start(&intent).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_am_force_stop() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+		client.am().force_stop("com.swisscom.aot.ui").await.expect("unable to force stop package");
+	}
+
+	#[tokio::test]
+	async fn test_shell_send_key_event() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_keyevent(KeyCode::KEYCODE_1, Some(KeyEventType::DoubleTap), Some(InputSource::dpad)).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_shell_send_key_events() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_keyevents(vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_9], Some(InputSource::dpad)).await.unwrap();
 	}
 
 	//

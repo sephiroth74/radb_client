@@ -306,10 +306,24 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		Shell::send_keyevents(adb, device, vec![keycode], event_type, source).await
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+
+		if let Some(event_type) = event_type {
+			args.push(event_type.into());
+		}
+
+		args.push(keycode.into());
+		Shell::exec(adb, device, args, None).await?;
+		Ok(())
 	}
 
-	pub async fn send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Result<()>
+	pub async fn send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -320,23 +334,7 @@ impl Shell {
 		}
 
 		args.push("keyevent");
-
-		if event_type.is_some() {
-			match event_type.unwrap() {
-				KeyEventType::LongPress => args.push("--longpress"),
-				KeyEventType::DoubleTap => args.push("--doubletap"),
-			}
-		}
-
-		let mut code_str: Vec<&str> = keycodes
-			.iter()
-			.map(|k| {
-				let str: &str = k.into();
-				str
-			})
-			.collect();
-
-		args.append(&mut code_str);
+		args.extend(keycodes.iter().map(|k| k.into()).collect::<Vec<&str>>());
 
 		Shell::exec(adb, device, args, None).await?;
 		Ok(())
@@ -403,11 +401,38 @@ impl Shell {
 		Shell::test_file(adb, device, path, "h").await
 	}
 
-	pub async fn getprop<'d, D>(adb: &Adb, device: D, key: &str) -> Result<Vec<u8>>
+	pub async fn getprop<'d, D>(adb: &Adb, device: D, key: &str) -> Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["getprop", key], None).await.map(|s| s.stdout())
+		let result = Shell::exec(adb, device, vec!["getprop", key], None).await.map(|s| s.stdout())?;
+		Ok(Arg::as_str(&result).map(|f| f.trim_end())?.to_string())
+	}
+
+	pub async fn setprop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str, value: T) -> Result<()>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let mut new_value = value.as_str()?;
+		if new_value == "" {
+			new_value = "\"\""
+		}
+
+		Shell::exec(adb, device, vec!["setprop", key, new_value], None).await.map(|_| ())
+	}
+
+	pub async fn clear_prop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str) -> Result<()>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		Shell::setprop(adb, device, key, "").await
+	}
+
+	pub async fn getprop_type<'d, D>(adb: &Adb, device: D, key: &str) -> Result<Vec<u8>>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		Shell::exec(adb, device, vec!["getprop", "-T", key], None).await.map(|s| s.stdout())
 	}
 
 	pub async fn getprops<'a, D>(adb: &Adb, device: D) -> Result<Vec<Property>>
@@ -499,6 +524,30 @@ impl Shell {
 		T: Into<&'a dyn AdbDevice>,
 	{
 		let _result = Shell::exec(adb, device, vec!["am", "broadcast", format!("{:}", intent).as_str()], None).await?;
+		Ok(())
+	}
+
+	pub async fn start<'a, T>(adb: &Adb, device: T, intent: &Intent) -> Result<()>
+	where
+		T: Into<&'a dyn AdbDevice>,
+	{
+		let _result = Shell::exec(adb, device, vec!["am", "start", format!("{:}", intent).as_str()], None).await?;
+		Ok(())
+	}
+
+	pub async fn start_service<'a, T>(adb: &Adb, device: T, intent: &Intent) -> Result<()>
+	where
+		T: Into<&'a dyn AdbDevice>,
+	{
+		let _result = Shell::exec(adb, device, vec!["am", "startservice", format!("{:}", intent).as_str()], None).await?;
+		Ok(())
+	}
+
+	pub async fn force_stop<'a, T>(adb: &Adb, device: T, package_name: &str) -> Result<()>
+	where
+		T: Into<&'a dyn AdbDevice>,
+	{
+		let _result = Shell::exec(adb, device, vec!["am", "force-stop", package_name], None).await?;
 		Ok(())
 	}
 

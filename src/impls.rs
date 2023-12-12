@@ -18,10 +18,12 @@ use rustix::path::Arg;
 use tokio::process::Command;
 use tokio::sync::oneshot::Receiver;
 
+use crate::am::ActivityManager;
 use crate::client::{LogcatLevel, LogcatOptions, LogcatTag, RebootType};
 use crate::command::{CommandBuilder, ProcessResult};
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
+use crate::input::{InputSource, KeyCode, KeyEventType};
 use crate::intent::{Extra, Intent};
 use crate::pm::PackageManager;
 use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
@@ -645,7 +647,7 @@ impl AdbClient {
 	}
 
 	pub async fn name(&self) -> crate::command::Result<Option<String>> {
-		Client::name(&self.adb, &self.device).await
+		Ok(Client::name(&self.adb, &self.device).await.ok())
 	}
 
 	pub async fn save_screencap(&self, output: File) -> crate::command::Result<()> {
@@ -675,6 +677,10 @@ impl AdbClient {
 	pub fn pm(&self) -> PackageManager {
 		PackageManager { parent: AdbShell { parent: self } }
 	}
+
+	pub fn am(&self) -> ActivityManager {
+		ActivityManager { parent: AdbShell { parent: self } }
+	}
 }
 
 impl<'a> Into<AdbShell<'a>> for &'a AdbClient {
@@ -696,11 +702,21 @@ impl<'a> AdbShell<'a> {
 		Shell::which(&self.parent.adb, &self.parent.device, command).await
 	}
 
-	pub async fn getprop(&self, key: &str) -> crate::command::Result<Vec<u8>> {
-		Shell::getprop(&self.parent.adb, &self.parent.device, key).await
+	pub async fn getprop(&self, key: &str) -> crate::command::Result<String> {
+		let value = Shell::getprop(&self.parent.adb, &self.parent.device, key).await?;
+		Arg::as_str(&value).map(|f| f.to_string()).map_err(|e| AdbError::Errno(e))
 	}
 
-	pub async fn cat<T: AsRef<Path> + std::convert::AsRef<std::ffi::OsStr>>(&self, path: T) -> crate::command::Result<Vec<u8>> {
+	pub async fn setprop<T: Arg>(&self, key: &str, value: T) -> crate::command::Result<()> {
+		Shell::setprop(&self.parent.adb, &self.parent.device, key, value).await
+	}
+
+	pub async fn getprop_type(&self, key: &str) -> crate::command::Result<String> {
+		let result = Shell::getprop_type(&self.parent.adb, &self.parent.device, key).await?;
+		Ok(Arg::as_str(&result)?.to_string())
+	}
+
+	pub async fn cat<T: AsRef<Path> + AsRef<OsStr>>(&self, path: T) -> crate::command::Result<Vec<u8>> {
 		Shell::cat(&self.parent.adb, &self.parent.device, path).await
 	}
 
@@ -792,11 +808,31 @@ impl<'a> AdbShell<'a> {
 		Shell::broadcast(&self.parent.adb, &self.parent.device, intent).await
 	}
 
+	pub async fn start(&self, intent: &Intent) -> crate::command::Result<()> {
+		Shell::start(&self.parent.adb, &self.parent.device, intent).await
+	}
+
+	pub async fn start_service(&self, intent: &Intent) -> crate::command::Result<()> {
+		Shell::start_service(&self.parent.adb, &self.parent.device, intent).await
+	}
+
+	pub async fn force_stop(&self, package_name: &str) -> crate::command::Result<()> {
+		Shell::force_stop(&self.parent.adb, &self.parent.device, package_name).await
+	}
+
 	pub async fn get_enforce(&self) -> crate::command::Result<SELinuxType> {
 		Shell::get_enforce(&self.parent.adb, &self.parent.device).await
 	}
 
 	pub async fn set_enforce(&self, enforce: SELinuxType) -> crate::command::Result<()> {
 		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce).await
+	}
+
+	pub async fn send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::command::Result<()> {
+		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source).await
+	}
+
+	pub async fn send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::command::Result<()> {
+		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source).await
 	}
 }

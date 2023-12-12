@@ -17,10 +17,9 @@ use uuid::Uuid;
 
 use crate::command::{CommandBuilder, ProcessResult, Result};
 use crate::debug::CommandDebug;
+use crate::errors::AdbError;
 use crate::errors::AdbError::InvalidDeviceAddressError;
-use crate::errors::{AdbError, CommandError};
 use crate::traits::AdbDevice;
-use crate::util::Vec8ToString;
 use crate::Client;
 use crate::{Adb, Shell};
 
@@ -134,12 +133,11 @@ impl Client {
 	/// let device = adb.device("192.168.1.24:5555");
 	/// let name = Client::name(&adb, &device).unwrap();
 	/// ```
-	pub async fn name<'d, D>(adb: &Adb, device: D) -> Result<Option<String>>
+	pub async fn name<'d, D>(adb: &Adb, device: D) -> Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::getprop(adb, device, "ro.build.product").await?;
-		Ok(Vec8ToString::as_str(&output).map(|s| s.trim_end().to_string()))
+		Shell::getprop(adb, device, "ro.build.product").await
 	}
 
 	pub async fn api_level<'d, D>(adb: &Adb, device: D) -> Result<u8>
@@ -147,8 +145,7 @@ impl Client {
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let result = Shell::getprop(adb, device, "ro.build.version.sdk").await?;
-		let string = Arg::as_str(&result)?.trim_end();
-		string.parse::<u8>().map_err(From::from)
+		result.parse::<u8>().map_err(From::from)
 	}
 
 	pub async fn version<'d, D>(adb: &Adb, device: D) -> Result<u8>
@@ -156,8 +153,7 @@ impl Client {
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let result = Shell::getprop(adb, device, "ro.build.version.release").await?;
-		let string = Vec8ToString::as_str(&result).ok_or(CommandError::from("Failed to convert result into str"))?.trim();
-		string.parse::<u8>().map_err(From::from)
+		result.parse::<u8>().map_err(From::from)
 	}
 
 	pub async fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> Result<ProcessResult>

@@ -1,16 +1,24 @@
 use std::fmt::{Display, Formatter};
 
 use lazy_static::lazy_static;
-use nom::Slice;
 use regex::{Regex, RegexBuilder};
 use rustix::path::Arg;
 
 use crate::command::ProcessResult;
-use crate::dump_util::SimplePackageReader;
+use crate::dump_util::{extract_runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;
 use crate::pm::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::traits::AsArgs;
 use crate::types::AdbShell;
+
+#[macro_export]
+macro_rules! build_pm_operation {
+	($name:tt, $operation_name:tt, $typ:ty, $typ2:ty) => {
+		pub async fn $name(&self, package_name: $typ, user: $typ2) -> crate::command::Result<()> {
+			self.op($operation_name, package_name, user).await
+		}
+	};
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PackageManager<'a> {
@@ -98,10 +106,16 @@ pub enum PackageFlags {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub struct PackageRuntimePermission {
+pub struct RuntimePermission {
 	pub name: String,
 	pub granted: bool,
 	pub flags: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct InstallPermission {
+	pub name: String,
+	pub granted: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -346,10 +360,10 @@ impl<'a> PackageManager<'a> {
 
 	pub async fn is_system(&self, package_name: &str) -> crate::command::Result<bool> {
 		//let result = self.parent.exec(vec![format!("pm dump {: } | egrep '^ { { 1, } }flags = '  | egrep ' { { 1, } }SYSTEM { { 1, } }'", package_name)], None).await?.stdout();
-		Ok(self.dump_package_flags(package_name).await?.contains(&PackageFlags::System))
+		Ok(self.package_flags(package_name).await?.contains(&PackageFlags::System))
 	}
 
-	pub async fn dump_package_flags(&self, package_name: &str) -> crate::command::Result<Vec<PackageFlags>> {
+	pub async fn package_flags(&self, package_name: &str) -> crate::command::Result<Vec<PackageFlags>> {
 		let result = self.dump(package_name).await?;
 		lazy_static! {
 			static ref RE: Regex = RegexBuilder::new("^\\s*pkgFlags=\\[\\s(.*)\\s]").multi_line(true).build().unwrap();
@@ -371,55 +385,21 @@ impl<'a> PackageManager<'a> {
 		}
 	}
 
-	pub async fn dump_requested_permissions(&self, package_name: &str) -> crate::command::Result<Vec<String>> {
+	pub async fn requested_permissions(&self, package_name: &str) -> crate::command::Result<Vec<String>> {
 		let dump = self.dump(package_name).await?;
 		let pr = SimplePackageReader::new(dump.as_str())?;
 		pr.requested_permissions().await
 	}
 
-	pub async fn dump_runtime_permissions(&self, package_name: &str) -> crate::command::Result<Vec<PackageRuntimePermission>> {
-		lazy_static! {
-			static ref RE1: Regex = RegexBuilder::new("(?m)^\\s{3,}runtime permissions:\\s+").multi_line(true).build().unwrap();
-			static ref RE2: Regex = RegexBuilder::new("(?m)^$").multi_line(true).build().unwrap();
-			static ref RE3: Regex = RegexBuilder::new("^\\s*([^:]+):\\s+granted=(false|true),\\s+flags=\\[\\s*([^\\]]+)\\]$")
-				.multi_line(true)
-				.build()
-				.unwrap();
-		}
-
+	pub async fn install_permissions(&self, package_name: &str) -> crate::command::Result<Vec<InstallPermission>> {
 		let dump = self.dump(package_name).await?;
-		let output = dump.as_str();
+		let pr = SimplePackageReader::new(dump.as_str())?;
+		pr.install_permissions().await
+	}
 
-		let mut result: Vec<PackageRuntimePermission> = vec![];
-
-		if let Some(captures) = RE1.captures(output) {
-			if captures.len() == 1 {
-				let m = captures.get(0).unwrap();
-				let start = m.end();
-				let output2 = output.slice(start..);
-
-				if let Some(m2) = RE2.find(output2) {
-					let output3 = output2.slice(..m2.end());
-
-					result = RE3
-						.captures_iter(output3)
-						.filter_map(|m3| {
-							if m3.len() == 4 {
-								let name = m3.get(1).unwrap().as_str().to_string();
-								let granted = m3.get(2).unwrap().as_str() == "true";
-								let flags = m3.get(3).unwrap().as_str().split("|").map(|f| f.to_string()).collect::<Vec<_>>();
-
-								Some(PackageRuntimePermission { name, granted, flags })
-							} else {
-								None
-							}
-						})
-						.collect::<Vec<_>>();
-				} else {
-				}
-			}
-		}
-		Ok(result)
+	pub async fn dump_runtime_permissions(&self, package_name: &str) -> crate::command::Result<Vec<RuntimePermission>> {
+		let dump = self.dump(package_name).await?;
+		extract_runtime_permissions(dump.as_str()).await
 	}
 
 	pub async fn dump(&self, package_name: &str) -> crate::command::Result<String> {
@@ -461,53 +441,19 @@ impl<'a> PackageManager<'a> {
 		self.parent.exec(args, None).await.map(|_f| ())
 	}
 
-	pub async fn enable(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("enable", package_or_component, user).await
-	}
+	build_pm_operation!(clear, "clear", &str, Option<&str>);
+	build_pm_operation!(suspend, "suspend", &str, Option<&str>);
+	build_pm_operation!(unsuspend, "unsuspend", &str, Option<&str>);
+	build_pm_operation!(hide, "hide", &str, Option<&str>);
+	build_pm_operation!(unhide, "unhide", &str, Option<&str>);
+	build_pm_operation!(default_state, "default-state", &str, Option<&str>);
+	build_pm_operation!(disable_until_used, "disable-until-used", &str, Option<&str>);
+	build_pm_operation!(disable_user, "disable-user", &str, Option<&str>);
+	build_pm_operation!(disable, "disable", &str, Option<&str>);
+	build_pm_operation!(enable, "enable", &str, Option<&str>);
 
-	pub async fn disable(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("disable", package_or_component, user).await
-	}
-
-	pub async fn disable_user(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("disable-user", package_or_component, user).await
-	}
-
-	pub async fn disable_until_used(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("disable-until-used", package_or_component, user).await
-	}
-
-	pub async fn default_state(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("default-state", package_or_component, user).await
-	}
-
-	pub async fn hide(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("hide", package_or_component, user).await
-	}
-
-	pub async fn unhide(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("unhide", package_or_component, user).await
-	}
-
-	pub async fn suspend(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("suspend", package_or_component, user).await
-	}
-
-	pub async fn unsuspend(&self, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		self.op("unsuspend", package_or_component, user).await
-	}
-
-	pub async fn reset_permissions(&self, _package_or_component: &str, _user: Option<&str>) -> crate::command::Result<()> {
+	pub async fn reset_permissions(&self) -> crate::command::Result<()> {
 		self.parent.exec(vec!["pm", "reset-permissions"], None).await.map(|_f| ())
-	}
-
-	async fn op(&self, operation: &str, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
-		let mut args = vec!["pm", operation];
-		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
-		}
-		args.push(package_or_component);
-		self.parent.exec(args, None).await.map(|_f| ())
 	}
 
 	pub async fn list_packages(&self, filters: Option<ListPackageFilter>, display: Option<ListPackageDisplayOptions>, name_filter: Option<&str>) -> Result<Vec<Package>, AdbError> {
@@ -565,5 +511,16 @@ impl<'a> PackageManager<'a> {
 			})
 			.collect::<Vec<_>>();
 		Ok(result)
+	}
+
+	// private methods
+
+	async fn op(&self, operation: &str, package_or_component: &str, user: Option<&str>) -> crate::command::Result<()> {
+		let mut args = vec!["pm", operation];
+		if let Some(u) = user {
+			args.extend(vec!["--user", u]);
+		}
+		args.push(package_or_component);
+		self.parent.exec(args, None).await.map(|_f| ())
 	}
 }

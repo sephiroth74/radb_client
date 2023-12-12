@@ -45,7 +45,7 @@ async fn connect(adb: Arc<Adb>, host: String) -> Option<ClientResult> {
 
 					Some(ClientResult {
 						addr,
-						name: client_name.unwrap_or(None),
+						name: client_name.ok(),
 						mac: client_mac.map_or(None, |m| Some(m)),
 						version: version.map_or(None, |m| Some(m)),
 					})

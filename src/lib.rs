@@ -47,6 +47,7 @@ pub enum SELinuxType {
 	Permissive,
 }
 
+mod am;
 mod dump_util;
 mod errors;
 mod pm;
