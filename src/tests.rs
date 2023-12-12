@@ -38,7 +38,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.128:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.101:5555"));
 
 	macro_rules! client {
 		() => {
@@ -1423,6 +1423,20 @@ mod tests {
 
 		let package_name = "com.swisscom.aot.library.appservice";
 		client.pm().enable(package_name, Some("1000")).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_pm_dump_requested_permissions() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let package_name = "com.swisscom.aot.library.appservice";
+		let requested_permissions = client.pm().dump_requested_permissions(package_name).await.unwrap();
+		assert!(requested_permissions.len() > 0);
+
+		trace!("requested permissions: {:#?}", requested_permissions);
 	}
 
 	//

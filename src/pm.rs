@@ -6,6 +6,7 @@ use regex::{Regex, RegexBuilder};
 use rustix::path::Arg;
 
 use crate::command::ProcessResult;
+use crate::dump_util::SimplePackageReader;
 use crate::errors::AdbError;
 use crate::pm::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::traits::AsArgs;
@@ -370,6 +371,12 @@ impl<'a> PackageManager<'a> {
 		}
 	}
 
+	pub async fn dump_requested_permissions(&self, package_name: &str) -> crate::command::Result<Vec<String>> {
+		let dump = self.dump(package_name).await?;
+		let pr = SimplePackageReader::new(dump.as_str())?;
+		pr.requested_permissions().await
+	}
+
 	pub async fn dump_runtime_permissions(&self, package_name: &str) -> crate::command::Result<Vec<PackageRuntimePermission>> {
 		lazy_static! {
 			static ref RE1: Regex = RegexBuilder::new("(?m)^\\s{3,}runtime permissions:\\s+").multi_line(true).build().unwrap();
@@ -412,7 +419,6 @@ impl<'a> PackageManager<'a> {
 				}
 			}
 		}
-
 		Ok(result)
 	}
 
