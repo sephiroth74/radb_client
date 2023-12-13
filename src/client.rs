@@ -79,32 +79,31 @@ impl Client {
 
 		command.arg("logcat");
 
-		if options.expr.is_some() {
-			command.args(["-e", options.expr.unwrap().as_str()]);
+		if let Some(expr) = options.expr {
+			command.args(["-e", expr.as_str()]);
 		}
 
 		if options.dump {
 			command.arg("-d");
 		}
 
-		if options.filename.is_some() {
-			command.args(["-f", options.filename.unwrap().as_str()]);
+		if let Some(filename) = options.filename {
+			command.args(["-f", filename.as_str()]);
 		}
 
-		if options.format.is_some() {
-			command.args(["-v", options.format.unwrap().as_str()]);
+		if let Some(format) = options.format {
+			command.args(["-v", format.as_str()]);
 		}
 
-		if options.pid.is_some() {
-			command.args(["--pid", format!("{}", options.pid.unwrap()).as_str()]);
+		if let Some(pid) = options.pid {
+			command.args(["--pid", format!("{}", pid).as_str()]);
 		}
 
-		if options.since.is_some() {
-			command.args(["-T", options.since.unwrap().format("%m-%d %H:%M:%S.%3f").to_string().as_str()]);
+		if let Some(since) = options.since {
+			command.args(["-T", since.format("%m-%d %H:%M:%S.%3f").to_string().as_str()]);
 		}
 
-		if options.tags.is_some() {
-			let tags = options.tags.unwrap();
+		if let Some(tags) = options.tags {
 			if !tags.is_empty() {
 				for tag in tags {
 					command.arg(format!("{:}", tag).as_str());

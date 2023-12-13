@@ -28,7 +28,7 @@ mod tests {
 	use crate::command::CommandBuilder;
 	use crate::debug::CommandDebug;
 	use crate::dump_util::SimplePackageReader;
-	use crate::input::{InputSource, KeyCode, KeyEventType};
+	use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
 	use crate::pm::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, PackageManager, UninstallOptions};
 	use crate::scanner::Scanner;
 	use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
@@ -463,7 +463,7 @@ mod tests {
 		assert_client_connected!(client);
 		assert_client_root!(client);
 
-		let lines = client.shell().list_dir("/system").await.expect("list dir failed");
+		let lines = client.shell().ls("/system", Some("-lpALF")).await.expect("list dir failed");
 
 		for line in lines {
 			let file: Result<DeviceFile, ParseError> = DeviceFile::parse(line.as_str());
@@ -630,14 +630,14 @@ mod tests {
 
 		if client.shell().exists("/sdcard/Download/screencap.png").await.unwrap() {
 			// remove the file
-			client.shell().rm("/sdcard/Download/screencap.png").await.unwrap();
+			client.shell().rm("/sdcard/Download/screencap.png", None).await.unwrap();
 		}
 
 		client.shell().save_screencap("/sdcard/Download/screencap.png").await.expect("save screencap failed");
 
 		assert!(client.shell().exists("/sdcard/Download").await.unwrap());
 
-		client.shell().rm("/sdcard/Download/screencap.png").await.unwrap();
+		client.shell().rm("/sdcard/Download/screencap.png", None).await.unwrap();
 	}
 
 	#[tokio::test]
@@ -796,7 +796,7 @@ mod tests {
 
 		let remote_path = PathBuf::from("/sdcard/Download/text.txt");
 		if shell.exists(remote_path.as_path()).await.unwrap() {
-			shell.rm(remote_path.as_path()).await.unwrap();
+			shell.rm(remote_path.as_path(), None).await.unwrap();
 		}
 
 		let local_path = env::current_dir().unwrap().join("test.txt");
@@ -1593,6 +1593,42 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_shell_send_motion() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_motion(None, MotionEvent::DOWN, (1000, 600)).await.unwrap();
+		shell.send_motion(None, MotionEvent::MOVE, (1000, 600)).await.unwrap();
+		shell.send_motion(None, MotionEvent::MOVE, (1000, 100)).await.unwrap();
+		shell.send_motion(None, MotionEvent::UP, (1000, 100)).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_shell_send_drag_and_drop() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_draganddrop(None, Some(Duration::from_millis(1500)), (1800, 600), (1700, 100)).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_shell_send_press() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_press(None).await.unwrap();
+	}
+
+	#[tokio::test]
 	async fn test_shell_send_key_events() {
 		init_log!();
 		let client: AdbClient = client!();
@@ -1601,6 +1637,19 @@ mod tests {
 
 		let shell = client.shell();
 		shell.send_keyevents(vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_9], Some(InputSource::dpad)).await.unwrap();
+	}
+
+	#[tokio::test]
+	async fn test_shell_dumpsys() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		let result = shell.dumpsys(Some("adb"), None, None, true, false, false, None).await.unwrap();
+
+		trace!("result: {:}", result.stdout().to_string_lossy().to_string());
 	}
 
 	//

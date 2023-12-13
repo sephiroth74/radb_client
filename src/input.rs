@@ -28,6 +28,15 @@ use strum_macros::{Display, IntoStaticStr};
 
 #[derive(IntoStaticStr)]
 #[allow(non_camel_case_types)]
+pub enum MotionEvent {
+	DOWN,
+	UP,
+	MOVE,
+	CANCEL,
+}
+
+#[derive(IntoStaticStr)]
+#[allow(non_camel_case_types)]
 pub enum InputSource {
 	dpad,
 	keyboard,

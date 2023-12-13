@@ -23,11 +23,11 @@ use crate::client::{LogcatLevel, LogcatOptions, LogcatTag, RebootType};
 use crate::command::{CommandBuilder, ProcessResult};
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
-use crate::input::{InputSource, KeyCode, KeyEventType};
+use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
 use crate::intent::{Extra, Intent};
 use crate::pm::PackageManager;
 use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
-use crate::traits::AdbDevice;
+use crate::traits::{AdbDevice, AsArgs};
 use crate::types::{AdbClient, AdbShell};
 use crate::AddressType::Sock;
 use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
@@ -126,9 +126,12 @@ impl Device {
 			return Err(InvalidDeviceError(msg));
 		}
 
-		let cap = RE.captures(input).unwrap();
-		let ip = cap.name("ip").ok_or(InvalidDeviceError("Device serial not found".to_string()))?.as_str();
-		DeviceAddress::from_ip(ip).map(|address| Device(address)).map_err(|e| AdbError::from(e))
+		if let Some(cap) = RE.captures(input) {
+			let ip = cap.name("ip").ok_or(InvalidDeviceError("Device serial not found".to_string()))?.as_str();
+			DeviceAddress::from_ip(ip).map(|address| Device(address)).map_err(|e| AdbError::from(e))
+		} else {
+			Err(AdbError::InvalidDeviceAddressError(input.to_string()))
+		}
 	}
 
 	pub fn args(&self) -> Vec<String> {
@@ -260,33 +263,32 @@ impl Default for ScreenRecordOptions {
 	}
 }
 
-impl From<ScreenRecordOptions> for Vec<String> {
-	fn from(value: ScreenRecordOptions) -> Self {
+impl AsArgs<String> for ScreenRecordOptions {
+	fn as_args(&self) -> Vec<String> {
 		let mut args: Vec<String> = vec![];
-		if value.bitrate.is_some() {
+		if let Some(bitrate) = self.bitrate {
 			args.push(String::from("--bit-rate"));
-			args.push(format!("{:}", value.bitrate.unwrap()));
+			args.push(format!("{:}", bitrate));
 		}
 
-		if value.timelimit.is_some() {
+		if let Some(timelimit) = self.timelimit {
 			args.push(String::from("--time-limit"));
-			args.push(format!("{:}", value.timelimit.unwrap().as_secs()));
+			args.push(format!("{:}", timelimit.as_secs()));
 		}
 
-		if value.rotate.unwrap_or(false) {
+		if self.rotate.unwrap_or(false) {
 			args.push(String::from("--rotate"))
 		}
 
-		if value.bug_report.unwrap_or(false) {
+		if self.bug_report.unwrap_or(false) {
 			args.push(String::from("--bugreport"))
 		}
 
-		if value.verbose {
+		if self.verbose {
 			args.push(String::from("--verbose"))
 		}
 
-		if value.size.is_some() {
-			let size = value.size.unwrap();
+		if let Some(size) = self.size {
 			args.push(String::from("--size"));
 			args.push(format!("{:}x{:}", size.0, size.1));
 		}
@@ -315,6 +317,12 @@ impl Intent {
 		let mut intent = Intent::new();
 		intent.action = Some(action.to_string());
 		intent
+	}
+}
+
+impl<'a> AsArgs<&'a str> for Vec<&'a str> {
+	fn as_args(&self) -> Vec<&'a str> {
+		self.clone()
 	}
 }
 
@@ -349,32 +357,32 @@ impl Display for Intent {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let mut args: Vec<String> = vec![];
 
-		if self.action.is_some() {
-			args.push(format!("-a {:}", self.action.as_ref().unwrap()));
+		if let Some(action) = self.action.as_ref() {
+			args.push(format!("-a {:}", action));
 		}
 
-		if self.data.is_some() {
-			args.push(format!("-d {:}", self.data.as_ref().unwrap()));
+		if let Some(data) = self.data.as_ref() {
+			args.push(format!("-d {:}", data));
 		}
 
-		if self.mime_type.is_some() {
-			args.push(format!("-t {:}", self.mime_type.as_ref().unwrap()));
+		if let Some(mime_type) = self.mime_type.as_ref() {
+			args.push(format!("-t {:}", mime_type));
 		}
 
-		if self.category.is_some() {
-			args.push(format!("-c {:}", self.category.as_ref().unwrap()));
+		if let Some(category) = self.category.as_ref() {
+			args.push(format!("-c {:}", category));
 		}
 
-		if self.component.is_some() {
-			args.push(format!("-n {:}", self.component.as_ref().unwrap()));
+		if let Some(component) = self.component.as_ref() {
+			args.push(format!("-n {:}", component));
 		}
 
-		if self.package.is_some() {
-			args.push(format!("-p {:}", self.package.as_ref().unwrap()));
+		if let Some(package) = self.package.as_ref() {
+			args.push(format!("-p {:}", package));
 		}
 
-		if self.user_id.is_some() {
-			args.push(format!("--user {:}", self.user_id.as_ref().unwrap()));
+		if let Some(user_id) = self.user_id.as_ref() {
+			args.push(format!("--user {:}", user_id));
 		}
 
 		if self.receiver_foreground {
@@ -716,7 +724,7 @@ impl<'a> AdbShell<'a> {
 		Ok(Arg::as_str(&result)?.to_string())
 	}
 
-	pub async fn cat<T: AsRef<Path> + AsRef<OsStr>>(&self, path: T) -> crate::command::Result<Vec<u8>> {
+	pub async fn cat<T: Arg>(&self, path: T) -> crate::command::Result<Vec<u8>> {
 		Shell::cat(&self.parent.adb, &self.parent.device, path).await
 	}
 
@@ -728,8 +736,8 @@ impl<'a> AdbShell<'a> {
 		Shell::exists(&self.parent.adb, &self.parent.device, path).await
 	}
 
-	pub async fn rm<'s, S: Arg>(&self, path: S) -> crate::command::Result<bool> {
-		Shell::rm(&self.parent.adb, &self.parent.device, path).await
+	pub async fn rm<'s, S: Arg>(&self, path: S, options: Option<Vec<&str>>) -> crate::command::Result<bool> {
+		Shell::rm(&self.parent.adb, &self.parent.device, path, options).await
 	}
 
 	pub async fn is_file<T: Arg>(&self, path: T) -> crate::command::Result<bool> {
@@ -744,11 +752,13 @@ impl<'a> AdbShell<'a> {
 		Shell::is_symlink(&self.parent.adb, &self.parent.device, path).await
 	}
 
-	pub async fn list_dir<'t, T>(&self, path: T) -> crate::command::Result<Vec<String>>
+	///
+	/// List directory
+	pub async fn ls<'t, T>(&self, path: T, options: Option<&str>) -> crate::command::Result<Vec<String>>
 	where
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
 	{
-		Shell::list_dir(&self.parent.adb, &self.parent.device, path).await
+		Shell::ls(&self.parent.adb, &self.parent.device, path, options).await
 	}
 
 	pub async fn save_screencap<'t, T: Into<&'t str> + AsRef<OsStr> + Arg>(&self, path: T) -> crate::command::Result<ProcessResult> {
@@ -768,8 +778,29 @@ impl<'a> AdbShell<'a> {
 		Shell::get_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
 	}
 
+	pub async fn put_setting(&self, settings_type: SettingsType, key: &str, value: &str) -> crate::command::Result<()> {
+		Shell::put_setting(&self.parent.adb, &self.parent.device, settings_type, key, value).await
+	}
+
+	pub async fn delete_setting(&self, settings_type: SettingsType, key: &str) -> crate::command::Result<()> {
+		Shell::delete_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
+	}
+
 	pub async fn dumpsys_list(&self, proto_only: bool, priority: Option<DumpsysPriority>) -> crate::command::Result<Vec<String>> {
 		Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority).await
+	}
+
+	pub async fn dumpsys(
+		&self,
+		service: Option<&str>,
+		arguments: Option<Vec<String>>,
+		timeout: Option<Duration>,
+		pid: bool,
+		thread: bool,
+		proto: bool,
+		skip: Option<Vec<String>>,
+	) -> crate::command::Result<ProcessResult> {
+		Shell::dumpsys(&self.parent.adb, &self.parent.device, service, arguments, timeout, pid, thread, proto, skip).await
 	}
 
 	pub async fn is_screen_on(&self) -> crate::command::Result<bool> {
@@ -788,6 +819,18 @@ impl<'a> AdbShell<'a> {
 	/// Root may be required
 	pub async fn send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> crate::command::Result<()> {
 		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value).await
+	}
+
+	pub async fn send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> crate::command::Result<()> {
+		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos).await
+	}
+
+	pub async fn send_draganddrop(&self, source: Option<InputSource>, duration: Option<Duration>, from_pos: (i32, i32), to_pos: (i32, i32)) -> crate::command::Result<()> {
+		Shell::send_draganddrop(&self.parent.adb, &self.parent.device, source, duration, from_pos, to_pos).await
+	}
+
+	pub async fn send_press(&self, source: Option<InputSource>) -> crate::command::Result<()> {
+		Shell::send_press(&self.parent.adb, &self.parent.device, source).await
 	}
 
 	pub async fn exec<T>(&self, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult>

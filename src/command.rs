@@ -14,7 +14,6 @@ use tokio::sync::oneshot::Receiver;
 use crate::errors::AdbError::CmdError;
 use crate::errors::{AdbError, CommandError};
 use crate::traits::AdbDevice;
-
 use crate::Adb;
 
 use super::debug::CommandDebug;
@@ -267,13 +266,13 @@ impl<'a> CommandBuilder {
 					let _ = child.start_kill();
 					//let _ = child.kill().await;
 				},
-				_ = child.wait() => {
-					//trace!("Child exited normally")
-				},
 				_ = (conditional_sleeper(sleep)), if has_timeout => {
 					trace!("Timeout expired!");
 					let _ = child.start_kill();
 					//let _ = child.kill().await;
+				},
+				_ = child.wait() => {
+					//trace!("Child exited normally")
 				},
 			}
 		}

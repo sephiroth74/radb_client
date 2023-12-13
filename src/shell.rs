@@ -7,19 +7,19 @@ use lazy_static::lazy_static;
 use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
-use strum_macros::IntoStaticStr;
+use strum_macros::{Display, IntoStaticStr};
 use tokio::sync::oneshot::Receiver;
 
 use crate::command::{CommandBuilder, ProcessResult, Result};
 use crate::errors::AdbError::Unknown;
-use crate::errors::CommandError;
-use crate::input::{InputSource, KeyCode, KeyEventType};
+use crate::errors::{AdbError, CommandError};
+use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
 use crate::intent::Intent;
-use crate::traits::AdbDevice;
+use crate::traits::{AdbDevice, AsArgs};
 use crate::util::Vec8ToString;
 use crate::{Adb, SELinuxType, Shell};
 
-#[derive(IntoStaticStr)]
+#[derive(IntoStaticStr, Display)]
 #[allow(non_camel_case_types)]
 pub enum DumpsysPriority {
 	CRITICAL,
@@ -115,12 +115,18 @@ impl Shell {
 		Ok(())
 	}
 
-	pub async fn list_dir<'d, 't, D, T>(adb: &Adb, device: D, path: T) -> Result<Vec<String>>
+	pub async fn ls<'d, 't, D, T>(adb: &Adb, device: D, path: T, options: Option<&str>) -> Result<Vec<String>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
 	{
-		let stdout = Shell::exec(adb, device, vec!["ls", "-lLHap", path.into()], None).await?.stdout();
+		let mut args = vec!["ls"];
+		if let Some(options) = options {
+			args.push(options);
+		}
+		args.push(path.into());
+
+		let stdout = Shell::exec(adb, device, args, None).await?.stdout();
 		let lines = stdout.lines().filter_map(|s| s.ok()).collect();
 		Ok(lines)
 	}
@@ -134,9 +140,9 @@ impl Shell {
 			args.push("--proto");
 		}
 
-		if priority.is_some() {
+		if let Some(priority) = priority {
 			args.push("--priority");
-			args.push(priority.unwrap().into());
+			args.push(priority.into());
 		}
 
 		let output: Vec<String> = Shell::exec(adb, device, args, None)
@@ -158,15 +164,76 @@ impl Shell {
 		Ok(output)
 	}
 
+	///
+	/// usage: dumpsys
+	//         To dump all services.
+	//or:
+	//       dumpsys [-t TIMEOUT] [--priority LEVEL] [--pid] [--thread] [--help | -l | --skip SERVICES | SERVICE [ARGS]]
+	//         --help: shows this help
+	//         -l: only list services, do not dump them
+	//         -t TIMEOUT_SEC: TIMEOUT to use in seconds instead of default 10 seconds
+	//         -T TIMEOUT_MS: TIMEOUT to use in milliseconds instead of default 10 seconds
+	//         --pid: dump PID instead of usual dump
+	//         --thread: dump thread usage instead of usual dump
+	//         --proto: filter services that support dumping data in proto format. Dumps
+	//               will be in proto format.
+	//         --priority LEVEL: filter services based on specified priority
+	//               LEVEL must be one of CRITICAL | HIGH | NORMAL
+	//         --skip SERVICES: dumps all services but SERVICES (comma-separated list)
+	//         SERVICE [ARGS]: dumps only service SERVICE, optionally passing ARGS to it
+	pub async fn dumpsys<'d, D>(
+		adb: &Adb,
+		device: D,
+		service: Option<&str>,
+		arguments: Option<Vec<String>>,
+		timeout: Option<Duration>,
+		pid: bool,
+		thread: bool,
+		proto: bool,
+		skip: Option<Vec<String>>,
+	) -> Result<ProcessResult>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let mut args = vec!["dumpsys".to_string()];
+
+		if let Some(timeout) = timeout {
+			args.push("-T".to_string());
+			args.push(timeout.as_millis().to_string());
+		}
+
+		if pid {
+			args.push("--pid".to_string());
+		} else if thread {
+			args.push("--thread".to_string());
+		}
+
+		if proto {
+			args.push("--proto".to_string());
+		}
+
+		if let Some(skip) = skip {
+			args.push("--skip".to_string());
+			args.push(skip.join(","));
+		} else if let Some(service) = service {
+			args.push(service.to_string());
+
+			if let Some(arguments) = arguments {
+				args.extend(arguments);
+			}
+		}
+
+		Shell::exec(adb, device, args, None).await
+	}
+
 	pub async fn screen_record<'d, D>(adb: &Adb, device: D, options: Option<ScreenRecordOptions>, output: &str, signal: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let mut args = vec![String::from("screenrecord")];
 
-		if options.is_some() {
-			let options_args = &mut Into::<Vec<String>>::into(options.unwrap());
-			args.append(options_args);
+		if let Some(options) = options {
+			args.extend(options.as_args());
 		}
 
 		args.push(output.to_string());
@@ -197,8 +264,8 @@ impl Shell {
 		D: Into<&'a dyn AdbDevice>,
 	{
 		let mut args = vec!["input"];
-		if source.is_some() {
-			args.push(source.unwrap().into());
+		if let Some(source) = source {
+			args.push(source.into());
 		}
 
 		args.push("swipe");
@@ -209,8 +276,8 @@ impl Shell {
 		#[allow(unused_assignments)]
 		let mut duration_str: String = String::from("");
 
-		if duration.is_some() {
-			duration_str = duration.unwrap().as_millis().to_string();
+		if let Some(duration) = duration {
+			duration_str = duration.as_millis().to_string();
 			args.push(duration_str.as_str());
 		}
 
@@ -223,8 +290,8 @@ impl Shell {
 		D: Into<&'a dyn AdbDevice>,
 	{
 		let mut args = vec!["input"];
-		if source.is_some() {
-			args.push(source.unwrap().into());
+		if let Some(source) = source {
+			args.push(source.into());
 		}
 
 		args.push("tap");
@@ -239,13 +306,30 @@ impl Shell {
 		Ok(())
 	}
 
+	pub async fn send_char<'a, D>(adb: &Adb, device: D, text: &char, source: Option<InputSource>) -> Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		let formatted = format!("{:}", text);
+
+		args.push("text");
+		args.push(formatted.as_str());
+		Shell::exec(adb, device, args, None).await?;
+		Ok(())
+	}
+
 	pub async fn send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>) -> Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
 		let mut args = vec!["input"];
-		if source.is_some() {
-			args.push(source.unwrap().into());
+		if let Some(source) = source {
+			args.push(source.into());
 		}
 
 		args.push("text");
@@ -270,36 +354,65 @@ impl Shell {
 		Ok(())
 	}
 
-	pub async fn get_events<'a, D>(adb: &Adb, device: D) -> Result<Vec<(String, String)>>
+	pub async fn send_motion<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let result = Shell::exec(adb, device, vec!["getevent", "-S"], None).await?.stdout();
+		let mut args = vec!["input"];
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+		args.push("motionevent");
+		args.push(motion.into());
 
-		lazy_static! {
-			static ref RE: Regex = Regex::new("^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?").unwrap();
+		let pos0 = pos.0.to_string();
+		let pos1 = pos.1.to_string();
+
+		args.push(pos0.as_str());
+		args.push(pos1.as_str());
+		Shell::exec(adb, device, args, None).await.map(|_| ())
+	}
+
+	pub async fn send_draganddrop<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, duration: Option<Duration>, from_pos: (i32, i32), to_pos: (i32, i32)) -> Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input".to_string()];
+		if let Some(source) = source {
+			let string: &str = source.into();
+			args.push(string.to_string());
+		}
+		args.push("draganddrop".to_string());
+
+		let pos0 = from_pos.0.to_string();
+		let pos1 = from_pos.1.to_string();
+		let pos2 = to_pos.0.to_string();
+		let pos3 = to_pos.1.to_string();
+
+		args.push(pos0);
+		args.push(pos1);
+		args.push(pos2);
+		args.push(pos3);
+
+		if let Some(duration) = duration {
+			let duration_str = duration.as_millis().to_string();
+			args.push(duration_str);
 		}
 
-		let mut v: Vec<(String, String)> = vec![];
-		let mut string = Vec8ToString::as_str(&result).ok_or(CommandError::from("failed to fetch output"))?;
+		Shell::exec(adb, device, args, None).await.map(|_| ())
+	}
 
-		loop {
-			let captures = RE.captures(string);
-			if captures.is_some() {
-				let cap = captures.unwrap();
-				let e = cap.name("event");
-				let n = cap.name("name");
-
-				if e.is_some() && n.is_some() {
-					v.push((e.unwrap().as_str().to_string(), n.unwrap().as_str().to_string()));
-				}
-
-				string = &string[cap[0].len()..]
-			} else {
-				break;
-			}
+	pub async fn send_press<'a, D>(adb: &Adb, device: D, source: Option<InputSource>) -> Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+		if let Some(source) = source {
+			args.push(source.into());
 		}
-		Ok(v)
+		args.push("press");
+		Shell::exec(adb, device, args, None).await?;
+		Ok(())
 	}
 
 	pub async fn send_keyevent<'a, D>(adb: &Adb, device: D, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Result<()>
@@ -329,8 +442,8 @@ impl Shell {
 	{
 		let mut args = vec!["input"];
 
-		if source.is_some() {
-			args.push(source.unwrap().into());
+		if let Some(source) = source {
+			args.push(source.into());
 		}
 
 		args.push("keyevent");
@@ -340,12 +453,42 @@ impl Shell {
 		Ok(())
 	}
 
+	pub async fn get_events<'a, D>(adb: &Adb, device: D) -> Result<Vec<(String, String)>>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let result = Shell::exec(adb, device, vec!["getevent", "-S"], None).await?.stdout();
+
+		lazy_static! {
+			static ref RE: Regex = Regex::new("^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?").unwrap();
+		}
+
+		let mut v: Vec<(String, String)> = vec![];
+		let mut string = Arg::as_str(&result)?;
+
+		loop {
+			let captures = RE.captures(string);
+			if let Some(cap) = captures {
+				let e = cap.name("event");
+				let n = cap.name("name");
+
+				if e.is_some() && n.is_some() {
+					v.push((e.ok_or(AdbError::ParseInputError())?.as_str().to_string(), n.ok_or(AdbError::ParseInputError())?.as_str().to_string()));
+				}
+
+				string = &string[cap[0].len()..]
+			} else {
+				break;
+			}
+		}
+		Ok(v)
+	}
+
 	pub async fn stat<'d, D>(adb: &Adb, device: D, path: &OsStr) -> Result<file_mode::Mode>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Vec8ToString::as_str(&Shell::exec(adb, device, vec!["stat", "-L", "-c", "'%a'", format!("{:?}", path).as_str()], None).await?.stdout())
-			.ok_or(CommandError::from("stat failed"))?
+		let output = Arg::as_str(&Shell::exec(adb, device, vec!["stat", "-L", "-c", "'%a'", format!("{:?}", path).as_str()], None).await?.stdout())?
 			.trim_end()
 			.parse::<u32>()?;
 
@@ -372,12 +515,18 @@ impl Shell {
 		Shell::test_file(adb, device, path, "e").await
 	}
 
-	pub async fn rm<'d, 't, D, T>(adb: &Adb, device: D, path: T) -> Result<bool>
+	pub async fn rm<'d, 't, D, T>(adb: &Adb, device: D, path: T, options: Option<Vec<&str>>) -> Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Arg,
 	{
-		Shell::exec(adb, device, vec!["rm", path.as_str()?], None).await.map(|_| true)
+		let mut args = vec!["rm"];
+		if let Some(options) = options {
+			args.extend(options);
+		}
+		args.push(path.as_str()?);
+
+		Shell::exec(adb, device, args, None).await.map(|_| true)
 	}
 
 	pub async fn is_file<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> Result<bool>
@@ -448,15 +597,14 @@ impl Shell {
 		let mut result: Vec<Property> = Vec::new();
 
 		for line in output?.stdout().lines().filter_map(|l| l.ok()) {
-			let cap = RE.captures(line.as_str());
-			if cap.is_some() {
-				let cap1 = cap.unwrap();
+			let captures = RE.captures(line.as_str());
+			if let Some(cap1) = captures {
 				let k = cap1.get(1);
 				let v = cap1.get(2);
 				if k.is_some() && v.is_some() {
 					result.push(Property {
-						key: k.unwrap().as_str().to_string(),
-						value: v.unwrap().as_str().to_string(),
+						key: k.ok_or(AdbError::ParseInputError())?.as_str().to_string(),
+						value: v.ok_or(AdbError::ParseInputError())?.as_str().to_string(),
 					});
 				}
 			}
@@ -464,11 +612,11 @@ impl Shell {
 		Ok(result)
 	}
 
-	pub async fn cat<'d, D, P: AsRef<OsStr>>(adb: &Adb, device: D, path: P) -> Result<Vec<u8>>
+	pub async fn cat<'d, D, P: Arg>(adb: &Adb, device: D, path: P) -> Result<Vec<u8>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["cat", path.as_ref().as_str().unwrap()], None).await.map(|s| s.stdout())
+		Shell::exec(adb, device, vec!["cat", path.as_str()?], None).await.map(|s| s.stdout())
 	}
 
 	pub async fn which<'a, D>(adb: &Adb, device: D, command: &str) -> Result<Option<String>>

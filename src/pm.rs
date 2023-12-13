@@ -157,7 +157,7 @@ impl Default for InstallLocationOption {
 	}
 }
 
-impl AsArgs for InstallOptions {
+impl AsArgs<String> for InstallOptions {
 	fn as_args(&self) -> Vec<String> {
 		let mut args = vec![];
 		match self.user.as_ref() {
@@ -209,7 +209,7 @@ impl Display for InstallOptions {
 	}
 }
 
-impl AsArgs for ListPackageDisplayOptions {
+impl AsArgs<String> for ListPackageDisplayOptions {
 	fn as_args(&self) -> Vec<String> {
 		let mut args: Vec<String> = vec![];
 		if self.show_uid {
@@ -231,14 +231,14 @@ impl AsArgs for ListPackageDisplayOptions {
 	}
 }
 
-impl AsArgs for UninstallOptions {
-	fn as_args(&self) -> Vec<String> {
+impl From<&UninstallOptions> for Vec<String> {
+	fn from(value: &UninstallOptions) -> Self {
 		let mut args: Vec<String> = vec![];
-		if self.keep_data {
+		if value.keep_data {
 			args.push("-k".into());
 		}
 
-		match self.user.as_ref() {
+		match value.user.as_ref() {
 			None => {}
 			Some(s) => {
 				args.push("--user".into());
@@ -246,7 +246,7 @@ impl AsArgs for UninstallOptions {
 			}
 		}
 
-		match self.version_code.as_ref() {
+		match value.version_code.as_ref() {
 			None => {}
 			Some(s) => {
 				args.push("--versionCode".into());
@@ -260,7 +260,8 @@ impl AsArgs for UninstallOptions {
 
 impl Display for UninstallOptions {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:}", self.as_args().join(" "))
+		let args: Vec<String> = From::<&UninstallOptions>::from(self);
+		write!(f, "{:}", args.join(" "))
 	}
 }
 
@@ -281,7 +282,7 @@ impl Default for ListPackageDisplayOptions {
 	}
 }
 
-impl AsArgs for ListPackageFilter {
+impl AsArgs<String> for ListPackageFilter {
 	fn as_args(&self) -> Vec<String> {
 		let mut args: Vec<String> = vec![];
 		if self.show_only_disabled {
@@ -309,7 +310,6 @@ impl AsArgs for ListPackageFilter {
 			None => {}
 			Some(s) => args.push(format!("--user {:}", s)),
 		}
-
 		args
 	}
 }
@@ -325,7 +325,7 @@ impl<'a> PackageManager<'a> {
 		let mut args = vec!["cmd package uninstall".to_string()];
 		match options {
 			None => {}
-			Some(options) => args.extend(options.as_args()),
+			Some(options) => args.extend::<Vec<String>>((&options).into()),
 		}
 		args.push(package_name.to_string());
 		self.parent.exec(args, None).await
@@ -465,7 +465,9 @@ impl<'a> PackageManager<'a> {
 		}
 
 		match display {
-			None => args.extend(ListPackageDisplayOptions::default().as_args()),
+			None => {
+				args.extend(ListPackageDisplayOptions::default().as_args());
+			}
 			Some(d) => args.extend(d.as_args()),
 		}
 
