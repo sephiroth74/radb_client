@@ -26,21 +26,6 @@ pub struct ParseSELinuxTypeError {
 	pub msg: Option<String>,
 }
 
-impl Display for ParseSELinuxTypeError {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		match self.msg.as_ref() {
-			Some(m) => write!(f, "{:}", m),
-			None => write!(f, "ParseSELinuxTypeError"),
-		}
-	}
-}
-
-impl From<Errno> for ParseSELinuxTypeError {
-	fn from(value: Errno) -> Self {
-		ParseSELinuxTypeError { msg: Some(value.to_string()) }
-	}
-}
-
 #[derive(Error, Debug)]
 pub enum AdbError {
 	#[error(transparent)]
@@ -96,6 +81,21 @@ pub enum AdbError {
 
 	#[error("unknown error: {0}")]
 	Unknown(String),
+}
+
+impl Display for ParseSELinuxTypeError {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		match self.msg.as_ref() {
+			Some(m) => write!(f, "{:}", m),
+			None => write!(f, "ParseSELinuxTypeError"),
+		}
+	}
+}
+
+impl From<Errno> for ParseSELinuxTypeError {
+	fn from(value: Errno) -> Self {
+		ParseSELinuxTypeError { msg: Some(value.to_string()) }
+	}
 }
 
 /// implementation

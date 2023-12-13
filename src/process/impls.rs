@@ -25,15 +25,50 @@ impl From<&Adb> for CommandBuilder {
 	}
 }
 
+impl From<AdbClient> for CommandBuilder {
+	fn from(value: AdbClient) -> Self {
+		CommandBuilder::shell(&value.adb, &value.device)
+	}
+}
+
 impl Display for CommandBuilder {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{:?}", self.command.borrow())
 	}
 }
 
-impl From<AdbClient> for CommandBuilder {
-	fn from(value: AdbClient) -> Self {
-		CommandBuilder::shell(&value.adb, &value.device)
+impl From<Output> for ProcessResult {
+	fn from(value: Output) -> Self {
+		ProcessResult { output: Box::new(value) }
+	}
+}
+
+impl Display for ProcessResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{:#?}", self.output)
+	}
+}
+
+impl OutputResult for Output {
+	fn to_result(&self) -> process::Result<Vec<u8>> {
+		if self.status.success() && self.stderr.is_empty() {
+			Ok(self.stdout.to_owned())
+		} else {
+			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
+		}
+	}
+
+	fn try_to_result(&self) -> process::Result<Vec<u8>> {
+		warn!("status: {}", self.status);
+		warn!("signal: {:?}", self.status.signal());
+		warn!("code: {:?}", self.status.code());
+		warn!("success: {:?}", self.status.success());
+
+		if self.status.code().is_none() && self.stderr.is_empty() {
+			Ok(self.stdout.to_owned())
+		} else {
+			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
+		}
 	}
 }
 
@@ -196,25 +231,6 @@ impl<'a> CommandBuilder {
 	//}
 }
 
-impl CommandDebug for CommandBuilder {
-	fn debug(&mut self) -> &mut Self {
-		self.command.borrow_mut().debug();
-		self
-	}
-}
-
-impl From<Output> for ProcessResult {
-	fn from(value: Output) -> Self {
-		ProcessResult { output: Box::new(value) }
-	}
-}
-
-impl Display for ProcessResult {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:#?}", self.output)
-	}
-}
-
 impl ProcessResult {
 	pub fn stdout(&self) -> Vec<u8> {
 		self.output.stdout.to_owned()
@@ -279,29 +295,6 @@ impl ProcessResult {
 			}
 
 			Err(e) => Err(Into::into(e)),
-		}
-	}
-}
-
-impl OutputResult for Output {
-	fn to_result(&self) -> process::Result<Vec<u8>> {
-		if self.status.success() && self.stderr.is_empty() {
-			Ok(self.stdout.to_owned())
-		} else {
-			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
-		}
-	}
-
-	fn try_to_result(&self) -> process::Result<Vec<u8>> {
-		warn!("status: {}", self.status);
-		warn!("signal: {:?}", self.status.signal());
-		warn!("code: {:?}", self.status.code());
-		warn!("success: {:?}", self.status.success());
-
-		if self.status.code().is_none() && self.stderr.is_empty() {
-			Ok(self.stdout.to_owned())
-		} else {
-			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
 		}
 	}
 }

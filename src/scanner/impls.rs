@@ -9,6 +9,23 @@ use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
 use crate::{Adb, Client};
 
+#[cfg(feature = "scanner")]
+impl Display for ClientResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let mut strings = vec![format!("addr={:}", self.addr)];
+		if let Some(n) = self.name.as_ref() {
+			strings.push(format!("name={}", n));
+		}
+		if let Some(n) = self.mac.as_ref() {
+			strings.push(format!("mac={}", n));
+		}
+		if let Some(n) = self.version.as_ref() {
+			strings.push(format!("version={}", n));
+		}
+		write!(f, "ClientResult({:})", strings.join(", "))
+	}
+}
+
 #[allow(dead_code)]
 #[cfg(feature = "scanner")]
 impl Scanner {
@@ -29,6 +46,18 @@ impl Scanner {
 
 		let result = join_all(tasks).await.iter().filter_map(|f| f.to_owned()).collect::<Vec<_>>();
 		Ok(result)
+	}
+}
+
+#[cfg(feature = "scanner")]
+impl ClientResult {
+	pub fn new(addr: SocketAddr) -> ClientResult {
+		ClientResult {
+			addr,
+			name: None,
+			mac: None,
+			version: None,
+		}
 	}
 }
 
@@ -61,34 +90,5 @@ async fn connect(adb: Arc<Adb>, host: String) -> Option<ClientResult> {
 		}
 	} else {
 		None
-	}
-}
-
-#[cfg(feature = "scanner")]
-impl ClientResult {
-	pub fn new(addr: SocketAddr) -> ClientResult {
-		ClientResult {
-			addr,
-			name: None,
-			mac: None,
-			version: None,
-		}
-	}
-}
-
-#[cfg(feature = "scanner")]
-impl Display for ClientResult {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		let mut strings = vec![format!("addr={:}", self.addr)];
-		if let Some(n) = self.name.as_ref() {
-			strings.push(format!("name={}", n));
-		}
-		if let Some(n) = self.mac.as_ref() {
-			strings.push(format!("mac={}", n));
-		}
-		if let Some(n) = self.version.as_ref() {
-			strings.push(format!("version={}", n));
-		}
-		write!(f, "ClientResult({:})", strings.join(", "))
 	}
 }

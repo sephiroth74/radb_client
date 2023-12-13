@@ -1,3 +1,4 @@
+use crate::process::CommandBuilder;
 use log::log;
 use std::ffi::OsStr;
 use std::ffi::OsString;
@@ -38,6 +39,13 @@ impl CommandDebug for std::process::Command {
 			path.file_name().unwrap().to_str().unwrap(),
 			s.join(OsString::from(" ").as_os_str()).to_str().unwrap().trim()
 		);
+		self
+	}
+}
+
+impl CommandDebug for CommandBuilder {
+	fn debug(&mut self) -> &mut Self {
+		self.command.borrow_mut().debug();
 		self
 	}
 }
