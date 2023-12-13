@@ -1629,6 +1629,17 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn test_shell_send_keycombination() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_keycombination(None, vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_3]).await.unwrap();
+	}
+
+	#[tokio::test]
 	async fn test_shell_send_key_events() {
 		init_log!();
 		let client: AdbClient = client!();

@@ -453,6 +453,22 @@ impl Shell {
 		Ok(())
 	}
 
+	pub async fn send_keycombination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keycombination");
+		args.extend(keycodes);
+		Shell::exec(adb, device, args, None).await?;
+		Ok(())
+	}
+
 	pub async fn get_events<'a, D>(adb: &Adb, device: D) -> Result<Vec<(String, String)>>
 	where
 		D: Into<&'a dyn AdbDevice>,

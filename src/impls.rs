@@ -534,6 +534,17 @@ impl TryFrom<Device> for AdbClient {
 	}
 }
 
+impl AsArgs<String> for Vec<KeyCode> {
+	fn as_args(&self) -> Vec<String> {
+		self.iter()
+			.map(|f| {
+				let s: &str = f.into();
+				s.to_string()
+			})
+			.collect()
+	}
+}
+
 impl AdbClient {
 	pub fn try_from_device(device: Device) -> Result<AdbClient, AdbError> {
 		match Adb::new() {
@@ -831,6 +842,10 @@ impl<'a> AdbShell<'a> {
 
 	pub async fn send_press(&self, source: Option<InputSource>) -> crate::command::Result<()> {
 		Shell::send_press(&self.parent.adb, &self.parent.device, source).await
+	}
+
+	pub async fn send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::command::Result<()> {
+		Shell::send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes).await
 	}
 
 	pub async fn exec<T>(&self, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult>
