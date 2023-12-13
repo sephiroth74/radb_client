@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-use crate::DeviceAddress;
+use crate::types::DeviceAddress;
 
 pub trait AdbDevice: Display + Debug + Send + Sync {
 	fn addr(&self) -> &DeviceAddress;
@@ -9,4 +9,8 @@ pub trait AdbDevice: Display + Debug + Send + Sync {
 
 pub trait AsArgs<T>: Send + Sync {
 	fn as_args(&self) -> Vec<T>;
+}
+
+pub trait Vec8ToString {
+	fn as_str(&self) -> Option<&str>;
 }

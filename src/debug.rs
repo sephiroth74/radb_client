@@ -4,15 +4,6 @@ use std::ffi::OsString;
 use std::path::Path;
 use tokio::process::Command;
 
-#[macro_export(local_inner_macros)]
-macro_rules! debug_output {
-	($output:expr, $elapsed:expr) => {
-		if log::log_enabled!(log::Level::Trace) {
-			log::trace!("output: {:?} in {:?}", $output, $elapsed);
-		}
-	};
-}
-
 pub trait CommandDebug {
 	fn debug(&mut self) -> &mut Self;
 }

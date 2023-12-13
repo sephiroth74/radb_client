@@ -2,7 +2,7 @@ use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 
 use crate::errors::AdbError;
-use crate::pm::{InstallPermission, RuntimePermission};
+use crate::types::{InstallPermission, RuntimePermission};
 
 lazy_static! {
 	static ref RE_PACKAGES: Regex = Regex::new("(?m)^Packages:\\n").unwrap();
@@ -24,7 +24,7 @@ pub(crate) struct SimplePackageReader<'a> {
 
 #[allow(dead_code)]
 impl<'a> SimplePackageReader<'a> {
-	pub fn new(data: &'a str) -> crate::command::Result<SimplePackageReader<'a>> {
+	pub fn new(data: &'a str) -> crate::process::Result<SimplePackageReader<'a>> {
 		if let Some(m) = RE_PACKAGES.captures(data) {
 			if m.len() == 1 {
 				let mut new_data = &data[m.get(0).unwrap().end()..];
@@ -39,7 +39,7 @@ impl<'a> SimplePackageReader<'a> {
 		return Err(AdbError::ParseInputError());
 	}
 
-	pub(crate) async fn requested_permissions(&self) -> crate::command::Result<Vec<String>> {
+	pub(crate) async fn requested_permissions(&self) -> crate::process::Result<Vec<String>> {
 		if let Some(m) = RE_REQUESTED_PERMISSIONS.captures(self.data) {
 			if m.len() > 0 {
 				let new_data = &self.data[m.get(0).unwrap().range()];
@@ -53,7 +53,7 @@ impl<'a> SimplePackageReader<'a> {
 		Err(AdbError::ParseInputError())
 	}
 
-	pub(crate) async fn install_permissions(&self) -> crate::command::Result<Vec<InstallPermission>> {
+	pub(crate) async fn install_permissions(&self) -> crate::process::Result<Vec<InstallPermission>> {
 		if let Some(m) = RE_INSTALL_PERMISSIONS.captures(self.data) {
 			if m.len() > 0 {
 				let mut result = vec![];
@@ -70,39 +70,39 @@ impl<'a> SimplePackageReader<'a> {
 		return Err(AdbError::ParseInputError());
 	}
 
-	pub async fn get_version_name(&self) -> crate::command::Result<&str> {
+	pub async fn get_version_name(&self) -> crate::process::Result<&str> {
 		self.get_item("versionName").await
 	}
 
-	pub async fn get_first_install_time(&self) -> crate::command::Result<&str> {
+	pub async fn get_first_install_time(&self) -> crate::process::Result<&str> {
 		self.get_item("firstInstallTime").await
 	}
 
-	pub async fn get_last_update_time(&self) -> crate::command::Result<&str> {
+	pub async fn get_last_update_time(&self) -> crate::process::Result<&str> {
 		self.get_item("lastUpdateTime").await
 	}
 
-	pub async fn get_timestamp(&self) -> crate::command::Result<&str> {
+	pub async fn get_timestamp(&self) -> crate::process::Result<&str> {
 		self.get_item("timeStamp").await
 	}
 
-	pub async fn get_data_dir(&self) -> crate::command::Result<&str> {
+	pub async fn get_data_dir(&self) -> crate::process::Result<&str> {
 		self.get_item("dataDir").await
 	}
 
-	pub async fn get_user_id(&self) -> crate::command::Result<&str> {
+	pub async fn get_user_id(&self) -> crate::process::Result<&str> {
 		self.get_item("userId").await
 	}
 
-	pub async fn get_code_path(&self) -> crate::command::Result<&str> {
+	pub async fn get_code_path(&self) -> crate::process::Result<&str> {
 		self.get_item("codePath").await
 	}
 
-	pub async fn get_resource_path(&self) -> crate::command::Result<&str> {
+	pub async fn get_resource_path(&self) -> crate::process::Result<&str> {
 		self.get_item("resourcePath").await
 	}
 
-	pub async fn get_version_code(&self) -> crate::command::Result<i32> {
+	pub async fn get_version_code(&self) -> crate::process::Result<i32> {
 		if let Ok(string) = self.get_item("versionCode").await {
 			let re = Regex::new("^(?P<versionCode>\\d+)").unwrap();
 			if let Some(m) = re.captures(string) {
@@ -114,7 +114,7 @@ impl<'a> SimplePackageReader<'a> {
 		return Err(AdbError::NameNotFoundError("versionCode".to_string()));
 	}
 
-	async fn get_item(&self, name: &str) -> crate::command::Result<&str> {
+	async fn get_item(&self, name: &str) -> crate::process::Result<&str> {
 		let re = Regex::new(format!("(?m)^\\s{{3,}}{:}=(.*)$", name).as_str()).unwrap();
 
 		match self.parse(re).await {
@@ -124,7 +124,7 @@ impl<'a> SimplePackageReader<'a> {
 	}
 
 	#[inline]
-	async fn parse(&self, regex: Regex) -> crate::command::Result<&str> {
+	async fn parse(&self, regex: Regex) -> crate::process::Result<&str> {
 		if let Some(m) = regex.captures(self.data) {
 			if m.len() == 2 {
 				return Ok(m.get(1).unwrap().as_str());
@@ -134,7 +134,7 @@ impl<'a> SimplePackageReader<'a> {
 	}
 }
 
-pub(crate) async fn extract_runtime_permissions(data: &str) -> crate::command::Result<Vec<RuntimePermission>> {
+pub(crate) async fn extract_runtime_permissions(data: &str) -> crate::process::Result<Vec<RuntimePermission>> {
 	if let Some(captures) = RE_RUNTIME_PERMISSIONS.captures(data) {
 		let mut result: Vec<RuntimePermission> = vec![];
 		if captures.len() == 1 {

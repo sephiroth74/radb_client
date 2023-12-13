@@ -11,63 +11,19 @@ use futures::future::IntoFuture;
 use log::trace;
 use mac_address::MacAddress;
 use rustix::path::Arg;
+use std::result;
 use tokio::process::Command;
 use tokio::sync::oneshot::Receiver;
 use uuid::Uuid;
 
-use crate::command::{CommandBuilder, ProcessResult, Result};
 use crate::debug::CommandDebug;
 use crate::errors::AdbError;
 use crate::errors::AdbError::InvalidDeviceAddressError;
+use crate::process::{CommandBuilder, ProcessResult, Result};
 use crate::traits::AdbDevice;
-use crate::Client;
+use crate::types::{LogcatOptions, RebootType};
+use crate::{ActivityManager, AdbClient, AdbShell, Client, Device, PackageManager};
 use crate::{Adb, Shell};
-
-pub enum RebootType {
-	Bootloader,
-	Recovery,
-	Sideload,
-	SideloadAutoReboot,
-}
-
-pub struct LogcatOptions {
-	/// -e    Only prints lines where the log message matches <expr>, where <expr> is a regular expression.
-	pub expr: Option<String>,
-
-	/// -d    Dumps the log to the screen and exits.
-	pub dump: bool,
-
-	/// -f <filename>    Writes log message output to <filename>. The default is stdout.
-	pub filename: Option<String>,
-
-	/// -s    Equivalent to the filter expression '*:S', which sets priority for all tags to silent and is used to precede a list of filter expressions that add content.
-	pub tags: Option<Vec<LogcatTag>>,
-
-	/// -v <format>    Sets the output format for log messages. The default is the threadtime format
-	pub format: Option<String>,
-
-	/// -t '<time>'    Prints the most recent lines since the specified time. This option includes -d functionality.
-	/// See the -P option for information about quoting parameters with embedded spaces.
-	pub since: Option<chrono::DateTime<chrono::Local>>,
-
-	// --pid=<pid> ...
-	pub pid: Option<i32>,
-
-	pub timeout: Option<Duration>,
-}
-
-pub enum LogcatLevel {
-	Verbose,
-	Debug,
-	Info,
-	Warn,
-	Error,
-}
-
-pub struct LogcatTag {
-	pub name: String,
-	pub level: LogcatLevel,
-}
 
 #[allow(dead_code)]
 impl Client {
@@ -393,5 +349,162 @@ impl Client {
 		let output_str = Arg::as_str(&output)?.trim();
 		let boot_id = output_str.try_into()?;
 		Ok(boot_id)
+	}
+}
+
+impl AdbClient {
+	pub fn try_from_device(device: Device) -> result::Result<AdbClient, AdbError> {
+		match Adb::new() {
+			Ok(adb) => Ok(AdbClient { adb, device }),
+			Err(err) => Err(err),
+		}
+	}
+
+	pub async fn is_connected(&self) -> bool {
+		Client::is_connected(&self.adb, &self.device).await
+	}
+
+	/// Try to connect to the inner device.
+	///
+	/// # Arguments
+	///
+	/// * `timeout`: optional timeout for connecting
+	///
+	/// returns: Result<(), Error>
+	///
+	/// # Examples
+	///
+	/// ```
+	/// use radb_client::Device;
+	/// use radb_client::AdbClient;
+	///
+	/// pub async fn connect() {
+	///  let device: Device = "192.168.1.24:5555".parse().unwrap();
+	///  let client: AdbClient = device.try_into().unwrap();
+	///  client.connect(None).await.unwrap();
+	/// }
+	/// ```
+	pub async fn connect(&self, timeout: Option<std::time::Duration>) -> result::Result<(), AdbError> {
+		Client::connect(&self.adb, &self.device, timeout).await
+	}
+
+	pub async fn disconnect(&self) -> crate::process::Result<bool> {
+		Client::disconnect(&self.adb, &self.device).await
+	}
+
+	pub async fn root(&self) -> crate::process::Result<bool> {
+		Client::root(&self.adb, &self.device).await
+	}
+
+	pub async fn unroot(&self) -> crate::process::Result<bool> {
+		Client::unroot(&self.adb, &self.device).await
+	}
+
+	pub async fn is_root(&self) -> crate::process::Result<bool> {
+		Client::is_root(&self.adb, &self.device).await
+	}
+
+	pub async fn remount(&self) -> crate::process::Result<()> {
+		Client::remount(&self.adb, &self.device).await
+	}
+
+	pub async fn mount<T: Arg>(&self, dir: T) -> crate::process::Result<()> {
+		Client::mount(&self.adb, &self.device, dir).await
+	}
+
+	pub async fn unmount<T: Arg>(&self, dir: T) -> crate::process::Result<()> {
+		Client::unmount(&self.adb, &self.device, dir).await
+	}
+
+	pub async fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::process::Result<ProcessResult> {
+		Client::bug_report(&self.adb, &self.device, output).await
+	}
+
+	///
+	/// Root is required
+	///
+	pub async fn disable_verity(&self) -> crate::process::Result<()> {
+		Client::disable_verity(&self.adb, &self.device).await
+	}
+
+	///
+	/// Root is required
+	///
+	pub async fn get_mac_address(&self) -> crate::process::Result<MacAddress> {
+		Client::get_mac_address(&self.adb, &self.device).await
+	}
+
+	///
+	/// Root is required
+	pub async fn get_wlan_address(&self) -> crate::process::Result<MacAddress> {
+		Client::get_wlan_address(&self.adb, &self.device).await
+	}
+
+	pub async fn pull<'s, S, D>(&self, src: S, dst: D) -> crate::process::Result<ProcessResult>
+	where
+		S: Into<&'s str> + AsRef<OsStr> + Arg,
+		D: AsRef<Path>,
+	{
+		Client::pull(&self.adb, &self.device, src, dst).await
+	}
+
+	pub async fn push<'d, S, D>(&self, src: S, dst: D) -> crate::process::Result<ProcessResult>
+	where
+		D: Into<&'d str> + AsRef<OsStr> + Arg,
+		S: AsRef<Path>,
+	{
+		Client::push(&self.adb, &self.device, src, dst).await
+	}
+
+	pub async fn clear_logcat(&self) -> crate::process::Result<()> {
+		Client::clear_logcat(&self.adb, &self.device).await
+	}
+
+	pub async fn logcat(&self, options: LogcatOptions, recv: Option<IntoFuture<Receiver<()>>>) -> crate::process::Result<ProcessResult> {
+		Client::logcat(&self.adb, &self.device, options, recv).await
+	}
+
+	pub async fn api_level(&self) -> crate::process::Result<u8> {
+		Client::api_level(&self.adb, &self.device).await
+	}
+
+	pub async fn version(&self) -> crate::process::Result<u8> {
+		Client::version(&self.adb, &self.device).await
+	}
+
+	pub async fn name(&self) -> crate::process::Result<Option<String>> {
+		Ok(Client::name(&self.adb, &self.device).await.ok())
+	}
+
+	pub async fn save_screencap(&self, output: File) -> crate::process::Result<()> {
+		Client::save_screencap(&self.adb, &self.device, output).await
+	}
+
+	pub async fn copy_screencap(&self) -> crate::process::Result<()> {
+		Client::copy_screencap(&self.adb, &self.device).await
+	}
+
+	pub async fn get_boot_id(&self) -> crate::process::Result<uuid::Uuid> {
+		Client::get_boot_id(&self.adb, &self.device).await
+	}
+
+	pub async fn reboot(&self, reboot_type: Option<RebootType>) -> crate::process::Result<()> {
+		Client::reboot(&self.adb, &self.device, reboot_type).await
+	}
+
+	pub async fn wait_for_device(&self, timeout: Option<Duration>) -> crate::process::Result<()> {
+		Client::wait_for_device(&self.adb, &self.device, timeout).await
+	}
+
+	pub fn shell(&self) -> AdbShell {
+		AdbShell { parent: self }
+	}
+
+	pub fn pm(&self) -> PackageManager {
+		PackageManager { parent: AdbShell { parent: self } }
+	}
+
+	pub fn am(&self) -> ActivityManager {
+		ActivityManager { parent: AdbShell { parent: self } }
 	}
 }

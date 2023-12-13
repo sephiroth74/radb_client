@@ -6,9 +6,9 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use which::which;
 
-use crate::command::CommandBuilder;
 use crate::errors::AdbError;
 use crate::errors::AdbError::WhichError;
+use crate::process::CommandBuilder;
 use crate::traits::AdbDevice;
 
 use super::Adb;

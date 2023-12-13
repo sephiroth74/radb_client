@@ -1,21 +1,7 @@
 use std::fmt::Debug;
-use std::net::SocketAddr;
 use std::path::PathBuf;
 
-pub mod adb;
-pub mod client;
-pub mod command;
-pub mod debug;
-pub mod future;
-pub mod impls;
-pub mod input;
-pub mod intent;
-pub mod macros;
-pub mod scanner;
-pub mod shell;
-pub mod traits;
-pub mod types;
-pub mod util;
+use crate::types::DeviceAddress;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -25,30 +11,63 @@ pub struct Shell {}
 
 pub struct Client {}
 
-#[derive(Clone, PartialEq, Eq, Hash)]
-pub enum AddressType {
-	Sock(SocketAddr),
-	Name(String),
-	Transport(u8),
-}
-
-#[derive(Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
-pub struct DeviceAddress(AddressType);
-
 #[allow(dead_code)]
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
 pub struct Device(DeviceAddress);
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SELinuxType {
-	Enforcing,
-	Permissive,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PackageManager<'a> {
+	pub(crate) parent: AdbShell<'a>,
 }
 
-mod am;
-mod dump_util;
-mod errors;
-mod pm;
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityManager<'a> {
+	pub(crate) parent: AdbShell<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdbClient {
+	pub(crate) adb: Adb,
+	pub device: Device,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdbShell<'a> {
+	pub(crate) parent: &'a AdbClient,
+}
+
+pub mod adb;
+
+pub mod client;
+
+pub mod debug;
+
+pub mod future;
+
+pub mod input;
+
+pub mod macros;
+
+pub mod shell;
+
+pub mod traits;
+
+pub mod types;
+
+pub mod am;
+
+pub mod dump_util;
+
+pub mod errors;
+
+pub mod pm;
+
+mod process;
+
+#[cfg(feature = "scanner")]
+pub mod scanner;
+
+pub mod impls;
+
 mod tests;

@@ -4,21 +4,20 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures::future::join_all;
-use mac_address::MacAddress;
 
+use crate::errors::AdbError;
+use crate::scanner::{ClientResult, Scanner};
 use crate::{Adb, Client};
 
 #[allow(dead_code)]
-pub struct Scanner {}
-
-#[allow(dead_code)]
+#[cfg(feature = "scanner")]
 impl Scanner {
 	pub fn new() -> Scanner {
 		Scanner {}
 	}
 
-	pub async fn scan(&self) -> Vec<ClientResult> {
-		let adb = Arc::new(Adb::new().unwrap());
+	pub async fn scan(&self) -> Result<Vec<ClientResult>, AdbError> {
+		let adb = Arc::new(Adb::new()?);
 		let pool = crate::future::ThreadPool::default();
 		let mut tasks = vec![];
 
@@ -28,10 +27,12 @@ impl Scanner {
 			tasks.push(task);
 		}
 
-		join_all(tasks).await.iter().filter_map(|f| f.to_owned()).collect::<Vec<_>>()
+		let result = join_all(tasks).await.iter().filter_map(|f| f.to_owned()).collect::<Vec<_>>();
+		Ok(result)
 	}
 }
 
+#[cfg(feature = "scanner")]
 async fn connect(adb: Arc<Adb>, host: String) -> Option<ClientResult> {
 	if let Ok(response) = tokio::time::timeout(Duration::from_millis(200), tokio::net::TcpStream::connect(host.as_str())).await {
 		if let Ok(stream) = response {
@@ -63,14 +64,7 @@ async fn connect(adb: Arc<Adb>, host: String) -> Option<ClientResult> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ClientResult {
-	pub addr: SocketAddr,
-	pub name: Option<String>,
-	pub mac: Option<MacAddress>,
-	pub version: Option<u8>,
-}
-
+#[cfg(feature = "scanner")]
 impl ClientResult {
 	pub fn new(addr: SocketAddr) -> ClientResult {
 		ClientResult {
@@ -82,6 +76,7 @@ impl ClientResult {
 	}
 }
 
+#[cfg(feature = "scanner")]
 impl Display for ClientResult {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		let mut strings = vec![format!("addr={:}", self.addr)];

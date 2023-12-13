@@ -24,18 +24,18 @@ mod tests {
 	use tokio::sync::oneshot::{channel, Receiver, Sender};
 	use tokio_util::codec::{FramedRead, LinesCodec};
 
-	use crate::client::{LogcatLevel, LogcatOptions, LogcatTag};
-	use crate::command::CommandBuilder;
 	use crate::debug::CommandDebug;
 	use crate::dump_util::SimplePackageReader;
 	use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
-	use crate::pm::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, PackageManager, UninstallOptions};
+	use crate::process::CommandBuilder;
 	use crate::scanner::Scanner;
-	use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
 	use crate::traits::AdbDevice;
-	use crate::types::AdbClient;
-	use crate::util::Vec8ToString;
-	use crate::{intent, Adb, Client, Device, SELinuxType};
+	use crate::traits::Vec8ToString;
+	use crate::types::{
+		DumpsysPriority, InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatOptions, LogcatTag, PackageFlags, SELinuxType, ScreenRecordOptions,
+		SettingsType, UninstallOptions,
+	};
+	use crate::{intent, Adb, AdbClient, Client, Device, PackageManager};
 
 	static INIT: Once = Once::new();
 
@@ -1151,7 +1151,7 @@ mod tests {
 
 		let scanner = Scanner::new();
 		let start = Instant::now();
-		let result = scanner.scan().await;
+		let result = scanner.scan().await.unwrap();
 		let elapsed = start.elapsed();
 
 		debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());

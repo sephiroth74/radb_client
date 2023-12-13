@@ -46,5 +46,7 @@ anyhow = "1.0.71"
 protoc-rust = "2.28.0"
 
 [features]
+default = ["scanner"]
 derive = []
+scanner = []
 

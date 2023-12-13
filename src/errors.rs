@@ -12,7 +12,7 @@ use string_builder::ToBytes;
 use thiserror::Error;
 use tokio::time::error::Elapsed;
 
-use crate::util::Vec8ToString;
+use crate::traits::Vec8ToString;
 
 #[allow(dead_code)]
 pub struct CommandError {

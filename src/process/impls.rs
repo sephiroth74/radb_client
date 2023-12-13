@@ -1,145 +1,20 @@
-use std::cell::RefCell;
-use std::ffi::OsStr;
-use std::fmt::{Debug, Display, Formatter};
-use std::os::unix::process::ExitStatusExt;
-use std::process::{Output, Stdio};
-use std::time::Duration;
-
+use crate::debug::CommandDebug;
+use crate::errors::AdbError::CmdError;
+use crate::errors::CommandError;
+use crate::process::{CommandBuilder, OutputResult, ProcessResult};
+use crate::traits::AdbDevice;
+use crate::{process, Adb};
 use futures::future::IntoFuture;
 use log::{trace, warn};
+use std::cell::RefCell;
+use std::ffi::OsStr;
+use std::fmt::{Display, Formatter};
+use std::os::unix::prelude::ExitStatusExt;
+use std::process::{Output, Stdio};
+use std::time::Duration;
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::signal::unix::SignalKind;
 use tokio::sync::oneshot::Receiver;
-
-use crate::errors::AdbError::CmdError;
-use crate::errors::{AdbError, CommandError};
-use crate::traits::AdbDevice;
-use crate::Adb;
-
-use super::debug::CommandDebug;
-
-pub type Result<T> = std::result::Result<T, AdbError>;
-
-#[derive(Debug)]
-pub struct ProcessResult {
-	output: Box<Output>,
-}
-
-impl From<Output> for ProcessResult {
-	fn from(value: Output) -> Self {
-		ProcessResult { output: Box::new(value) }
-	}
-}
-
-impl Display for ProcessResult {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:#?}", self.output)
-	}
-}
-
-impl ProcessResult {
-	pub fn stdout(&self) -> Vec<u8> {
-		self.output.stdout.to_owned()
-	}
-
-	pub fn stderr(&self) -> Vec<u8> {
-		self.output.stderr.to_owned()
-	}
-
-	pub fn has_stderr(&self) -> bool {
-		!self.output.stderr.is_empty()
-	}
-
-	pub fn has_stdout(&self) -> bool {
-		!self.output.stdout.is_empty()
-	}
-
-	pub fn is_error(&self) -> bool {
-		!self.output.status.success()
-	}
-
-	pub fn signal(&self) -> Option<i32> {
-		self.output.status.signal()
-	}
-
-	pub fn has_signal(&self) -> bool {
-		self.output.status.signal().is_some()
-	}
-
-	pub fn is_success(&self) -> bool {
-		self.output.status.success()
-	}
-
-	pub fn is_interrupt(&self) -> bool {
-		self.signal().map(|s| SignalKind::from_raw(s) == SignalKind::interrupt()).unwrap_or(false)
-	}
-
-	pub fn is_kill(&self) -> bool {
-		self.signal().map(|s| s == 9).unwrap_or(false)
-	}
-
-	fn try_from(value: std::io::Result<Output>) -> Result<Self> {
-		match value {
-			Ok(output) => {
-				if output.status.success() {
-					Ok(output.into())
-				} else if output.status.signal().is_some() {
-					let signal = SignalKind::from_raw(output.status.signal().unwrap());
-
-					if signal == SignalKind::interrupt() {
-						trace!("SIGINT(2)");
-						Ok(output.into())
-					} else if signal == SignalKind::from_raw(9) {
-						trace!("SIGKILL(9)");
-						Ok(output.into())
-					} else {
-						Err(CmdError(CommandError::from_err(output.status, output.stdout, output.stderr)))
-					}
-				} else {
-					Err(CmdError(CommandError::from_err(output.status, output.stdout, output.stderr)))
-				}
-			}
-
-			Err(e) => Err(Into::into(e)),
-		}
-	}
-}
-
-pub trait OutputResult {
-	fn to_result(&self) -> Result<Vec<u8>>;
-	fn try_to_result(&self) -> Result<Vec<u8>>;
-}
-
-impl OutputResult for Output {
-	fn to_result(&self) -> Result<Vec<u8>> {
-		if self.status.success() && self.stderr.is_empty() {
-			Ok(self.stdout.to_owned())
-		} else {
-			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
-		}
-	}
-
-	fn try_to_result(&self) -> Result<Vec<u8>> {
-		warn!("status: {}", self.status);
-		warn!("signal: {:?}", self.status.signal());
-		warn!("code: {:?}", self.status.code());
-		warn!("success: {:?}", self.status.success());
-
-		if self.status.code().is_none() && self.stderr.is_empty() {
-			Ok(self.stdout.to_owned())
-		} else {
-			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
-		}
-	}
-}
-
-#[derive(Debug)]
-pub struct CommandBuilder {
-	debug: bool,
-	command: RefCell<Command>,
-	timeout: Option<Duration>,
-	signal: Option<IntoFuture<Receiver<()>>>,
-}
 
 impl From<&Adb> for CommandBuilder {
 	fn from(adb: &Adb) -> Self {
@@ -253,7 +128,7 @@ impl<'a> CommandBuilder {
 		self
 	}
 
-	pub async fn output(&mut self) -> Result<ProcessResult> {
+	pub async fn output(&mut self) -> process::Result<ProcessResult> {
 		let mut child = self.spawn().await?;
 		let has_signal = self.signal.is_some();
 		let has_timeout = self.timeout.is_some();
@@ -317,6 +192,109 @@ impl CommandDebug for CommandBuilder {
 	fn debug(&mut self) -> &mut Self {
 		self.command.borrow_mut().debug();
 		self
+	}
+}
+
+impl From<Output> for ProcessResult {
+	fn from(value: Output) -> Self {
+		ProcessResult { output: Box::new(value) }
+	}
+}
+
+impl Display for ProcessResult {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{:#?}", self.output)
+	}
+}
+
+impl ProcessResult {
+	pub fn stdout(&self) -> Vec<u8> {
+		self.output.stdout.to_owned()
+	}
+
+	pub fn stderr(&self) -> Vec<u8> {
+		self.output.stderr.to_owned()
+	}
+
+	pub fn has_stderr(&self) -> bool {
+		!self.output.stderr.is_empty()
+	}
+
+	pub fn has_stdout(&self) -> bool {
+		!self.output.stdout.is_empty()
+	}
+
+	pub fn is_error(&self) -> bool {
+		!self.output.status.success()
+	}
+
+	pub fn signal(&self) -> Option<i32> {
+		self.output.status.signal()
+	}
+
+	pub fn has_signal(&self) -> bool {
+		self.output.status.signal().is_some()
+	}
+
+	pub fn is_success(&self) -> bool {
+		self.output.status.success()
+	}
+
+	pub fn is_interrupt(&self) -> bool {
+		self.signal().map(|s| SignalKind::from_raw(s) == SignalKind::interrupt()).unwrap_or(false)
+	}
+
+	pub fn is_kill(&self) -> bool {
+		self.signal().map(|s| s == 9).unwrap_or(false)
+	}
+
+	fn try_from(value: std::io::Result<Output>) -> process::Result<Self> {
+		match value {
+			Ok(output) => {
+				if output.status.success() {
+					Ok(output.into())
+				} else if output.status.signal().is_some() {
+					let signal = SignalKind::from_raw(output.status.signal().unwrap());
+
+					if signal == SignalKind::interrupt() {
+						trace!("SIGINT(2)");
+						Ok(output.into())
+					} else if signal == SignalKind::from_raw(9) {
+						trace!("SIGKILL(9)");
+						Ok(output.into())
+					} else {
+						Err(CmdError(CommandError::from_err(output.status, output.stdout, output.stderr)))
+					}
+				} else {
+					Err(CmdError(CommandError::from_err(output.status, output.stdout, output.stderr)))
+				}
+			}
+
+			Err(e) => Err(Into::into(e)),
+		}
+	}
+}
+
+impl OutputResult for Output {
+	fn to_result(&self) -> process::Result<Vec<u8>> {
+		if self.status.success() && self.stderr.is_empty() {
+			Ok(self.stdout.to_owned())
+		} else {
+			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
+		}
+	}
+
+	fn try_to_result(&self) -> process::Result<Vec<u8>> {
+		warn!("status: {}", self.status);
+		warn!("signal: {:?}", self.status.signal());
+		warn!("code: {:?}", self.status.code());
+		warn!("success: {:?}", self.status.success());
+
+		if self.status.code().is_none() && self.stderr.is_empty() {
+			Ok(self.stdout.to_owned())
+		} else {
+			Err(CmdError(CommandError::from_err(self.status, self.stdout.to_owned(), self.stderr.to_owned())))
+		}
 	}
 }
 

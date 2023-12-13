@@ -7,62 +7,17 @@ use lazy_static::lazy_static;
 use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
-use strum_macros::{Display, IntoStaticStr};
 use tokio::sync::oneshot::Receiver;
 
-use crate::command::{CommandBuilder, ProcessResult, Result};
 use crate::errors::AdbError::Unknown;
 use crate::errors::{AdbError, CommandError};
 use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
-use crate::intent::Intent;
+use crate::process::{CommandBuilder, ProcessResult, Result};
 use crate::traits::AdbDevice;
-use crate::util::Vec8ToString;
-use crate::{Adb, SELinuxType, Shell};
-
-#[derive(IntoStaticStr, Display)]
-#[allow(non_camel_case_types)]
-pub enum DumpsysPriority {
-	CRITICAL,
-	HIGH,
-	NORMAL,
-}
-
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
-pub struct ScreenRecordOptions {
-	/// --bit-rate 4000000
-	/// Set the video bit rate, in bits per second. Value may be specified as bits or megabits, e.g. '4000000' is equivalent to '4M'.
-	/// Default 20Mbps.
-	pub bitrate: Option<u64>,
-
-	/// --time-limit=120 (in seconds)
-	/// Set the maximum recording time, in seconds. Default / maximum is 180
-	pub timelimit: Option<Duration>,
-
-	/// --rotate
-	/// Rotates the output 90 degrees. This feature is experimental.
-	pub rotate: Option<bool>,
-
-	/// --bugreport
-	/// Add additional information, such as a timestamp overlay, that is helpful in videos captured to illustrate bugs.
-	pub bug_report: Option<bool>,
-
-	/// --size 1280x720
-	/// Set the video size, e.g. "1280x720". Default is the device's main display resolution (if supported), 1280x720 if not.
-	/// For best results, use a size supported by the AVC encoder.
-	pub size: Option<(u16, u16)>,
-
-	/// --verbose
-	/// Display interesting information on stdout
-	pub verbose: bool,
-}
-
-#[derive(IntoStaticStr)]
-#[allow(non_camel_case_types)]
-pub enum SettingsType {
-	global,
-	system,
-	secure,
-}
+use crate::traits::Vec8ToString;
+use crate::types::SELinuxType;
+use crate::types::{DumpsysPriority, Intent, ScreenRecordOptions, SettingsType};
+use crate::{Adb, AdbShell, PackageManager, Shell};
 
 impl Shell {
 	pub async fn exec<'a, D, T>(adb: &Adb, device: D, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
@@ -656,7 +611,7 @@ impl Shell {
 	///
 	/// ```
 	/// use radb_client::Device;
-	/// use radb_client::types::AdbClient;
+	/// use radb_client::AdbClient;
 	///
 	/// async fn get_user() {
 	///     let client: AdbClient = "192.168.1.24:5555".parse::<Device>().unwrap().try_into().unwrap();
@@ -734,5 +689,192 @@ impl Shell {
 		};
 
 		Shell::exec(adb, device, vec!["setenforce", new_value], None).await.map(|_| ())
+	}
+}
+
+impl<'a> AdbShell<'a> {
+	pub fn pm(&self) -> PackageManager {
+		PackageManager { parent: self.clone() }
+	}
+
+	pub async fn whoami(&self) -> crate::process::Result<Option<String>> {
+		Shell::whoami(&self.parent.adb, &self.parent.device).await
+	}
+
+	pub async fn which(&self, command: &str) -> crate::process::Result<Option<String>> {
+		Shell::which(&self.parent.adb, &self.parent.device, command).await
+	}
+
+	pub async fn getprop(&self, key: &str) -> crate::process::Result<String> {
+		let value = Shell::getprop(&self.parent.adb, &self.parent.device, key).await?;
+		Arg::as_str(&value).map(|f| f.to_string()).map_err(|e| AdbError::Errno(e))
+	}
+
+	pub async fn setprop<T: Arg>(&self, key: &str, value: T) -> crate::process::Result<()> {
+		Shell::setprop(&self.parent.adb, &self.parent.device, key, value).await
+	}
+
+	pub async fn getprop_type(&self, key: &str) -> crate::process::Result<String> {
+		let result = Shell::getprop_type(&self.parent.adb, &self.parent.device, key).await?;
+		Ok(Arg::as_str(&result)?.to_string())
+	}
+
+	pub async fn cat<T: Arg>(&self, path: T) -> crate::process::Result<Vec<u8>> {
+		Shell::cat(&self.parent.adb, &self.parent.device, path).await
+	}
+
+	pub async fn getprops(&self) -> crate::process::Result<Vec<Property>> {
+		Shell::getprops(&self.parent.adb, &self.parent.device).await
+	}
+
+	pub async fn exists<T: Arg>(&self, path: T) -> crate::process::Result<bool> {
+		Shell::exists(&self.parent.adb, &self.parent.device, path).await
+	}
+
+	pub async fn rm<'s, S: Arg>(&self, path: S, options: Option<Vec<&str>>) -> crate::process::Result<bool> {
+		Shell::rm(&self.parent.adb, &self.parent.device, path, options).await
+	}
+
+	pub async fn is_file<T: Arg>(&self, path: T) -> crate::process::Result<bool> {
+		Shell::is_file(&self.parent.adb, &self.parent.device, path).await
+	}
+
+	pub async fn is_dir<T: Arg>(&self, path: T) -> crate::process::Result<bool> {
+		Shell::is_dir(&self.parent.adb, &self.parent.device, path).await
+	}
+
+	pub async fn is_symlink<T: Arg>(&self, path: T) -> crate::process::Result<bool> {
+		Shell::is_symlink(&self.parent.adb, &self.parent.device, path).await
+	}
+
+	///
+	/// List directory
+	pub async fn ls<'t, T>(&self, path: T, options: Option<&str>) -> crate::process::Result<Vec<String>>
+	where
+		T: Into<&'t str> + AsRef<OsStr> + Arg,
+	{
+		Shell::ls(&self.parent.adb, &self.parent.device, path, options).await
+	}
+
+	pub async fn save_screencap<'t, T: Into<&'t str> + AsRef<OsStr> + Arg>(&self, path: T) -> crate::process::Result<ProcessResult> {
+		Shell::save_screencap(&self.parent.adb, &self.parent.device, path).await
+	}
+
+	///
+	/// Root is required
+	///
+	pub async fn list_settings(&self, settings_type: SettingsType) -> crate::process::Result<Vec<Property>> {
+		Shell::list_settings(&self.parent.adb, &self.parent.device, settings_type).await
+	}
+
+	///
+	/// Root is required
+	pub async fn get_setting(&self, settings_type: SettingsType, key: &str) -> crate::process::Result<Option<String>> {
+		Shell::get_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
+	}
+
+	pub async fn put_setting(&self, settings_type: SettingsType, key: &str, value: &str) -> crate::process::Result<()> {
+		Shell::put_setting(&self.parent.adb, &self.parent.device, settings_type, key, value).await
+	}
+
+	pub async fn delete_setting(&self, settings_type: SettingsType, key: &str) -> crate::process::Result<()> {
+		Shell::delete_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
+	}
+
+	pub async fn dumpsys_list(&self, proto_only: bool, priority: Option<DumpsysPriority>) -> crate::process::Result<Vec<String>> {
+		Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority).await
+	}
+
+	pub async fn dumpsys(
+		&self,
+		service: Option<&str>,
+		arguments: Option<Vec<String>>,
+		timeout: Option<Duration>,
+		pid: bool,
+		thread: bool,
+		proto: bool,
+		skip: Option<Vec<String>>,
+	) -> crate::process::Result<ProcessResult> {
+		Shell::dumpsys(&self.parent.adb, &self.parent.device, service, arguments, timeout, pid, thread, proto, skip).await
+	}
+
+	pub async fn is_screen_on(&self) -> crate::process::Result<bool> {
+		Shell::is_screen_on(&self.parent.adb, &self.parent.device).await
+	}
+
+	pub async fn screen_record(&self, options: Option<ScreenRecordOptions>, output: &str, signal: Option<IntoFuture<Receiver<()>>>) -> crate::process::Result<ProcessResult> {
+		Shell::screen_record(&self.parent.adb, &self.parent.device, options, output, signal).await
+	}
+
+	pub async fn get_events(&self) -> crate::process::Result<Vec<(String, String)>> {
+		Shell::get_events(&self.parent.adb, &self.parent.device).await
+	}
+
+	///
+	/// Root may be required
+	pub async fn send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> crate::process::Result<()> {
+		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value).await
+	}
+
+	pub async fn send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> crate::process::Result<()> {
+		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos).await
+	}
+
+	pub async fn send_draganddrop(&self, source: Option<InputSource>, duration: Option<Duration>, from_pos: (i32, i32), to_pos: (i32, i32)) -> crate::process::Result<()> {
+		Shell::send_draganddrop(&self.parent.adb, &self.parent.device, source, duration, from_pos, to_pos).await
+	}
+
+	pub async fn send_press(&self, source: Option<InputSource>) -> crate::process::Result<()> {
+		Shell::send_press(&self.parent.adb, &self.parent.device, source).await
+	}
+
+	pub async fn send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::process::Result<()> {
+		Shell::send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes).await
+	}
+
+	pub async fn exec<T>(&self, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::process::Result<ProcessResult>
+	where
+		T: Into<String> + AsRef<OsStr>,
+	{
+		Shell::exec(&self.parent.adb, &self.parent.device, args, signal).await
+	}
+
+	pub async fn exec_timeout<T>(&self, args: Vec<T>, timeout: Option<Duration>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::process::Result<ProcessResult>
+	where
+		T: Into<String> + AsRef<OsStr>,
+	{
+		Shell::exec_timeout(&self.parent.adb, &self.parent.device, args, timeout, signal).await
+	}
+
+	pub async fn broadcast(&self, intent: &Intent) -> crate::process::Result<()> {
+		Shell::broadcast(&self.parent.adb, &self.parent.device, intent).await
+	}
+
+	pub async fn start(&self, intent: &Intent) -> crate::process::Result<()> {
+		Shell::start(&self.parent.adb, &self.parent.device, intent).await
+	}
+
+	pub async fn start_service(&self, intent: &Intent) -> crate::process::Result<()> {
+		Shell::start_service(&self.parent.adb, &self.parent.device, intent).await
+	}
+
+	pub async fn force_stop(&self, package_name: &str) -> crate::process::Result<()> {
+		Shell::force_stop(&self.parent.adb, &self.parent.device, package_name).await
+	}
+
+	pub async fn get_enforce(&self) -> crate::process::Result<SELinuxType> {
+		Shell::get_enforce(&self.parent.adb, &self.parent.device).await
+	}
+
+	pub async fn set_enforce(&self, enforce: SELinuxType) -> crate::process::Result<()> {
+		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce).await
+	}
+
+	pub async fn send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::process::Result<()> {
+		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source).await
+	}
+
+	pub async fn send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::process::Result<()> {
+		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source).await
 	}
 }

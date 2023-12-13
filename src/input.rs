@@ -348,12 +348,3 @@ pub enum KeyEventType {
 	LongPress,
 	DoubleTap,
 }
-
-impl From<KeyEventType> for &str {
-	fn from(value: KeyEventType) -> Self {
-		return match value {
-			KeyEventType::LongPress => "--longpress",
-			KeyEventType::DoubleTap => "--doubletap",
-		};
-	}
-}

@@ -2,35 +2,38 @@ use fmt::Debug;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::fs::File;
 use std::net::{AddrParseError, SocketAddr};
-use std::path::Path;
 use std::str::FromStr;
 use std::time::Duration;
 
+use crate::errors::AdbError::InvalidDeviceError;
+use crate::errors::{AdbError, ParseSELinuxTypeError};
+use crate::input::{KeyCode, KeyEventType};
+use crate::process::CommandBuilder;
+use crate::traits::Vec8ToString;
+use crate::traits::{AdbDevice, AsArgs};
+use crate::types::AddressType::Sock;
+use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
+use crate::types::{
+	AddressType, DeviceAddress, Extra, InstallLocationOption, InstallOptions, Intent, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, RebootType, SELinuxType,
+	ScreenRecordOptions, UninstallOptions,
+};
+use crate::{Adb, Device};
+use crate::{AdbClient, AdbShell};
 use async_trait::async_trait;
-use futures::future::IntoFuture;
 use lazy_static::lazy_static;
-use mac_address::MacAddress;
-use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
 use tokio::process::Command;
-use tokio::sync::oneshot::Receiver;
 
-use crate::am::ActivityManager;
-use crate::client::{LogcatLevel, LogcatOptions, LogcatTag, RebootType};
-use crate::command::{CommandBuilder, ProcessResult};
-use crate::errors::AdbError::InvalidDeviceError;
-use crate::errors::{AdbError, ParseSELinuxTypeError};
-use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
-use crate::intent::{Extra, Intent};
-use crate::pm::PackageManager;
-use crate::shell::{DumpsysPriority, ScreenRecordOptions, SettingsType};
-use crate::traits::{AdbDevice, AsArgs};
-use crate::types::{AdbClient, AdbShell};
-use crate::AddressType::Sock;
-use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
+impl Vec8ToString for Vec<u8> {
+	fn as_str(&self) -> Option<&str> {
+		match std::str::from_utf8(self) {
+			Ok(s) => Some(s),
+			Err(_) => None,
+		}
+	}
+}
 
 impl Extend<KeyCode> for Vec<&str> {
 	fn extend<T: IntoIterator<Item = KeyCode>>(&mut self, iter: T) {
@@ -244,6 +247,211 @@ impl AsRef<OsStr> for Adb {
 impl Default for Adb {
 	fn default() -> Self {
 		Adb::new().unwrap()
+	}
+}
+
+impl TryFrom<&str> for PackageFlags {
+	type Error = AdbError;
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value {
+			"SYSTEM" => Ok(System),
+			"HAS_CODE" => Ok(HasCode),
+			"ALLOW_CLEAR_USER_DATA" => Ok(AllowClearUserData),
+			"UPDATED_SYSTEM_APP" => Ok(UpdatedSystemApp),
+			"ALLOW_BACKUP" => Ok(AllowBackup),
+			_ => Err(AdbError::NameNotFoundError(value.to_string())),
+		}
+	}
+}
+
+impl Display for InstallLocationOption {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			InstallLocationOption::Auto => write!(f, "0"),
+			InstallLocationOption::InternalOnly => write!(f, "1"),
+			InstallLocationOption::PreferExternal => write!(f, "2"),
+		}
+	}
+}
+
+impl Default for InstallLocationOption {
+	fn default() -> Self {
+		InstallLocationOption::Auto
+	}
+}
+
+impl IntoIterator for InstallOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+		match self.user.as_ref() {
+			None => {}
+			Some(user) => args.push(format!("--user {:}", user)),
+		}
+
+		match self.package_name.as_ref() {
+			None => {}
+			Some(user) => args.push(format!("--pkg {:}", user)),
+		}
+
+		match self.install_location.as_ref() {
+			None => {}
+			Some(s) => args.push(format!("--install-location {:}", s)),
+		}
+
+		if self.dont_kill {
+			args.push("--dont-kill".to_string());
+		}
+
+		if self.restrict_permissions {
+			args.push("--restrict-permissions".to_string());
+		}
+
+		if self.grant_permissions {
+			args.push("-g".to_string());
+		}
+
+		if self.force {
+			args.push("-f".to_string());
+		}
+
+		if self.replace_existing_application {
+			args.push("-r".to_string());
+		}
+
+		if self.allow_version_downgrade {
+			args.push("-d".to_string());
+		}
+
+		args.into_iter()
+	}
+}
+
+impl Display for InstallOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let args = self.clone().into_iter().collect::<Vec<_>>();
+		write!(f, "{:}", args.join(" "))
+	}
+}
+
+impl IntoIterator for ListPackageDisplayOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args: Vec<String> = vec![];
+		if self.show_uid {
+			args.push("-U".into());
+		}
+
+		if self.show_version_code {
+			args.push("--show-versioncode".into());
+		}
+
+		if self.include_uninstalled {
+			args.push("-u".into());
+		}
+
+		if self.show_apk_file {
+			args.push("-f".into());
+		}
+		args.into_iter()
+	}
+}
+
+impl From<&UninstallOptions> for Vec<String> {
+	fn from(value: &UninstallOptions) -> Self {
+		let mut args: Vec<String> = vec![];
+		if value.keep_data {
+			args.push("-k".into());
+		}
+
+		match value.user.as_ref() {
+			None => {}
+			Some(s) => {
+				args.push("--user".into());
+				args.push(s.into());
+			}
+		}
+
+		match value.version_code.as_ref() {
+			None => {}
+			Some(s) => {
+				args.push("--versionCode".into());
+				args.push(format!("{:}", s));
+			}
+		}
+
+		args
+	}
+}
+
+impl Display for UninstallOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let args: Vec<String> = From::<&UninstallOptions>::from(self);
+		write!(f, "{:}", args.join(" "))
+	}
+}
+
+impl Display for ListPackageDisplayOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let args = self.clone().into_iter().collect::<Vec<_>>();
+		write!(f, "{:}", args.join(" "))
+	}
+}
+
+impl Default for ListPackageDisplayOptions {
+	fn default() -> Self {
+		ListPackageDisplayOptions {
+			show_uid: true,
+			show_version_code: true,
+			include_uninstalled: false,
+			show_apk_file: true,
+		}
+	}
+}
+
+impl IntoIterator for ListPackageFilter {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args: Vec<String> = vec![];
+		if self.show_only_disabled {
+			args.push("-d".into());
+		}
+		if self.show_only_enabed {
+			args.push("-e".into());
+		}
+		if self.show_only_system {
+			args.push("-s".into());
+		}
+		if self.show_only3rd_party {
+			args.push("-3".into());
+		}
+		if self.apex_only {
+			args.push("--apex-only".into());
+		}
+
+		match self.uid.as_ref() {
+			None => {}
+			Some(s) => args.push(format!("--uid {:}", s)),
+		}
+
+		match self.user.as_ref() {
+			None => {}
+			Some(s) => args.push(format!("--user {:}", s)),
+		}
+		args.into_iter()
+	}
+}
+
+impl Display for ListPackageFilter {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{:}", self.clone().into_iter().collect::<Vec<_>>().join(" "))
 	}
 }
 
@@ -545,352 +753,17 @@ impl TryFrom<Device> for AdbClient {
 	}
 }
 
-impl AdbClient {
-	pub fn try_from_device(device: Device) -> Result<AdbClient, AdbError> {
-		match Adb::new() {
-			Ok(adb) => Ok(AdbClient { adb, device }),
-			Err(err) => Err(err),
-		}
-	}
-
-	pub async fn is_connected(&self) -> bool {
-		Client::is_connected(&self.adb, &self.device).await
-	}
-
-	/// Try to connect to the inner device.
-	///
-	/// # Arguments
-	///
-	/// * `timeout`: optional timeout for connecting
-	///
-	/// returns: Result<(), Error>
-	///
-	/// # Examples
-	///
-	/// ```
-	/// use radb_client::Device;
-	/// use radb_client::types::AdbClient;
-	///
-	/// pub async fn connect() {
-	///  let device: Device = "192.168.1.24:5555".parse().unwrap();
-	///  let client: AdbClient = device.try_into().unwrap();
-	///  client.connect(None).await.unwrap();
-	/// }
-	/// ```
-	pub async fn connect(&self, timeout: Option<std::time::Duration>) -> Result<(), AdbError> {
-		Client::connect(&self.adb, &self.device, timeout).await
-	}
-
-	pub async fn disconnect(&self) -> crate::command::Result<bool> {
-		Client::disconnect(&self.adb, &self.device).await
-	}
-
-	pub async fn root(&self) -> crate::command::Result<bool> {
-		Client::root(&self.adb, &self.device).await
-	}
-
-	pub async fn unroot(&self) -> crate::command::Result<bool> {
-		Client::unroot(&self.adb, &self.device).await
-	}
-
-	pub async fn is_root(&self) -> crate::command::Result<bool> {
-		Client::is_root(&self.adb, &self.device).await
-	}
-
-	pub async fn remount(&self) -> crate::command::Result<()> {
-		Client::remount(&self.adb, &self.device).await
-	}
-
-	pub async fn mount<T: Arg>(&self, dir: T) -> crate::command::Result<()> {
-		Client::mount(&self.adb, &self.device, dir).await
-	}
-
-	pub async fn unmount<T: Arg>(&self, dir: T) -> crate::command::Result<()> {
-		Client::unmount(&self.adb, &self.device, dir).await
-	}
-
-	pub async fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::command::Result<ProcessResult> {
-		Client::bug_report(&self.adb, &self.device, output).await
-	}
-
-	///
-	/// Root is required
-	///
-	pub async fn disable_verity(&self) -> crate::command::Result<()> {
-		Client::disable_verity(&self.adb, &self.device).await
-	}
-
-	///
-	/// Root is required
-	///
-	pub async fn get_mac_address(&self) -> crate::command::Result<MacAddress> {
-		Client::get_mac_address(&self.adb, &self.device).await
-	}
-
-	///
-	/// Root is required
-	pub async fn get_wlan_address(&self) -> crate::command::Result<MacAddress> {
-		Client::get_wlan_address(&self.adb, &self.device).await
-	}
-
-	pub async fn pull<'s, S, D>(&self, src: S, dst: D) -> crate::command::Result<ProcessResult>
-	where
-		S: Into<&'s str> + AsRef<OsStr> + Arg,
-		D: AsRef<Path>,
-	{
-		Client::pull(&self.adb, &self.device, src, dst).await
-	}
-
-	pub async fn push<'d, S, D>(&self, src: S, dst: D) -> crate::command::Result<ProcessResult>
-	where
-		D: Into<&'d str> + AsRef<OsStr> + Arg,
-		S: AsRef<Path>,
-	{
-		Client::push(&self.adb, &self.device, src, dst).await
-	}
-
-	pub async fn clear_logcat(&self) -> crate::command::Result<()> {
-		Client::clear_logcat(&self.adb, &self.device).await
-	}
-
-	pub async fn logcat(&self, options: LogcatOptions, recv: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult> {
-		Client::logcat(&self.adb, &self.device, options, recv).await
-	}
-
-	pub async fn api_level(&self) -> crate::command::Result<u8> {
-		Client::api_level(&self.adb, &self.device).await
-	}
-
-	pub async fn version(&self) -> crate::command::Result<u8> {
-		Client::version(&self.adb, &self.device).await
-	}
-
-	pub async fn name(&self) -> crate::command::Result<Option<String>> {
-		Ok(Client::name(&self.adb, &self.device).await.ok())
-	}
-
-	pub async fn save_screencap(&self, output: File) -> crate::command::Result<()> {
-		Client::save_screencap(&self.adb, &self.device, output).await
-	}
-
-	pub async fn copy_screencap(&self) -> crate::command::Result<()> {
-		Client::copy_screencap(&self.adb, &self.device).await
-	}
-
-	pub async fn get_boot_id(&self) -> crate::command::Result<uuid::Uuid> {
-		Client::get_boot_id(&self.adb, &self.device).await
-	}
-
-	pub async fn reboot(&self, reboot_type: Option<RebootType>) -> crate::command::Result<()> {
-		Client::reboot(&self.adb, &self.device, reboot_type).await
-	}
-
-	pub async fn wait_for_device(&self, timeout: Option<Duration>) -> crate::command::Result<()> {
-		Client::wait_for_device(&self.adb, &self.device, timeout).await
-	}
-
-	pub fn shell(&self) -> AdbShell {
-		AdbShell { parent: self }
-	}
-
-	pub fn pm(&self) -> PackageManager {
-		PackageManager { parent: AdbShell { parent: self } }
-	}
-
-	pub fn am(&self) -> ActivityManager {
-		ActivityManager { parent: AdbShell { parent: self } }
-	}
-}
-
 impl<'a> Into<AdbShell<'a>> for &'a AdbClient {
 	fn into(self: &'a AdbClient) -> AdbShell<'a> {
 		self.shell()
 	}
 }
 
-impl<'a> AdbShell<'a> {
-	pub fn pm(&self) -> PackageManager {
-		PackageManager { parent: self.clone() }
-	}
-
-	pub async fn whoami(&self) -> crate::command::Result<Option<String>> {
-		Shell::whoami(&self.parent.adb, &self.parent.device).await
-	}
-
-	pub async fn which(&self, command: &str) -> crate::command::Result<Option<String>> {
-		Shell::which(&self.parent.adb, &self.parent.device, command).await
-	}
-
-	pub async fn getprop(&self, key: &str) -> crate::command::Result<String> {
-		let value = Shell::getprop(&self.parent.adb, &self.parent.device, key).await?;
-		Arg::as_str(&value).map(|f| f.to_string()).map_err(|e| AdbError::Errno(e))
-	}
-
-	pub async fn setprop<T: Arg>(&self, key: &str, value: T) -> crate::command::Result<()> {
-		Shell::setprop(&self.parent.adb, &self.parent.device, key, value).await
-	}
-
-	pub async fn getprop_type(&self, key: &str) -> crate::command::Result<String> {
-		let result = Shell::getprop_type(&self.parent.adb, &self.parent.device, key).await?;
-		Ok(Arg::as_str(&result)?.to_string())
-	}
-
-	pub async fn cat<T: Arg>(&self, path: T) -> crate::command::Result<Vec<u8>> {
-		Shell::cat(&self.parent.adb, &self.parent.device, path).await
-	}
-
-	pub async fn getprops(&self) -> crate::command::Result<Vec<Property>> {
-		Shell::getprops(&self.parent.adb, &self.parent.device).await
-	}
-
-	pub async fn exists<T: Arg>(&self, path: T) -> crate::command::Result<bool> {
-		Shell::exists(&self.parent.adb, &self.parent.device, path).await
-	}
-
-	pub async fn rm<'s, S: Arg>(&self, path: S, options: Option<Vec<&str>>) -> crate::command::Result<bool> {
-		Shell::rm(&self.parent.adb, &self.parent.device, path, options).await
-	}
-
-	pub async fn is_file<T: Arg>(&self, path: T) -> crate::command::Result<bool> {
-		Shell::is_file(&self.parent.adb, &self.parent.device, path).await
-	}
-
-	pub async fn is_dir<T: Arg>(&self, path: T) -> crate::command::Result<bool> {
-		Shell::is_dir(&self.parent.adb, &self.parent.device, path).await
-	}
-
-	pub async fn is_symlink<T: Arg>(&self, path: T) -> crate::command::Result<bool> {
-		Shell::is_symlink(&self.parent.adb, &self.parent.device, path).await
-	}
-
-	///
-	/// List directory
-	pub async fn ls<'t, T>(&self, path: T, options: Option<&str>) -> crate::command::Result<Vec<String>>
-	where
-		T: Into<&'t str> + AsRef<OsStr> + Arg,
-	{
-		Shell::ls(&self.parent.adb, &self.parent.device, path, options).await
-	}
-
-	pub async fn save_screencap<'t, T: Into<&'t str> + AsRef<OsStr> + Arg>(&self, path: T) -> crate::command::Result<ProcessResult> {
-		Shell::save_screencap(&self.parent.adb, &self.parent.device, path).await
-	}
-
-	///
-	/// Root is required
-	///
-	pub async fn list_settings(&self, settings_type: SettingsType) -> crate::command::Result<Vec<Property>> {
-		Shell::list_settings(&self.parent.adb, &self.parent.device, settings_type).await
-	}
-
-	///
-	/// Root is required
-	pub async fn get_setting(&self, settings_type: SettingsType, key: &str) -> crate::command::Result<Option<String>> {
-		Shell::get_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
-	}
-
-	pub async fn put_setting(&self, settings_type: SettingsType, key: &str, value: &str) -> crate::command::Result<()> {
-		Shell::put_setting(&self.parent.adb, &self.parent.device, settings_type, key, value).await
-	}
-
-	pub async fn delete_setting(&self, settings_type: SettingsType, key: &str) -> crate::command::Result<()> {
-		Shell::delete_setting(&self.parent.adb, &self.parent.device, settings_type, key).await
-	}
-
-	pub async fn dumpsys_list(&self, proto_only: bool, priority: Option<DumpsysPriority>) -> crate::command::Result<Vec<String>> {
-		Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority).await
-	}
-
-	pub async fn dumpsys(
-		&self,
-		service: Option<&str>,
-		arguments: Option<Vec<String>>,
-		timeout: Option<Duration>,
-		pid: bool,
-		thread: bool,
-		proto: bool,
-		skip: Option<Vec<String>>,
-	) -> crate::command::Result<ProcessResult> {
-		Shell::dumpsys(&self.parent.adb, &self.parent.device, service, arguments, timeout, pid, thread, proto, skip).await
-	}
-
-	pub async fn is_screen_on(&self) -> crate::command::Result<bool> {
-		Shell::is_screen_on(&self.parent.adb, &self.parent.device).await
-	}
-
-	pub async fn screen_record(&self, options: Option<ScreenRecordOptions>, output: &str, signal: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult> {
-		Shell::screen_record(&self.parent.adb, &self.parent.device, options, output, signal).await
-	}
-
-	pub async fn get_events(&self) -> crate::command::Result<Vec<(String, String)>> {
-		Shell::get_events(&self.parent.adb, &self.parent.device).await
-	}
-
-	///
-	/// Root may be required
-	pub async fn send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> crate::command::Result<()> {
-		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value).await
-	}
-
-	pub async fn send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> crate::command::Result<()> {
-		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos).await
-	}
-
-	pub async fn send_draganddrop(&self, source: Option<InputSource>, duration: Option<Duration>, from_pos: (i32, i32), to_pos: (i32, i32)) -> crate::command::Result<()> {
-		Shell::send_draganddrop(&self.parent.adb, &self.parent.device, source, duration, from_pos, to_pos).await
-	}
-
-	pub async fn send_press(&self, source: Option<InputSource>) -> crate::command::Result<()> {
-		Shell::send_press(&self.parent.adb, &self.parent.device, source).await
-	}
-
-	pub async fn send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::command::Result<()> {
-		Shell::send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes).await
-	}
-
-	pub async fn exec<T>(&self, args: Vec<T>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult>
-	where
-		T: Into<String> + AsRef<OsStr>,
-	{
-		Shell::exec(&self.parent.adb, &self.parent.device, args, signal).await
-	}
-
-	pub async fn exec_timeout<T>(&self, args: Vec<T>, timeout: Option<Duration>, signal: Option<IntoFuture<Receiver<()>>>) -> crate::command::Result<ProcessResult>
-	where
-		T: Into<String> + AsRef<OsStr>,
-	{
-		Shell::exec_timeout(&self.parent.adb, &self.parent.device, args, timeout, signal).await
-	}
-
-	pub async fn broadcast(&self, intent: &Intent) -> crate::command::Result<()> {
-		Shell::broadcast(&self.parent.adb, &self.parent.device, intent).await
-	}
-
-	pub async fn start(&self, intent: &Intent) -> crate::command::Result<()> {
-		Shell::start(&self.parent.adb, &self.parent.device, intent).await
-	}
-
-	pub async fn start_service(&self, intent: &Intent) -> crate::command::Result<()> {
-		Shell::start_service(&self.parent.adb, &self.parent.device, intent).await
-	}
-
-	pub async fn force_stop(&self, package_name: &str) -> crate::command::Result<()> {
-		Shell::force_stop(&self.parent.adb, &self.parent.device, package_name).await
-	}
-
-	pub async fn get_enforce(&self) -> crate::command::Result<SELinuxType> {
-		Shell::get_enforce(&self.parent.adb, &self.parent.device).await
-	}
-
-	pub async fn set_enforce(&self, enforce: SELinuxType) -> crate::command::Result<()> {
-		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce).await
-	}
-
-	pub async fn send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::command::Result<()> {
-		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source).await
-	}
-
-	pub async fn send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::command::Result<()> {
-		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source).await
+impl From<KeyEventType> for &str {
+	fn from(value: KeyEventType) -> Self {
+		return match value {
+			KeyEventType::LongPress => "--longpress",
+			KeyEventType::DoubleTap => "--doubletap",
+		};
 	}
 }
