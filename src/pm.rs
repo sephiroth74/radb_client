@@ -8,7 +8,7 @@ use crate::command::ProcessResult;
 use crate::dump_util::{extract_runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;
 use crate::pm::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
-use crate::traits::AsArgs;
+
 use crate::types::AdbShell;
 
 #[macro_export]
@@ -157,8 +157,11 @@ impl Default for InstallLocationOption {
 	}
 }
 
-impl AsArgs<String> for InstallOptions {
-	fn as_args(&self) -> Vec<String> {
+impl IntoIterator for InstallOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
 		let mut args = vec![];
 		match self.user.as_ref() {
 			None => {}
@@ -199,18 +202,22 @@ impl AsArgs<String> for InstallOptions {
 			args.push("-d".to_string());
 		}
 
-		args
+		args.into_iter()
 	}
 }
 
 impl Display for InstallOptions {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:}", self.as_args().join(" "))
+		let args = self.clone().into_iter().collect::<Vec<_>>();
+		write!(f, "{:}", args.join(" "))
 	}
 }
 
-impl AsArgs<String> for ListPackageDisplayOptions {
-	fn as_args(&self) -> Vec<String> {
+impl IntoIterator for ListPackageDisplayOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
 		let mut args: Vec<String> = vec![];
 		if self.show_uid {
 			args.push("-U".into());
@@ -227,7 +234,7 @@ impl AsArgs<String> for ListPackageDisplayOptions {
 		if self.show_apk_file {
 			args.push("-f".into());
 		}
-		args
+		args.into_iter()
 	}
 }
 
@@ -267,7 +274,8 @@ impl Display for UninstallOptions {
 
 impl Display for ListPackageDisplayOptions {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:}", self.as_args().join(" "))
+		let args = self.clone().into_iter().collect::<Vec<_>>();
+		write!(f, "{:}", args.join(" "))
 	}
 }
 
@@ -282,8 +290,11 @@ impl Default for ListPackageDisplayOptions {
 	}
 }
 
-impl AsArgs<String> for ListPackageFilter {
-	fn as_args(&self) -> Vec<String> {
+impl IntoIterator for ListPackageFilter {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
 		let mut args: Vec<String> = vec![];
 		if self.show_only_disabled {
 			args.push("-d".into());
@@ -310,13 +321,13 @@ impl AsArgs<String> for ListPackageFilter {
 			None => {}
 			Some(s) => args.push(format!("--user {:}", s)),
 		}
-		args
+		args.into_iter()
 	}
 }
 
 impl Display for ListPackageFilter {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		write!(f, "{:}", self.as_args().join(" "))
+		write!(f, "{:}", self.clone().into_iter().collect::<Vec<_>>().join(" "))
 	}
 }
 
@@ -335,7 +346,7 @@ impl<'a> PackageManager<'a> {
 		let mut args = vec!["cmd package install".to_string()];
 		match options {
 			None => {}
-			Some(options) => args.extend(options.as_args()),
+			Some(options) => args.extend(options),
 		}
 		args.push(src.as_str()?.into());
 		self.parent.exec(args, None).await
@@ -460,15 +471,15 @@ impl<'a> PackageManager<'a> {
 		let mut args = vec!["pm".into(), "list".into(), "packages".into()];
 
 		match filters {
-			Some(filters) => args.extend(filters.as_args()),
+			Some(filters) => args.extend(filters),
 			None => {}
 		}
 
 		match display {
 			None => {
-				args.extend(ListPackageDisplayOptions::default().as_args());
+				args.extend(ListPackageDisplayOptions::default());
 			}
-			Some(d) => args.extend(d.as_args()),
+			Some(d) => args.extend(d),
 		}
 
 		if let Some(name) = name_filter {

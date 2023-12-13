@@ -32,6 +32,14 @@ use crate::types::{AdbClient, AdbShell};
 use crate::AddressType::Sock;
 use crate::{Adb, AddressType, Client, Device, DeviceAddress, SELinuxType, Shell};
 
+impl Extend<KeyCode> for Vec<&str> {
+	fn extend<T: IntoIterator<Item = KeyCode>>(&mut self, iter: T) {
+		for element in iter {
+			self.push(element.into());
+		}
+	}
+}
+
 impl DeviceAddress {
 	pub fn address_type(&self) -> &AddressType {
 		&self.0
@@ -263,11 +271,14 @@ impl Default for ScreenRecordOptions {
 	}
 }
 
-impl AsArgs<String> for ScreenRecordOptions {
-	fn as_args(&self) -> Vec<String> {
+impl IntoIterator for ScreenRecordOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
 		let mut args: Vec<String> = vec![];
 		if let Some(bitrate) = self.bitrate {
-			args.push(String::from("--bit-rate"));
+			args.push("--bit-rate".to_string());
 			args.push(format!("{:}", bitrate));
 		}
 
@@ -292,7 +303,7 @@ impl AsArgs<String> for ScreenRecordOptions {
 			args.push(String::from("--size"));
 			args.push(format!("{:}x{:}", size.0, size.1));
 		}
-		args
+		args.into_iter()
 	}
 }
 
@@ -531,17 +542,6 @@ impl TryFrom<Device> for AdbClient {
 
 	fn try_from(value: Device) -> Result<Self, Self::Error> {
 		AdbClient::try_from_device(value)
-	}
-}
-
-impl AsArgs<String> for Vec<KeyCode> {
-	fn as_args(&self) -> Vec<String> {
-		self.iter()
-			.map(|f| {
-				let s: &str = f.into();
-				s.to_string()
-			})
-			.collect()
 	}
 }
 

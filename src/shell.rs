@@ -15,7 +15,7 @@ use crate::errors::AdbError::Unknown;
 use crate::errors::{AdbError, CommandError};
 use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
 use crate::intent::Intent;
-use crate::traits::{AdbDevice, AsArgs};
+use crate::traits::AdbDevice;
 use crate::util::Vec8ToString;
 use crate::{Adb, SELinuxType, Shell};
 
@@ -233,7 +233,7 @@ impl Shell {
 		let mut args = vec![String::from("screenrecord")];
 
 		if let Some(options) = options {
-			args.extend(options.as_args());
+			args.extend(options);
 		}
 
 		args.push(output.to_string());
