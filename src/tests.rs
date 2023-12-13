@@ -26,14 +26,13 @@ mod tests {
 
 	use crate::debug::CommandDebug;
 	use crate::dump_util::SimplePackageReader;
-	use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
 	use crate::process::CommandBuilder;
 	use crate::scanner::Scanner;
 	use crate::traits::AdbDevice;
 	use crate::traits::Vec8ToString;
 	use crate::types::{
-		DumpsysPriority, InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatOptions, LogcatTag, PackageFlags, SELinuxType, ScreenRecordOptions,
-		SettingsType, UninstallOptions,
+		DumpsysPriority, InputSource, InstallLocationOption, InstallOptions, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatOptions, LogcatTag, MotionEvent,
+		PackageFlags, SELinuxType, ScreenRecordOptions, SettingsType, UninstallOptions,
 	};
 	use crate::{intent, Adb, AdbClient, Client, Device, PackageManager};
 

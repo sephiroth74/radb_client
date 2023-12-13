@@ -1,20 +1,22 @@
-use crate::debug::CommandDebug;
-use crate::errors::AdbError::CmdError;
-use crate::errors::CommandError;
-use crate::process::{CommandBuilder, OutputResult, ProcessResult};
-use crate::traits::AdbDevice;
-use crate::{process, Adb};
-use futures::future::IntoFuture;
-use log::{trace, warn};
 use std::cell::RefCell;
 use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
 use std::os::unix::prelude::ExitStatusExt;
 use std::process::{Output, Stdio};
 use std::time::Duration;
+
+use futures::future::IntoFuture;
+use log::{trace, warn};
 use tokio::process::{Child, ChildStdout, Command};
 use tokio::signal::unix::SignalKind;
 use tokio::sync::oneshot::Receiver;
+
+use crate::debug::CommandDebug;
+use crate::errors::AdbError::CmdError;
+use crate::errors::CommandError;
+use crate::process::{CommandBuilder, OutputResult, ProcessResult};
+use crate::traits::AdbDevice;
+use crate::{process, Adb, AdbClient};
 
 impl From<&Adb> for CommandBuilder {
 	fn from(adb: &Adb) -> Self {
@@ -26,6 +28,12 @@ impl From<&Adb> for CommandBuilder {
 impl Display for CommandBuilder {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(f, "{:?}", self.command.borrow())
+	}
+}
+
+impl From<AdbClient> for CommandBuilder {
+	fn from(value: AdbClient) -> Self {
+		CommandBuilder::shell(&value.adb, &value.device)
 	}
 }
 

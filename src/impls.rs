@@ -8,15 +8,14 @@ use std::time::Duration;
 
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
-use crate::input::{KeyCode, KeyEventType};
-use crate::process::CommandBuilder;
+
 use crate::traits::Vec8ToString;
 use crate::traits::{AdbDevice, AsArgs};
 use crate::types::AddressType::Sock;
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
-	AddressType, DeviceAddress, Extra, InstallLocationOption, InstallOptions, Intent, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, RebootType, SELinuxType,
-	ScreenRecordOptions, UninstallOptions,
+	AddressType, DeviceAddress, Extra, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags,
+	RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
@@ -26,22 +25,29 @@ use regex::Regex;
 use rustix::path::Arg;
 use tokio::process::Command;
 
-impl Vec8ToString for Vec<u8> {
-	fn as_str(&self) -> Option<&str> {
-		match std::str::from_utf8(self) {
-			Ok(s) => Some(s),
-			Err(_) => None,
-		}
+// region Adb
+
+impl AsRef<OsStr> for Adb {
+	fn as_ref(&self) -> &OsStr {
+		self.0.as_os_str()
 	}
 }
 
-impl Extend<KeyCode> for Vec<&str> {
-	fn extend<T: IntoIterator<Item = KeyCode>>(&mut self, iter: T) {
-		for element in iter {
-			self.push(element.into());
-		}
+impl Default for Adb {
+	fn default() -> Self {
+		Adb::new().unwrap()
 	}
 }
+
+impl<'a> From<&'a Adb> for &'a OsStr {
+	fn from(value: &'a Adb) -> Self {
+		value.0.as_os_str()
+	}
+}
+
+// endregion Adb
+
+// region DeviceAddress
 
 impl DeviceAddress {
 	pub fn address_type(&self) -> &AddressType {
@@ -100,6 +106,9 @@ impl Debug for DeviceAddress {
 	}
 }
 
+// endregion DeviceAddress
+
+// region Device
 impl Device {
 	pub fn try_from_address(value: &DeviceAddress) -> Result<Device, AdbError> {
 		match value.address_type() {
@@ -178,9 +187,11 @@ impl Display for Device {
 	}
 }
 
-impl Debug for Device {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		write!(f, "Device{{address={:?}}}", self.0)
+impl TryFrom<&dyn AdbDevice> for Device {
+	type Error = AdbError;
+
+	fn try_from(value: &dyn AdbDevice) -> Result<Self, Self::Error> {
+		Device::try_from_address(value.addr())
 	}
 }
 
@@ -195,11 +206,21 @@ impl AdbDevice for Device {
 	}
 }
 
+impl Debug for Device {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		write!(f, "Device{{address={:?}}}", self.0)
+	}
+}
+
 impl<'a> From<&'a Device> for &'a dyn AdbDevice {
 	fn from(value: &'a Device) -> Self {
 		value
 	}
 }
+
+// endregion Device
+
+// region RebootType
 
 impl RebootType {
 	pub(crate) fn value(&self) -> String {
@@ -211,6 +232,52 @@ impl RebootType {
 		})
 	}
 }
+
+// endregion RebootType
+
+// region SELinuxType
+
+impl SELinuxType {
+	pub fn to_string(&self) -> String {
+		format!("{:}", self)
+	}
+}
+
+impl Display for SELinuxType {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			SELinuxType::Enforcing => write!(f, "Enforcing"),
+			SELinuxType::Permissive => write!(f, "Permissive"),
+		}
+	}
+}
+
+impl TryFrom<Vec<u8>> for SELinuxType {
+	type Error = ParseSELinuxTypeError;
+
+	fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+		let opt_string = Arg::as_str(&value)?;
+		opt_string.try_into()
+	}
+}
+
+impl TryFrom<&str> for SELinuxType {
+	type Error = ParseSELinuxTypeError;
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value.trim() {
+			"Enforcing" => Ok(SELinuxType::Enforcing),
+			"Permissive" => Ok(SELinuxType::Permissive),
+			o => Err(ParseSELinuxTypeError {
+				msg: Some(format!("invalid value: {:}", o)),
+			}),
+		}
+	}
+}
+
+// endregion SELinuxType
+
+// region LogcatLevel
 
 impl Display for LogcatLevel {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -224,31 +291,19 @@ impl Display for LogcatLevel {
 	}
 }
 
+// endregion LogcatLevel
+
+// region LogcatTag
+
 impl Display for LogcatTag {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		write!(f, "{}:{}", self.name, self.level)
 	}
 }
 
-impl TryFrom<&dyn AdbDevice> for Device {
-	type Error = AdbError;
+// endregion LogcatTag
 
-	fn try_from(value: &dyn AdbDevice) -> Result<Self, Self::Error> {
-		Device::try_from_address(value.addr())
-	}
-}
-
-impl AsRef<OsStr> for Adb {
-	fn as_ref(&self) -> &OsStr {
-		self.0.as_os_str()
-	}
-}
-
-impl Default for Adb {
-	fn default() -> Self {
-		Adb::new().unwrap()
-	}
-}
+// region PackageFlags
 
 impl TryFrom<&str> for PackageFlags {
 	type Error = AdbError;
@@ -265,6 +320,22 @@ impl TryFrom<&str> for PackageFlags {
 	}
 }
 
+// endregion PackageFlags
+
+// region KeyCode
+
+impl Extend<KeyCode> for Vec<&str> {
+	fn extend<T: IntoIterator<Item = KeyCode>>(&mut self, iter: T) {
+		for element in iter {
+			self.push(element.into());
+		}
+	}
+}
+
+// endregion KeyCode
+
+// region InstallLocationOption
+
 impl Display for InstallLocationOption {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
@@ -280,6 +351,10 @@ impl Default for InstallLocationOption {
 		InstallLocationOption::Auto
 	}
 }
+
+// endregion InstallLocationOption
+
+// region InstallOptions
 
 impl IntoIterator for InstallOptions {
 	type Item = String;
@@ -337,6 +412,9 @@ impl Display for InstallOptions {
 	}
 }
 
+// endregion InstallOptions
+
+// region ListPackageDisplayOptions
 impl IntoIterator for ListPackageDisplayOptions {
 	type Item = String;
 	type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -361,6 +439,10 @@ impl IntoIterator for ListPackageDisplayOptions {
 		args.into_iter()
 	}
 }
+
+// endregion ListPackageDisplayOptions
+
+// region UninstallOptions
 
 impl From<&UninstallOptions> for Vec<String> {
 	fn from(value: &UninstallOptions) -> Self {
@@ -396,6 +478,10 @@ impl Display for UninstallOptions {
 	}
 }
 
+// endregion UninstallOptions
+
+// region ListPackageDisplayOptions
+
 impl Display for ListPackageDisplayOptions {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		let args = self.clone().into_iter().collect::<Vec<_>>();
@@ -413,6 +499,10 @@ impl Default for ListPackageDisplayOptions {
 		}
 	}
 }
+
+// endregion ListPackageDisplayOptions
+
+// region ListPackageFilter
 
 impl IntoIterator for ListPackageFilter {
 	type Item = String;
@@ -455,23 +545,18 @@ impl Display for ListPackageFilter {
 	}
 }
 
+// endregion ListPackageFilter
+
+// region Command
 impl From<Adb> for Command {
 	fn from(value: Adb) -> Self {
 		Command::new(value.0.as_os_str())
 	}
 }
 
-impl From<AdbClient> for CommandBuilder {
-	fn from(value: AdbClient) -> Self {
-		CommandBuilder::shell(&value.adb, &value.device)
-	}
-}
+// endregion Command
 
-impl<'a> From<&'a Adb> for &'a OsStr {
-	fn from(value: &'a Adb) -> Self {
-		value.0.as_os_str()
-	}
-}
+// region ScreenRecordOptions
 
 impl Default for ScreenRecordOptions {
 	fn default() -> Self {
@@ -528,6 +613,10 @@ impl ScreenRecordOptions {
 	}
 }
 
+// endregion ScreenRecordOptions
+
+// region Intent
+
 impl Intent {
 	pub fn new() -> Intent {
 		Intent::default()
@@ -536,39 +625,6 @@ impl Intent {
 		let mut intent = Intent::new();
 		intent.action = Some(action.to_string());
 		intent
-	}
-}
-
-impl<'a> AsArgs<&'a str> for Vec<&'a str> {
-	fn as_args(&self) -> Vec<&'a str> {
-		self.clone()
-	}
-}
-
-impl Extra {
-	pub fn put_string_extra(&mut self, name: &str, value: &str) -> &mut Self {
-		self.es.insert(name.to_string(), value.to_string());
-		self
-	}
-
-	pub fn put_bool_extra(&mut self, name: &str, value: bool) -> &mut Self {
-		self.ez.insert(name.to_string(), value);
-		self
-	}
-
-	pub fn put_int_extra(&mut self, name: &str, value: i32) -> &mut Self {
-		self.ei.insert(name.to_string(), value);
-		self
-	}
-
-	pub fn put_long_extra(&mut self, name: &str, value: i64) -> &mut Self {
-		self.el.insert(name.to_string(), value);
-		self
-	}
-
-	pub fn put_string_array_extra(&mut self, name: &str, value: Vec<String>) -> &mut Self {
-		self.esa.insert(name.to_string(), value);
-		self
 	}
 }
 
@@ -615,6 +671,37 @@ impl Display for Intent {
 		args.push(format!("{:}", self.extra));
 
 		write!(f, "{:}", args.join(" "))
+	}
+}
+
+// endregion Intent
+
+// region Extra
+
+impl Extra {
+	pub fn put_string_extra(&mut self, name: &str, value: &str) -> &mut Self {
+		self.es.insert(name.to_string(), value.to_string());
+		self
+	}
+
+	pub fn put_bool_extra(&mut self, name: &str, value: bool) -> &mut Self {
+		self.ez.insert(name.to_string(), value);
+		self
+	}
+
+	pub fn put_int_extra(&mut self, name: &str, value: i32) -> &mut Self {
+		self.ei.insert(name.to_string(), value);
+		self
+	}
+
+	pub fn put_long_extra(&mut self, name: &str, value: i64) -> &mut Self {
+		self.el.insert(name.to_string(), value);
+		self
+	}
+
+	pub fn put_string_array_extra(&mut self, name: &str, value: Vec<String>) -> &mut Self {
+		self.esa.insert(name.to_string(), value);
+		self
 	}
 }
 
@@ -707,43 +794,9 @@ impl Display for Extra {
 	}
 }
 
-impl Display for SELinuxType {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		match self {
-			SELinuxType::Enforcing => write!(f, "Enforcing"),
-			SELinuxType::Permissive => write!(f, "Permissive"),
-		}
-	}
-}
+// endregion Extra
 
-impl SELinuxType {
-	pub fn to_string(&self) -> String {
-		format!("{:}", self)
-	}
-}
-
-impl TryFrom<Vec<u8>> for SELinuxType {
-	type Error = ParseSELinuxTypeError;
-
-	fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
-		let opt_string = Arg::as_str(&value)?;
-		opt_string.try_into()
-	}
-}
-
-impl TryFrom<&str> for SELinuxType {
-	type Error = ParseSELinuxTypeError;
-
-	fn try_from(value: &str) -> Result<Self, Self::Error> {
-		match value.trim() {
-			"Enforcing" => Ok(SELinuxType::Enforcing),
-			"Permissive" => Ok(SELinuxType::Permissive),
-			o => Err(ParseSELinuxTypeError {
-				msg: Some(format!("invalid value: {:}", o)),
-			}),
-		}
-	}
-}
+// region AdbClient
 
 impl TryFrom<Device> for AdbClient {
 	type Error = AdbError;
@@ -759,11 +812,32 @@ impl<'a> Into<AdbShell<'a>> for &'a AdbClient {
 	}
 }
 
+// endregion AdbClient
+
+// region KeyEventType
+
 impl From<KeyEventType> for &str {
 	fn from(value: KeyEventType) -> Self {
 		return match value {
 			KeyEventType::LongPress => "--longpress",
 			KeyEventType::DoubleTap => "--doubletap",
 		};
+	}
+}
+
+// endregion KeyEventType
+
+impl Vec8ToString for Vec<u8> {
+	fn as_str(&self) -> Option<&str> {
+		match std::str::from_utf8(self) {
+			Ok(s) => Some(s),
+			Err(_) => None,
+		}
+	}
+}
+
+impl<'a> AsArgs<&'a str> for Vec<&'a str> {
+	fn as_args(&self) -> Vec<&'a str> {
+		self.clone()
 	}
 }

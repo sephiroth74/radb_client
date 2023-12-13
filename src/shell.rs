@@ -11,12 +11,11 @@ use tokio::sync::oneshot::Receiver;
 
 use crate::errors::AdbError::Unknown;
 use crate::errors::{AdbError, CommandError};
-use crate::input::{InputSource, KeyCode, KeyEventType, MotionEvent};
 use crate::process::{CommandBuilder, ProcessResult, Result};
 use crate::traits::AdbDevice;
 use crate::traits::Vec8ToString;
-use crate::types::SELinuxType;
 use crate::types::{DumpsysPriority, Intent, ScreenRecordOptions, SettingsType};
+use crate::types::{InputSource, KeyCode, KeyEventType, MotionEvent, SELinuxType};
 use crate::{Adb, AdbShell, PackageManager, Shell};
 
 impl Shell {

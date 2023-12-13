@@ -45,8 +45,6 @@ pub mod debug;
 
 pub mod future;
 
-pub mod input;
-
 pub mod macros;
 
 pub mod shell;
