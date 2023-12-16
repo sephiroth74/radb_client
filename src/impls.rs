@@ -6,9 +6,14 @@ use std::net::{AddrParseError, SocketAddr};
 use std::str::FromStr;
 use std::time::Duration;
 
+use async_trait::async_trait;
+use lazy_static::lazy_static;
+use regex::Regex;
+use rustix::path::Arg;
+use tokio::process::Command;
+
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
-
 use crate::traits::Vec8ToString;
 use crate::traits::{AdbDevice, AsArgs};
 use crate::types::AddressType::Sock;
@@ -19,11 +24,6 @@ use crate::types::{
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
-use async_trait::async_trait;
-use lazy_static::lazy_static;
-use regex::Regex;
-use rustix::path::Arg;
-use tokio::process::Command;
 
 // region Adb
 
@@ -69,11 +69,11 @@ impl DeviceAddress {
 		}
 	}
 
-	pub fn from_serial(input: &str) -> Result<DeviceAddress, AdbError> {
+	pub fn from_serial(input: &str) -> Result<DeviceAddress, AddrParseError> {
 		Ok(DeviceAddress(AddressType::Name(input.to_string())))
 	}
 
-	pub fn from_transport_id(id: u8) -> Result<DeviceAddress, AdbError> {
+	pub fn from_transport_id(id: u8) -> Result<DeviceAddress, AddrParseError> {
 		Ok(DeviceAddress(AddressType::Transport(id)))
 	}
 
@@ -110,7 +110,7 @@ impl Debug for DeviceAddress {
 
 // region Device
 impl Device {
-	pub fn try_from_address(value: &DeviceAddress) -> Result<Device, AdbError> {
+	pub fn try_from_address(value: &DeviceAddress) -> Result<Device, AddrParseError> {
 		match value.address_type() {
 			AddressType::Sock(addr) => Device::try_from_sock_addr(addr),
 			AddressType::Name(name) => Device::try_from_serial(name),
@@ -122,15 +122,15 @@ impl Device {
 		DeviceAddress::from_ip(input).map(|address| Device(address))
 	}
 
-	pub fn try_from_sock_addr(input: &SocketAddr) -> Result<Device, AdbError> {
+	pub fn try_from_sock_addr(input: &SocketAddr) -> Result<Device, AddrParseError> {
 		Ok(Device(DeviceAddress(AddressType::Sock(input.clone()))))
 	}
 
-	pub fn try_from_serial(input: &str) -> Result<Device, AdbError> {
+	pub fn try_from_serial(input: &str) -> Result<Device, AddrParseError> {
 		DeviceAddress::from_serial(input).map(|address| Device(address))
 	}
 
-	pub fn try_from_transport_id(id: u8) -> Result<Device, AdbError> {
+	pub fn try_from_transport_id(id: u8) -> Result<Device, AddrParseError> {
 		DeviceAddress::from_transport_id(id).map(|address| Device(address))
 	}
 
@@ -176,7 +176,7 @@ impl FromStr for Device {
 		let addr: Result<SocketAddr, AddrParseError> = s.parse();
 		match addr {
 			Ok(a) => Ok(Self(DeviceAddress(Sock(a)))),
-			Err(e) => Err(e),
+			Err(e) => Device::try_from_ip(s).or(Device::try_from_serial(s)).or(Err(e)),
 		}
 	}
 }
@@ -188,7 +188,7 @@ impl Display for Device {
 }
 
 impl TryFrom<&dyn AdbDevice> for Device {
-	type Error = AdbError;
+	type Error = AddrParseError;
 
 	fn try_from(value: &dyn AdbDevice) -> Result<Self, Self::Error> {
 		Device::try_from_address(value.addr())

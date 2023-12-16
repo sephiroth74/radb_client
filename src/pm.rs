@@ -1,6 +1,7 @@
 use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 use rustix::path::Arg;
+use std::fmt::{Display, Formatter};
 
 use crate::dump_util::{extract_runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;
@@ -24,6 +25,26 @@ pub struct Package {
 	pub file_name: Option<String>,
 	pub version_code: Option<i32>,
 	pub uid: Option<i32>,
+}
+
+impl Display for Package {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.package_name).unwrap();
+
+		if let Some(version_code) = self.version_code {
+			write!(f, " version:{}", version_code).unwrap();
+		}
+
+		if let Some(uid) = self.uid {
+			write!(f, " uid:{}", uid).unwrap();
+		}
+
+		if let Some(file_name) = &self.file_name {
+			write!(f, " file_name:{}", file_name).unwrap();
+		}
+
+		Ok(())
+	}
 }
 
 impl<'a> PackageManager<'a> {

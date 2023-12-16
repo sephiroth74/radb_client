@@ -40,7 +40,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.101:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.128:5555"));
 
 	macro_rules! client {
 		() => {
@@ -94,6 +94,14 @@ mod tests {
 				simple_logger::SimpleLogger::new().env().init().unwrap();
 			})
 		};
+	}
+
+	#[tokio::test]
+	async fn test_parse() {
+		init_log!();
+		let device: Device = "192.168.1.128".parse().unwrap();
+		let client: AdbClient = device.try_into().unwrap();
+		debug!("client: {:?}", client);
 	}
 
 	#[tokio::test]
@@ -1235,22 +1243,7 @@ mod tests {
 		assert_client_root!(client);
 
 		let pm: PackageManager = client.pm();
-		let result = pm
-			.list_packages(
-				Some(ListPackageFilter {
-					show_only_disabled: false,
-					show_only_enabed: false,
-					show_only_system: true,
-					show_only3rd_party: false,
-					apex_only: false,
-					uid: None,
-					user: None,
-				}),
-				Some(ListPackageDisplayOptions::default()),
-				Some("google"),
-			)
-			.await
-			.unwrap();
+		let result = pm.list_packages(None, None, None).await.unwrap();
 
 		trace!("result: {:#?}", result);
 		assert!(result.len() > 0);

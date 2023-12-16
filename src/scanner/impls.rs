@@ -7,22 +7,26 @@ use futures::future::join_all;
 
 use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
-use crate::{Adb, Client};
+use crate::{Adb, AdbClient, Client, Device};
 
 #[cfg(feature = "scanner")]
 impl Display for ClientResult {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		let mut strings = vec![format!("addr={:}", self.addr)];
+		let mut strings = vec![];
+
 		if let Some(n) = self.name.as_ref() {
-			strings.push(format!("name={}", n));
+			strings.push(format!("name:{}", n));
 		}
+
 		if let Some(n) = self.mac.as_ref() {
-			strings.push(format!("mac={}", n));
+			strings.push(format!("mac:{}", n));
 		}
+
 		if let Some(n) = self.version.as_ref() {
-			strings.push(format!("version={}", n));
+			strings.push(format!("version:{}", n));
 		}
-		write!(f, "ClientResult({:})", strings.join(", "))
+
+		write!(f, "{:}	{:}", self.addr, strings.join(" "))
 	}
 }
 
@@ -57,6 +61,28 @@ impl ClientResult {
 			name: None,
 			mac: None,
 			version: None,
+		}
+	}
+}
+
+impl TryInto<AdbClient> for ClientResult {
+	type Error = AdbError;
+
+	fn try_into(self) -> Result<AdbClient, Self::Error> {
+		match Device::try_from_sock_addr(&self.addr) {
+			Ok(device) => AdbClient::try_from_device(device),
+			Err(err) => Err(AdbError::AddrParseError(err)),
+		}
+	}
+}
+
+impl TryFrom<&ClientResult> for AdbClient {
+	type Error = AdbError;
+
+	fn try_from(value: &ClientResult) -> Result<Self, Self::Error> {
+		match Device::try_from_sock_addr(&value.addr) {
+			Ok(device) => AdbClient::try_from_device(device),
+			Err(err) => Err(AdbError::AddrParseError(err)),
 		}
 	}
 }
