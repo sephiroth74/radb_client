@@ -2,17 +2,17 @@ use std::ffi::OsStr;
 use std::io::BufRead;
 use std::path::Path;
 
+use cmd::Cmd;
 use lazy_static::lazy_static;
 use regex::Regex;
 use which::which;
 
 use crate::errors::AdbError;
 use crate::errors::AdbError::WhichError;
-use crate::process::CommandBuilder;
 use crate::traits::AdbDevice;
 
-use super::Adb;
 use super::Device;
+use super::{Adb, AdbClient};
 
 impl Adb {
 	pub fn new() -> Result<Adb, AdbError> {
@@ -21,11 +21,11 @@ impl Adb {
 	}
 
 	pub async fn root(&self) -> Result<(), AdbError> {
-		CommandBuilder::new(self.0.as_path()).args(["root"]).output().await.map(|_| ())
+		Cmd::builder(self.0.as_path()).args(["root"]).build().output().map_err(|e| e.into()).map(|_| ())
 	}
 
-	pub async fn unroot(&self) -> Result<(), AdbError> {
-		CommandBuilder::new(self.0.as_path()).args(["unroot"]).output().await.map(|_| ())
+	pub fn unroot(&self) -> Result<(), AdbError> {
+		Cmd::builder(self.0.as_path()).args(["unroot"]).build().output().map_err(|e| e.into()).map(|_| ())
 	}
 
 	pub fn from(path: &Path) -> Result<Adb, AdbError> {
@@ -40,8 +40,8 @@ impl Adb {
 	}
 
 	/// List connected devices
-	pub async fn devices(&self) -> Result<Vec<Box<dyn AdbDevice>>, AdbError> {
-		let output = CommandBuilder::new(self.0.as_path()).args(["devices", "-l"]).output().await?;
+	pub fn devices(&self) -> Result<Vec<Box<dyn AdbDevice>>, AdbError> {
+		let output = Cmd::builder(self.0.as_path()).args(["devices", "-l"]).build().output()?;
 
 		lazy_static! {
 			static ref RE: Regex = Regex::new(
@@ -51,8 +51,7 @@ impl Adb {
 		}
 
 		let mut devices: Vec<Box<dyn AdbDevice>> = vec![];
-		let stdout = output.stdout();
-		for line in stdout.lines() {
+		for line in output.stdout.lines() {
 			let line_str = line?;
 
 			if RE.is_match(line_str.as_str()) {
@@ -76,5 +75,10 @@ impl Adb {
 	pub fn device(&self, input: &str) -> Result<Box<dyn AdbDevice>, AdbError> {
 		let d = Device::try_from_serial(input)?;
 		Ok(Box::new(d))
+	}
+
+	pub fn client(&self, input: &str) -> Result<AdbClient, AdbError> {
+		let d = Device::try_from_serial(input)?;
+		Ok(AdbClient::try_from_device(d)?)
 	}
 }

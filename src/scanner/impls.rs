@@ -7,15 +7,26 @@ use futures::future::join_all;
 
 use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
-use crate::{Adb, AdbClient, Client, Device};
+use crate::{Adb, AdbClient, Device};
+
+static TCP_TIMEOUT_MS: u64 = 400;
 
 #[cfg(feature = "scanner")]
 impl Display for ClientResult {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		//192.168.1.29:5555      device product:SwisscomBox23 model:IP2300 device:IP2300 transport_id:5
 		let mut strings = vec![];
 
-		if let Some(n) = self.name.as_ref() {
-			strings.push(format!("name:{}", n));
+		if let Some(n) = self.product.as_ref() {
+			strings.push(format!("product:{}", n));
+		}
+
+		if let Some(n) = self.model.as_ref() {
+			strings.push(format!("model:{}", n));
+		}
+
+		if let Some(n) = self.device.as_ref() {
+			strings.push(format!("device:{}", n));
 		}
 
 		if let Some(n) = self.mac.as_ref() {
@@ -26,7 +37,7 @@ impl Display for ClientResult {
 			strings.push(format!("version:{}", n));
 		}
 
-		write!(f, "{:}	{:}", self.addr, strings.join(" "))
+		write!(f, "{:}	device {:}", self.addr, strings.join(" "))
 	}
 }
 
@@ -58,9 +69,11 @@ impl ClientResult {
 	pub fn new(addr: SocketAddr) -> ClientResult {
 		ClientResult {
 			addr,
-			name: None,
+			product: None,
+			model: None,
 			mac: None,
 			version: None,
+			device: None,
 		}
 	}
 }
@@ -89,21 +102,31 @@ impl TryFrom<&ClientResult> for AdbClient {
 
 #[cfg(feature = "scanner")]
 async fn connect(adb: Arc<Adb>, host: String) -> Option<ClientResult> {
-	if let Ok(response) = tokio::time::timeout(Duration::from_millis(200), tokio::net::TcpStream::connect(host.as_str())).await {
+	if let Ok(response) = tokio::time::timeout(Duration::from_millis(TCP_TIMEOUT_MS), tokio::net::TcpStream::connect(host.as_str())).await {
 		if let Ok(stream) = response {
 			if let Ok(addr) = stream.peer_addr() {
-				let device = adb.device(host.as_str()).unwrap();
-				if Client::connect(&adb, device.as_ref(), Some(Duration::from_millis(400))).await.is_ok() {
-					let client_name = Client::name(&adb, device.as_ref()).await;
-					let client_mac = Client::get_mac_address(&adb, device.as_ref()).await;
-					let version = Client::api_level(&adb, device.as_ref()).await;
-					let _ = Client::disconnect(&adb, device.as_ref()).await;
+				//let device = adb.device(host.as_str()).unwrap();
+				let client = adb.client(host.as_str()).unwrap();
+				if client.connect(Some(Duration::from_millis(400))).is_ok() {
+					let shell = client.shell();
+
+					//let product_name = shell.getprop("ro.product.name").await;
+					let model_name = shell.getprop("ro.product.vendor.model");
+					let device_name = shell.getprop("ro.product.vendor.device");
+					let stb_name = shell.getprop("persist.sys.stb.name");
+					let sdk_version = shell.getprop("ro.build.version.sdk");
+					let client_mac = client.get_mac_address();
+					let _ = client.disconnect();
+
+					//192.168.1.29:5555      device product:SwisscomBox23 model:IP2300 device:IP2300 transport_id:5
 
 					Some(ClientResult {
 						addr,
-						name: client_name.ok(),
-						mac: client_mac.map_or(None, |m| Some(m)),
-						version: version.map_or(None, |m| Some(m)),
+						product: stb_name.ok(),
+						model: model_name.ok(),
+						device: device_name.ok(),
+						mac: client_mac.ok(),
+						version: sdk_version.ok(),
 					})
 				} else {
 					Some(ClientResult::new(addr))

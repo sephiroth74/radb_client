@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
+
 use strum_macros::{Display, IntoStaticStr};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -216,7 +217,7 @@ pub struct InstallOptions {
 	pub allow_version_downgrade: bool,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, IntoStaticStr)]
 pub enum PackageFlags {
 	System,
 	HasCode,
@@ -559,4 +560,13 @@ pub enum KeyCode {
 pub enum KeyEventType {
 	LongPress,
 	DoubleTap,
+}
+
+#[derive(Debug, IntoStaticStr)]
+pub enum PropType {
+	String,
+	Bool,
+	Int,
+	Enum(Vec<String>),
+	Unknown(String),
 }

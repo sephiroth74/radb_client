@@ -56,9 +56,9 @@ macro_rules! init_logger {
 
 #[macro_export]
 macro_rules! intent {
-	($action:expr) => {
+	($action:expr) => {{
 		crate::types::Intent::from_action($action)
-	};
+	}};
 }
 
 #[macro_export(local_inner_macros)]

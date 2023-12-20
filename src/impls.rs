@@ -14,16 +14,19 @@ use tokio::process::Command;
 
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
-use crate::traits::Vec8ToString;
 use crate::traits::{AdbDevice, AsArgs};
 use crate::types::AddressType::Sock;
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
 	AddressType, DeviceAddress, Extra, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags,
-	RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
+	PropType, RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
+
+lazy_static! {
+	static ref RE_PROP_TYPE_ENUM: Regex = Regex::new("^enum\\s((?:[\\w_]+\\s?)+)$").unwrap();
+}
 
 // region Adb
 
@@ -82,6 +85,16 @@ impl DeviceAddress {
 		match addr {
 			Ok(addr) => Ok(DeviceAddress(AddressType::Sock(addr))),
 			Err(err) => Err(err),
+		}
+	}
+}
+
+impl AsArgs<String> for DeviceAddress {
+	fn as_args(&self) -> Vec<String> {
+		match &self.0 {
+			AddressType::Sock(addr) => vec!["-s".to_string(), addr.to_string()],
+			AddressType::Name(name) => vec!["-s".to_string(), name.as_str().to_string()],
+			AddressType::Transport(id) => vec!["-t".to_string(), id.to_string()],
 		}
 	}
 }
@@ -827,17 +840,34 @@ impl From<KeyEventType> for &str {
 
 // endregion KeyEventType
 
-impl Vec8ToString for Vec<u8> {
-	fn as_str(&self) -> Option<&str> {
-		match std::str::from_utf8(self) {
-			Ok(s) => Some(s),
-			Err(_) => None,
-		}
-	}
-}
-
 impl<'a> AsArgs<&'a str> for Vec<&'a str> {
 	fn as_args(&self) -> Vec<&'a str> {
 		self.clone()
 	}
 }
+
+// region PropType
+
+impl From<&str> for PropType {
+	fn from(value: &str) -> Self {
+		return match value {
+			"string" => PropType::String,
+			"bool" => PropType::Bool,
+			"int" => PropType::Int,
+			_ => {
+				if let Some(captures) = RE_PROP_TYPE_ENUM.captures(value) {
+					return if captures.len() == 2 {
+						let strings = captures.get(1).unwrap().as_str();
+						let s = strings.split(' ').map(|s| s.to_string()).collect::<Vec<String>>();
+						PropType::Enum(s)
+					} else {
+						PropType::Unknown(value.to_string())
+					};
+				}
+				return PropType::Unknown(value.to_string());
+			}
+		};
+	}
+}
+
+// endregion PropType

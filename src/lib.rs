@@ -1,7 +1,10 @@
 use std::fmt::Debug;
 use std::path::PathBuf;
 
+use crate::errors::AdbError;
 use crate::types::DeviceAddress;
+
+pub type Result<T> = std::result::Result<T, AdbError>;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -41,8 +44,6 @@ pub mod adb;
 
 pub mod client;
 
-pub mod debug;
-
 pub mod future;
 
 pub mod macros;
@@ -61,11 +62,11 @@ pub mod errors;
 
 pub mod pm;
 
-mod process;
-
 #[cfg(feature = "scanner")]
 pub mod scanner;
 
 pub mod impls;
 
+mod cmd_ext;
+mod debug;
 mod tests;

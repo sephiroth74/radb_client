@@ -10,7 +10,3 @@ pub trait AdbDevice: Display + Debug + Send + Sync {
 pub trait AsArgs<T>: Send + Sync {
 	fn as_args(&self) -> Vec<T>;
 }
-
-pub trait Vec8ToString {
-	fn as_str(&self) -> Option<&str>;
-}

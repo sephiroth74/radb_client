@@ -3,23 +3,24 @@ use std::env::temp_dir;
 use std::ffi::OsStr;
 use std::fs::File;
 use std::path::Path;
-use std::process::Stdio;
+use std::process::{Output, Stdio};
+use std::result;
+use std::thread::sleep;
 use std::time::Duration;
 
 use arboard::ImageData;
-use futures::future::IntoFuture;
+use cmd::debug::CommandDebug;
+use cmd::output_ext::OutputExt;
+use cmd::CommandBuilder;
+use crossbeam::channel::Receiver;
 use log::trace;
 use mac_address::MacAddress;
 use rustix::path::Arg;
-use std::result;
-use tokio::process::Command;
-use tokio::sync::oneshot::Receiver;
 use uuid::Uuid;
 
-use crate::debug::CommandDebug;
+use crate::cmd_ext::CommandBuilderExt;
 use crate::errors::AdbError;
 use crate::errors::AdbError::InvalidDeviceAddressError;
-use crate::process::{CommandBuilder, ProcessResult, Result};
 use crate::traits::AdbDevice;
 use crate::types::{LogcatOptions, RebootType};
 use crate::{ActivityManager, AdbClient, AdbShell, Client, Device, PackageManager};
@@ -27,48 +28,56 @@ use crate::{Adb, Shell};
 
 #[allow(dead_code)]
 impl Client {
-	pub async fn logcat<'d, D>(adb: &Adb, device: D, options: LogcatOptions, recv: Option<IntoFuture<Receiver<()>>>) -> Result<ProcessResult>
+	pub fn logcat<'d, D>(adb: &Adb, device: D, options: LogcatOptions, cancel: Option<Receiver<()>>) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let mut command = CommandBuilder::device(adb, device);
+		let mut command = CommandBuilder::adb(adb).device(device);
 
-		command.arg("logcat");
+		command.with_arg("logcat");
 
 		if let Some(expr) = options.expr {
-			command.args(["-e", expr.as_str()]);
+			command.with_args(["-e", expr.as_str()]);
 		}
 
 		if options.dump {
-			command.arg("-d");
+			command.with_arg("-d");
 		}
 
 		if let Some(filename) = options.filename {
-			command.args(["-f", filename.as_str()]);
+			command.with_args(["-f", filename.as_str()]);
 		}
 
 		if let Some(format) = options.format {
-			command.args(["-v", format.as_str()]);
+			command.with_args(["-v", format.as_str()]);
 		}
 
 		if let Some(pid) = options.pid {
-			command.args(["--pid", format!("{}", pid).as_str()]);
+			command.with_args(["--pid", format!("{}", pid).as_str()]);
 		}
 
 		if let Some(since) = options.since {
-			command.args(["-T", since.format("%m-%d %H:%M:%S.%3f").to_string().as_str()]);
+			command.with_args(["-T", since.format("%m-%d %H:%M:%S.%3f").to_string().as_str()]);
 		}
 
 		if let Some(tags) = options.tags {
 			if !tags.is_empty() {
 				for tag in tags {
-					command.arg(format!("{:}", tag).as_str());
+					command.with_arg(format!("{:}", tag).as_str());
 				}
-				command.arg("*:S");
+				command.with_arg("*:S");
 			}
 		}
 
-		command.with_timeout(options.timeout).with_signal(recv).output().await
+		if let Some(timeout) = options.timeout {
+			command.with_timeout(timeout);
+		}
+
+		if let Some(signal) = cancel {
+			command.with_signal(signal);
+		}
+
+		command.build().output().map_err(|e| e.into())
 	}
 
 	/// Retrieve the device name
@@ -88,67 +97,69 @@ impl Client {
 	/// let device = adb.device("192.168.1.24:5555");
 	/// let name = Client::name(&adb, &device).unwrap();
 	/// ```
-	pub async fn name<'d, D>(adb: &Adb, device: D) -> Result<String>
+	pub fn name<'d, D>(adb: &Adb, device: D) -> crate::Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::getprop(adb, device, "ro.build.product").await
+		Shell::getprop(adb, device, "ro.build.product")
 	}
 
-	pub async fn api_level<'d, D>(adb: &Adb, device: D) -> Result<u8>
+	pub fn api_level<'d, D>(adb: &Adb, device: D) -> crate::Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let result = Shell::getprop(adb, device, "ro.build.version.sdk").await?;
+		Shell::getprop(adb, device, "ro.build.version.sdk")
+	}
+
+	pub fn version<'d, D>(adb: &Adb, device: D) -> crate::Result<u8>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let result = Shell::getprop(adb, device, "ro.build.version.release")?;
 		result.parse::<u8>().map_err(From::from)
 	}
 
-	pub async fn version<'d, D>(adb: &Adb, device: D) -> Result<u8>
-	where
-		D: Into<&'d dyn AdbDevice>,
-	{
-		let result = Shell::getprop(adb, device, "ro.build.version.release").await?;
-		result.parse::<u8>().map_err(From::from)
-	}
-
-	pub async fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> Result<ProcessResult>
+	pub fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		S: Into<&'s str> + AsRef<OsStr> + Arg,
 		T: AsRef<Path>,
 	{
-		CommandBuilder::device(adb, device).arg("pull").arg(src.as_ref()).arg(dst.as_ref()).output().await
+		let mut command = CommandBuilder::adb(adb).device(device);
+		command = command.arg("pull").arg(src.as_ref()).arg(dst.as_ref());
+		command.build().output().map_err(|e| e.into())
 	}
 
-	pub async fn push<'d, 't, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> Result<ProcessResult>
+	pub fn push<'d, 't, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		S: AsRef<Path>,
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
 	{
-		CommandBuilder::device(adb, device).arg("push").arg(src.as_ref()).arg(dst.as_ref()).output().await
+		let mut command = CommandBuilder::adb(adb).device(device);
+		command = command.arg("push").arg(src.as_ref()).arg(dst.as_ref());
+		command.build().output().map_err(|e| e.into())
 	}
 
-	pub async fn save_screencap<'d, D>(adb: &Adb, device: D, output: File) -> Result<()>
+	pub fn save_screencap<'d, D>(adb: &Adb, device: D, output: File) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let args = vec!["exec-out", "screencap", "-p"];
 		let pipe_out = Stdio::from(output);
-		let output = Command::new(adb.as_os_str())
+		let output = std::process::Command::new(adb.as_os_str())
 			.args(device.into().args())
 			.args(args)
 			.stdout(pipe_out)
 			.stderr(Stdio::piped())
 			.debug()
-			.status()
-			.await?;
+			.output()?;
 
-		trace!("output: {:}", output);
+		trace!("output: {:?}", output);
 		Ok(())
 	}
 
-	pub async fn copy_screencap<'d, D>(adb: &Adb, device: D) -> Result<()>
+	pub fn copy_screencap<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -158,7 +169,7 @@ impl Client {
 
 		let path = dir.as_path().to_owned();
 		let _file = File::create(path.as_path())?;
-		Client::save_screencap(adb, device, _file).await?;
+		Client::save_screencap(adb, device, _file)?;
 
 		let img = image::open(path.as_path())?;
 		let width = img.width();
@@ -175,134 +186,145 @@ impl Client {
 		Ok(())
 	}
 
-	pub async fn wait_for_device<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> Result<()>
+	pub fn wait_for_device<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		CommandBuilder::device(adb, device)
+		CommandBuilder::adb(adb)
+			.device(device)
 			.args(["wait-for-device", "shell", "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 143"])
-			.with_timeout(timeout)
-			.output()
-			.await?;
+			.timeout(timeout)
+			.build()
+			.output()?;
 		Ok(())
 	}
 
-	pub async fn is_root<'a, T>(adb: &Adb, device: T) -> Result<bool>
+	pub fn is_root<'a, T>(adb: &Adb, device: T) -> crate::Result<bool>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		Shell::is_root(adb, device.into()).await
+		Shell::is_root(adb, device.into())
 	}
 
 	/// Attempt to run adb as root
-	pub async fn root<'a, T>(adb: &Adb, device: T) -> Result<bool>
+	pub fn root<'a, T>(adb: &Adb, device: T) -> crate::Result<bool>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
 		let d = device.into();
 
-		if Shell::is_root(adb, d).await? {
+		if Shell::is_root(adb, d)? {
 			return Ok(true);
 		}
-		CommandBuilder::device(adb, d).arg("root").output().await?;
-		tokio::time::sleep(Duration::from_secs(1)).await;
+		CommandBuilder::adb(adb).device(d).arg("root").build().output()?;
+		sleep(Duration::from_secs(1));
 		Ok(true)
 	}
 
-	pub async fn unroot<'d, D>(adb: &Adb, device: D) -> Result<bool>
+	pub fn unroot<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		CommandBuilder::device(adb, device).arg("unroot").output().await?;
+		CommandBuilder::adb(adb).device(device).arg("unroot").build().output()?;
 		Ok(true)
 	}
 
-	pub async fn is_connected<'d, D>(adb: &Adb, device: D) -> bool
+	pub fn is_connected<'d, D>(adb: &Adb, device: D) -> bool
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = CommandBuilder::device(adb, device).arg("get-state").output().await;
-		output.is_ok()
+		let mut command = CommandBuilder::adb(adb).device(device);
+		command = command.arg("get-state").timeout(Some(Duration::from_millis(200)));
+		let output = command.build().output();
+
+		return if let Ok(output) = output { output.success() } else { false };
 	}
 
-	pub async fn connect<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> Result<()>
+	pub fn connect<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let d = device.into();
 
-		if Client::is_connected(adb, d).await {
+		if Client::is_connected(adb, d) {
 			return Ok(());
 		}
 
 		let serial = d.addr().serial().ok_or(InvalidDeviceAddressError("Host[:Port] required".to_string()))?;
 
-		CommandBuilder::new(adb.as_os_str()).with_timeout(timeout).args(["connect", serial.as_str()]).output().await?;
+		let mut command = CommandBuilder::new(adb.as_os_str());
 
-		match Client::is_connected(adb, d).await {
+		if let Some(timeout) = timeout {
+			command.with_timeout(timeout);
+		}
+
+		command.args(["connect", serial.as_str()]).build().output()?;
+
+		match Client::is_connected(adb, d) {
 			true => Ok(()),
 			false => Err(AdbError::ConnectToDeviceError()),
 		}
 	}
 
-	pub async fn disconnect<'d, D>(adb: &Adb, device: D) -> Result<bool>
+	pub fn disconnect<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let serial = device.into().addr().serial().expect("Host[:Port] required");
-		CommandBuilder::new(adb.as_os_str()).args(["disconnect", serial.as_str()]).output().await?;
+		CommandBuilder::new(adb.as_os_str()).args(["disconnect", serial.as_str()]).build().output()?;
 		Ok(true)
 	}
 
-	pub async fn disconnect_all(adb: &Adb) -> Result<bool> {
-		CommandBuilder::new(adb.0.as_path()).args(["disconnect"]).output().await?;
+	pub fn disconnect_all(adb: &Adb) -> crate::Result<bool> {
+		CommandBuilder::new(adb.0.as_path()).args(["disconnect"]).build().output()?;
 		Ok(true)
 	}
 
-	pub async fn reboot<'d, D>(adb: &Adb, device: D, reboot_type: Option<RebootType>) -> Result<()>
+	pub fn reboot<'d, D>(adb: &Adb, device: D, reboot_type: Option<RebootType>) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let mut args: Vec<&str> = vec!["reboot"];
 		let s = reboot_type.map(|f| f.value()).unwrap_or_default();
 		args.push(s.as_str());
-		let _output = CommandBuilder::device(adb, device).args(args).output().await?;
+
+		CommandBuilder::adb(adb).device(device).args(args).build().output()?;
 		Ok(())
 	}
 
-	pub async fn remount<'a, T>(adb: &Adb, device: T) -> Result<()>
+	pub fn remount<'a, T>(adb: &Adb, device: T) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		CommandBuilder::device(adb, device.into()).arg("remount").output().await?;
+		CommandBuilder::adb(adb).device(device).arg("remount").build().output()?;
 		Ok(())
 	}
 
-	pub async fn disable_verity<'a, T>(adb: &Adb, device: T) -> Result<()>
+	pub fn disable_verity<'a, T>(adb: &Adb, device: T) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		CommandBuilder::device(adb, device.into()).arg("disable-verity").output().await?;
+		CommandBuilder::adb(adb).device(device.into()).arg("disable-verity").build().output()?;
 		Ok(())
 	}
 
-	pub async fn mount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> Result<()>
+	pub fn mount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["mount -o rw,remount", dir.as_str()?], None).await?;
+		Shell::exec(adb, device, vec!["mount -o rw,remount", dir.as_str()?], None, None)?;
 		Ok(())
 	}
 
-	pub async fn unmount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> Result<()>
+	pub fn unmount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["mount -o ro,remount", dir.as_str()?], None).await?;
+		Shell::exec(adb, device, vec!["mount -o ro,remount", dir.as_str()?], None, None)?;
 		Ok(())
 	}
 
-	pub async fn bug_report<'d, D, T: Arg>(adb: &Adb, device: D, output: Option<T>) -> Result<ProcessResult>
+	pub fn bug_report<'d, D, T: Arg>(adb: &Adb, device: D, output: Option<T>) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -310,42 +332,42 @@ impl Client {
 			Some(s) => vec!["bugreport", s.as_str()?],
 			None => vec!["bugreport"],
 		};
-		CommandBuilder::device(adb, device).args(args).output().await
+		CommandBuilder::adb(adb).device(device).args(args).build().output().map_err(|e| e.into())
 	}
 
-	pub async fn clear_logcat<'d, D>(adb: &Adb, device: D) -> Result<()>
+	pub fn clear_logcat<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		CommandBuilder::device(adb, device).args(["logcat", "-b", "all", "-c"]).output().await?;
+		CommandBuilder::adb(adb).device(device).args(["logcat", "-b", "all", "-c"]).build().output()?;
 		Ok(())
 	}
 
-	pub async fn get_mac_address<'d, D>(adb: &Adb, device: D) -> Result<MacAddress>
+	pub fn get_mac_address<'d, D>(adb: &Adb, device: D) -> crate::Result<MacAddress>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::cat(adb, device, "/sys/class/net/eth0/address").await?;
+		let output = Shell::cat(adb, device, "/sys/class/net/eth0/address")?;
 		let mac_address_str = Arg::as_str(&output)?.trim_end();
 		let mac_address = MacAddress::try_from(mac_address_str)?;
 		Ok(mac_address)
 	}
 
-	pub async fn get_wlan_address<'d, D>(adb: &Adb, device: D) -> Result<MacAddress>
+	pub fn get_wlan_address<'d, D>(adb: &Adb, device: D) -> crate::Result<MacAddress>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::cat(adb, device, "/sys/class/net/wlan0/address").await?;
+		let output = Shell::cat(adb, device, "/sys/class/net/wlan0/address")?;
 		let mac_address_str = Arg::as_str(&output)?.trim_end();
 		let mac_address = MacAddress::try_from(mac_address_str)?;
 		Ok(mac_address)
 	}
 
-	pub async fn get_boot_id<'d, D>(adb: &Adb, device: D) -> Result<Uuid>
+	pub fn get_boot_id<'d, D>(adb: &Adb, device: D) -> crate::Result<Uuid>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::cat(adb, device, "/proc/sys/kernel/random/boot_id").await?;
+		let output = Shell::cat(adb, device, "/proc/sys/kernel/random/boot_id")?;
 		let output_str = Arg::as_str(&output)?.trim();
 		let boot_id = output_str.try_into()?;
 		Ok(boot_id)
@@ -360,8 +382,8 @@ impl AdbClient {
 		}
 	}
 
-	pub async fn is_connected(&self) -> bool {
-		Client::is_connected(&self.adb, &self.device).await
+	pub fn is_connected(&self) -> bool {
+		Client::is_connected(&self.adb, &self.device)
 	}
 
 	/// Try to connect to the inner device.
@@ -378,122 +400,122 @@ impl AdbClient {
 	/// use radb_client::Device;
 	/// use radb_client::AdbClient;
 	///
-	/// pub async fn connect() {
+	/// pub fn connect() {
 	///  let device: Device = "192.168.1.24:5555".parse().unwrap();
 	///  let client: AdbClient = device.try_into().unwrap();
 	///  client.connect(None).await.unwrap();
 	/// }
 	/// ```
-	pub async fn connect(&self, timeout: Option<std::time::Duration>) -> result::Result<(), AdbError> {
-		Client::connect(&self.adb, &self.device, timeout).await
+	pub fn connect(&self, timeout: Option<Duration>) -> Result<(), AdbError> {
+		Client::connect(&self.adb, &self.device, timeout)
 	}
 
-	pub async fn disconnect(&self) -> crate::process::Result<bool> {
-		Client::disconnect(&self.adb, &self.device).await
+	pub fn disconnect(&self) -> crate::Result<bool> {
+		Client::disconnect(&self.adb, &self.device)
 	}
 
-	pub async fn root(&self) -> crate::process::Result<bool> {
-		Client::root(&self.adb, &self.device).await
+	pub fn root(&self) -> crate::Result<bool> {
+		Client::root(&self.adb, &self.device)
 	}
 
-	pub async fn unroot(&self) -> crate::process::Result<bool> {
-		Client::unroot(&self.adb, &self.device).await
+	pub fn unroot(&self) -> crate::Result<bool> {
+		Client::unroot(&self.adb, &self.device)
 	}
 
-	pub async fn is_root(&self) -> crate::process::Result<bool> {
-		Client::is_root(&self.adb, &self.device).await
+	pub fn is_root(&self) -> crate::Result<bool> {
+		Client::is_root(&self.adb, &self.device)
 	}
 
-	pub async fn remount(&self) -> crate::process::Result<()> {
-		Client::remount(&self.adb, &self.device).await
+	pub fn remount(&self) -> crate::Result<()> {
+		Client::remount(&self.adb, &self.device)
 	}
 
-	pub async fn mount<T: Arg>(&self, dir: T) -> crate::process::Result<()> {
-		Client::mount(&self.adb, &self.device, dir).await
+	pub fn mount<T: Arg>(&self, dir: T) -> crate::Result<()> {
+		Client::mount(&self.adb, &self.device, dir)
 	}
 
-	pub async fn unmount<T: Arg>(&self, dir: T) -> crate::process::Result<()> {
-		Client::unmount(&self.adb, &self.device, dir).await
+	pub fn unmount<T: Arg>(&self, dir: T) -> crate::Result<()> {
+		Client::unmount(&self.adb, &self.device, dir)
 	}
 
-	pub async fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::process::Result<ProcessResult> {
-		Client::bug_report(&self.adb, &self.device, output).await
-	}
-
-	///
-	/// Root is required
-	///
-	pub async fn disable_verity(&self) -> crate::process::Result<()> {
-		Client::disable_verity(&self.adb, &self.device).await
+	pub fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::Result<Output> {
+		Client::bug_report(&self.adb, &self.device, output)
 	}
 
 	///
 	/// Root is required
 	///
-	pub async fn get_mac_address(&self) -> crate::process::Result<MacAddress> {
-		Client::get_mac_address(&self.adb, &self.device).await
+	pub fn disable_verity(&self) -> crate::Result<()> {
+		Client::disable_verity(&self.adb, &self.device)
 	}
 
 	///
 	/// Root is required
-	pub async fn get_wlan_address(&self) -> crate::process::Result<MacAddress> {
-		Client::get_wlan_address(&self.adb, &self.device).await
+	///
+	pub fn get_mac_address(&self) -> crate::Result<MacAddress> {
+		Client::get_mac_address(&self.adb, &self.device)
 	}
 
-	pub async fn pull<'s, S, D>(&self, src: S, dst: D) -> crate::process::Result<ProcessResult>
+	///
+	/// Root is required
+	pub fn get_wlan_address(&self) -> crate::Result<MacAddress> {
+		Client::get_wlan_address(&self.adb, &self.device)
+	}
+
+	pub fn pull<'s, S, D>(&self, src: S, dst: D) -> crate::Result<Output>
 	where
 		S: Into<&'s str> + AsRef<OsStr> + Arg,
 		D: AsRef<Path>,
 	{
-		Client::pull(&self.adb, &self.device, src, dst).await
+		Client::pull(&self.adb, &self.device, src, dst)
 	}
 
-	pub async fn push<'d, S, D>(&self, src: S, dst: D) -> crate::process::Result<ProcessResult>
+	pub fn push<'d, S, D>(&self, src: S, dst: D) -> crate::Result<Output>
 	where
 		D: Into<&'d str> + AsRef<OsStr> + Arg,
 		S: AsRef<Path>,
 	{
-		Client::push(&self.adb, &self.device, src, dst).await
+		Client::push(&self.adb, &self.device, src, dst)
 	}
 
-	pub async fn clear_logcat(&self) -> crate::process::Result<()> {
-		Client::clear_logcat(&self.adb, &self.device).await
+	pub fn clear_logcat(&self) -> crate::Result<()> {
+		Client::clear_logcat(&self.adb, &self.device)
 	}
 
-	pub async fn logcat(&self, options: LogcatOptions, recv: Option<IntoFuture<Receiver<()>>>) -> crate::process::Result<ProcessResult> {
-		Client::logcat(&self.adb, &self.device, options, recv).await
+	pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> crate::Result<Output> {
+		Client::logcat(&self.adb, &self.device, options, cancel)
 	}
 
-	pub async fn api_level(&self) -> crate::process::Result<u8> {
-		Client::api_level(&self.adb, &self.device).await
+	pub fn api_level(&self) -> crate::Result<String> {
+		Client::api_level(&self.adb, &self.device).map_err(|e| e.into())
 	}
 
-	pub async fn version(&self) -> crate::process::Result<u8> {
-		Client::version(&self.adb, &self.device).await
+	pub fn version(&self) -> crate::Result<u8> {
+		Client::version(&self.adb, &self.device)
 	}
 
-	pub async fn name(&self) -> crate::process::Result<Option<String>> {
-		Ok(Client::name(&self.adb, &self.device).await.ok())
+	pub fn name(&self) -> crate::Result<Option<String>> {
+		Ok(Client::name(&self.adb, &self.device).ok())
 	}
 
-	pub async fn save_screencap(&self, output: File) -> crate::process::Result<()> {
-		Client::save_screencap(&self.adb, &self.device, output).await
+	pub fn save_screencap(&self, output: File) -> crate::Result<()> {
+		Client::save_screencap(&self.adb, &self.device, output)
 	}
 
-	pub async fn copy_screencap(&self) -> crate::process::Result<()> {
-		Client::copy_screencap(&self.adb, &self.device).await
+	pub fn copy_screencap(&self) -> crate::Result<()> {
+		Client::copy_screencap(&self.adb, &self.device)
 	}
 
-	pub async fn get_boot_id(&self) -> crate::process::Result<uuid::Uuid> {
-		Client::get_boot_id(&self.adb, &self.device).await
+	pub fn get_boot_id(&self) -> crate::Result<Uuid> {
+		Client::get_boot_id(&self.adb, &self.device)
 	}
 
-	pub async fn reboot(&self, reboot_type: Option<RebootType>) -> crate::process::Result<()> {
-		Client::reboot(&self.adb, &self.device, reboot_type).await
+	pub fn reboot(&self, reboot_type: Option<RebootType>) -> crate::Result<()> {
+		Client::reboot(&self.adb, &self.device, reboot_type)
 	}
 
-	pub async fn wait_for_device(&self, timeout: Option<Duration>) -> crate::process::Result<()> {
-		Client::wait_for_device(&self.adb, &self.device, timeout).await
+	pub fn wait_for_device(&self, timeout: Option<Duration>) -> crate::Result<()> {
+		Client::wait_for_device(&self.adb, &self.device, timeout)
 	}
 
 	pub fn shell(&self) -> AdbShell {
