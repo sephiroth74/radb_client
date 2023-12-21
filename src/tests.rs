@@ -5,7 +5,7 @@ mod tests {
 	use std::fs::{read_to_string, remove_file, File};
 	use std::io::{BufRead, ErrorKind, Write};
 	use std::path::{Path, PathBuf};
-	use std::process::{ExitStatus, Stdio};
+	use std::process::{ChildStdout, Command, ExitStatus, Stdio};
 	use std::str::FromStr;
 	use std::sync::Once;
 	use std::thread::sleep;
@@ -24,9 +24,8 @@ mod tests {
 	use signal_hook::consts::SIGINT;
 	use signal_hook::iterator::Signals;
 	use time::Instant;
-	use tokio::process::{ChildStdout, Command};
 
-	use crate::debug::CommandDebug;
+	
 	use crate::dump_util::SimplePackageReader;
 	use crate::scanner::Scanner;
 	use crate::traits::{AdbDevice, AsArgs};
@@ -1397,8 +1396,8 @@ mod tests {
 		}
 	}
 
-	#[tokio::test]
-	async fn test_screen_mirror() {
+	#[test]
+	fn test_screen_mirror() {
 		init_log!();
 
 		let client: AdbClient = client!();
@@ -1408,41 +1407,38 @@ mod tests {
 		let adb = Adb::new().unwrap();
 		let device_ip = client.device.addr().as_args();
 
-		tokio::join!(async {
-			let child1 = <Adb as Into<Command>>::into(adb)
-				.args(device_ip)
-				.args(vec!["shell", "while true; do screenrecord --output-format=h264 -; done"])
-				.stdout(Stdio::piped())
-				.stderr(Stdio::piped())
-				.debug()
-				.spawn()
-				.unwrap();
+		let child1 = Command::new(adb)
+			.args(device_ip)
+			.args(vec!["shell", "while true; do screenrecord --output-format=h264 -; done"])
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped())
+			.spawn()
+			.unwrap();
 
-			let out: ChildStdout = child1.stdout.ok_or(io::Error::new(ErrorKind::InvalidData, "child stdout unavailable")).unwrap();
-			let fd: Stdio = out.try_into().unwrap();
+		let out: ChildStdout = child1.stdout.ok_or(io::Error::new(ErrorKind::InvalidData, "child stdout unavailable")).unwrap();
+		let fd: Stdio = out.try_into().unwrap();
 
-			let mut command2 = tokio::process::Command::new("ffplay");
-			command2.args(vec!["-framerate", "60", "-probesize", "32", "-sync", "video", "-"]).stdout(Stdio::piped());
-			command2.stdin(fd);
+		let mut command2 = Command::new("ffplay");
+		command2.args(vec!["-framerate", "60", "-probesize", "32", "-sync", "video", "-"]).stdout(Stdio::piped());
+		command2.stdin(fd);
 
-			//command2.stdin(Stdio::from(child1.stdout.unwrap()))
-			let child2 = command2.debug().spawn().unwrap();
+		//command2.stdin(Stdio::from(child1.stdout.unwrap()))
+		let child2 = command2.spawn().unwrap();
 
-			//let output = child2.wait_with_output().unwrap();
-			let output = child2.wait_with_output().await.unwrap();
+		//let output = child2.wait_with_output().unwrap();
+		let output = child2.wait_with_output().unwrap();
 
-			trace!("exit status: {:?}", output.status);
+		trace!("exit status: {:?}", output.status);
 
-			if output.status.success() {
-				for line in output.stdout.lines() {
-					debug!("stdout => {:}", line.unwrap().trim_end());
-				}
-			} else {
-				for line in output.stderr.lines() {
-					warn!("stderr => {:}", line.unwrap().trim_end());
-				}
+		if output.status.success() {
+			for line in output.stdout.lines() {
+				debug!("stdout => {:}", line.unwrap().trim_end());
 			}
-		});
+		} else {
+			for line in output.stderr.lines() {
+				warn!("stderr => {:}", line.unwrap().trim_end());
+			}
+		}
 	}
 
 	fn ctrl_channel() -> Result<Receiver<()>, ctrlc::Error> {
@@ -1516,39 +1512,6 @@ mod tests {
 							}
 						}
 					}
-
-					//match sel.try_select() {
-					//    Ok(oper) => {
-					//        match oper.index() {
-					//            i if i == oper1 => {
-					//                trace!("[thread] CTRL+C");
-					//                //if let Err(err) = child.kill() {
-					//                //    warn!("Failed to kill the process: {:}", err);
-					//                //}
-					//            },
-					//
-					//            i if i == oper2 => {
-					//                trace!("[thread] TIMEOUT!");
-					//                //if let Err(err) = child.kill() {
-					//                //    warn!("Failed to kill the process: {:}", err);
-					//                //}
-					//            },
-					//
-					//            _ => {
-					//                warn!("invalid index of operation!");
-					//                unreachable!()
-					//            },
-					//        }
-					//    }
-					//
-					//    Err(_err) => {
-					//        if let Ok(Some(status)) = child.try_wait() {
-					//            trace!("[thread] Exit Status Received... {:}", status);
-					//            let _ = sender.send(status).unwrap();
-					//            break;
-					//        }
-					//    }
-					//}
 				}
 
 				//
