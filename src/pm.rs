@@ -2,10 +2,10 @@ use std::fmt::{Display, Formatter};
 use std::process::Output;
 use std::time::Duration;
 
-use cmd::Error::CmdError;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
+use simple_cmd::Error::CmdError;
 
 use crate::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;

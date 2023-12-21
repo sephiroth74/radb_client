@@ -1,4 +1,4 @@
-use cmd::{Cmd, CommandBuilder};
+use simple_cmd::{Cmd, CommandBuilder};
 
 use crate::traits::AdbDevice;
 use crate::{Adb, AdbClient};

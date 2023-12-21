@@ -2,9 +2,9 @@ use std::ffi::OsStr;
 use std::io::BufRead;
 use std::path::Path;
 
-use cmd::Cmd;
 use lazy_static::lazy_static;
 use regex::Regex;
+use simple_cmd::Cmd;
 use which::which;
 
 use crate::errors::AdbError;

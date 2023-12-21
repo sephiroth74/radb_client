@@ -11,7 +11,6 @@ repository = "https://github.com/sephiroth74/radb_client"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-cmd = { path = "/Users/alessandro/Documents/git/sephiroth74/cmd" }
 once_cell = "1.17.1"
 chrono = "0.4.24"
 file-mode = "0.1.2"
@@ -27,26 +26,25 @@ mac_address = "1.1.5"
 uuid = { version = "1.6.1", features = ["v4"] }
 arboard = "3.3.0"
 image = "0.24.7"
-tokio-threadpool = "0.1.18"
 num_cpus = "1.16.0"
-async-trait = "0.1.74"
 thiserror = "1.0.50"
 rustix = "0.38.28"
 dirs = "5.0.1"
 itertools = "0.12.0"
-ctrlc = "3.4.1"
 crossbeam = "0.8.2"
 signal-hook = "0.3.17"
 crossbeam-channel = "0.5.9"
 threadpool = "1.8.1"
-indicatif = { version = "0.17.7", optional = true }
+cmd_lib = "1.9.3"
+simple-cmd = "0.0.1"
 
 [dev-dependencies]
 indicatif = { version = "0.17.7" }
 simple_logger = "4.3.0"
 anyhow = "1.0.71"
+ctrlc = "3.4.1"
 
 [features]
 default = ["scanner"]
 derive = []
-scanner = ["dep:indicatif"]
+scanner = []

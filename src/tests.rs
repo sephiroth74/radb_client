@@ -14,17 +14,17 @@ mod tests {
 
 	use anyhow::anyhow;
 	use chrono::Local;
-	use cmd::output_ext::OutputExt;
-	use cmd::{Cmd, CommandBuilder};
-	use crossbeam_channel::{bounded, tick, unbounded, Receiver, Select};
+	use cmd_lib::spawn;
+	use crossbeam_channel::{bounded, tick, Receiver, Select};
 	use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-	use itertools::Itertools;
 	use log::*;
 	use once_cell::sync::Lazy;
 	use regex::Regex;
 	use rustix::path::Arg;
 	use signal_hook::consts::SIGINT;
 	use signal_hook::iterator::Signals;
+	use simple_cmd::output_ext::OutputExt;
+	use simple_cmd::{Cmd, CommandBuilder};
 	use time::Instant;
 
 	use crate::dump_util::SimplePackageReader;
@@ -274,7 +274,7 @@ mod tests {
 		assert!(output.lines().into_iter().all(|f| f.is_ok()));
 		assert!(output.lines().into_iter().filter(|f| f.is_ok()).all(|l| l.is_ok()));
 
-		trace!("output: {:?}", cmd::Vec8ToString::as_str(&output));
+		trace!("output: {:?}", simple_cmd::Vec8ToString::as_str(&output));
 
 		assert_client_unroot!(client);
 	}
@@ -1393,19 +1393,33 @@ mod tests {
 		progress.set_style(progress_style.clone());
 		progress.set_prefix("Elapsed");
 
-		let (tx, rx) = unbounded();
+		let (tx, rx) = bounded(255);
 		let log_level = log::max_level();
+
 		log::set_max_level(LevelFilter::Off);
 
 		let adb = Adb::new().unwrap();
+
 		let scanner = Scanner::new();
 		let start = Instant::now();
-		scanner.scan(&adb, tx.clone(), Some(progress.clone()));
+
+		scanner.scan(&adb, tx.clone());
+
 		let elapsed = start.elapsed();
 
 		drop(tx);
+
+		let mut result = Vec::new();
+		for client in rx {
+			progress.inc(1);
+
+			if let Some(client) = client {
+				result.push(client);
+			}
+		}
+
 		log::set_max_level(log_level);
-		let result = rx.iter().collect_vec();
+		//let result = rx.iter().collect_vec();
 
 		debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
 		debug!("Found {:} devices", result.len());
@@ -1413,6 +1427,27 @@ mod tests {
 		for device in result.iter() {
 			info!("device: {:}", device);
 		}
+	}
+
+	#[test]
+	fn test_screen_mirror2() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+
+		let adb_path = client.adb.0.clone();
+		let adb_path_str = adb_path.as_str().unwrap();
+		let device_args = client.device.args();
+		let device_arg_name = device_args.get(0).unwrap();
+		let device_arg_addr = device_args.get(1).unwrap();
+
+		let mut handle = spawn!(
+			$adb_path_str $device_arg_name $device_arg_addr shell "while true; do screenrecord --output-format=h264 -; done" | ffplay -framerate 60 -probesize 320 -sync video -;
+		)
+		.unwrap();
+
+		let result = handle.wait();
+		trace!("result: {:?}", result);
 	}
 
 	#[test]
@@ -1592,7 +1627,7 @@ mod tests {
 
 	// Creates a channel that gets a message every time `SIGINT` is signalled.
 	fn sigint_notifier() -> io::Result<Receiver<()>> {
-		let (s, r) = bounded(100);
+		let (s, r) = bounded(1);
 		let mut signals = Signals::new(&[SIGINT])?;
 
 		thread::spawn(move || {

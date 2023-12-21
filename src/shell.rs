@@ -4,12 +4,12 @@ use std::io::BufRead;
 use std::process::Output;
 use std::time::Duration;
 
-use cmd::CommandBuilder;
 use crossbeam::channel::Receiver;
 use lazy_static::lazy_static;
 use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
+use simple_cmd::CommandBuilder;
 
 use crate::cmd_ext::CommandBuilderExt;
 use crate::errors::AdbError;
@@ -46,7 +46,7 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		cmd::Vec8ToString::as_str(&Shell::exec(adb, device, vec!["settings", "get", settings_type.into(), key], None, None)?.stdout)
+		simple_cmd::Vec8ToString::as_str(&Shell::exec(adb, device, vec!["settings", "get", settings_type.into(), key], None, None)?.stdout)
 			.map(|s| Some(s.trim_end().to_string()))
 			.ok_or(Unknown("unexpected error".to_string()))
 	}
@@ -205,7 +205,7 @@ impl Shell {
 		D: Into<&'a dyn AdbDevice>,
 	{
 		let process_result = Shell::exec(adb, device, vec!["dumpsys input_method | egrep 'mInteractive=(true|false)'"], None, None)?;
-		let result = cmd::Vec8ToString::as_str(&process_result.stdout)
+		let result = simple_cmd::Vec8ToString::as_str(&process_result.stdout)
 			.map(|f| f.contains("mInteractive=true"))
 			.ok_or(AdbError::ParseInputError())?;
 		Ok(result)
@@ -470,7 +470,7 @@ impl Shell {
 	{
 		let output = Shell::exec(adb, device, vec![format!("test -{:} {:?} && echo 1 || echo 0", mode, path.as_str()?).as_str()], None, None);
 
-		match cmd::Vec8ToString::as_str(&output?.stdout) {
+		match simple_cmd::Vec8ToString::as_str(&output?.stdout) {
 			Some(s) => Ok(s.trim_end() == "1"),
 			None => Ok(false),
 		}
@@ -616,7 +616,7 @@ impl Shell {
 		D: Into<&'a dyn AdbDevice>,
 	{
 		let output = Shell::exec(adb, device, vec!["which", command], None, None);
-		output.map(|s| cmd::Vec8ToString::as_str(&s.stdout).map(|ss| String::from(ss.trim_end())))
+		output.map(|s| simple_cmd::Vec8ToString::as_str(&s.stdout).map(|ss| String::from(ss.trim_end())))
 	}
 
 	/// Returns the current user runnign adb
@@ -645,7 +645,7 @@ impl Shell {
 		T: Into<&'a dyn AdbDevice>,
 	{
 		let result = Shell::exec(adb, device, vec!["whoami"], None, None)?;
-		Ok(cmd::Vec8ToString::as_str(&result.stdout).map(|s| s.trim().to_string()))
+		Ok(simple_cmd::Vec8ToString::as_str(&result.stdout).map(|s| s.trim().to_string()))
 	}
 
 	pub fn is_root<'a, T>(adb: &Adb, device: T) -> crate::Result<bool>

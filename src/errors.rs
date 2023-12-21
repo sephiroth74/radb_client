@@ -37,7 +37,7 @@ pub enum AdbError {
 	ParseIntError(#[from] ParseIntError),
 
 	#[error(transparent)]
-	CmdError(#[from] cmd::Error),
+	CmdError(#[from] simple_cmd::Error),
 
 	#[error("errno")]
 	Errno(#[from] Errno),

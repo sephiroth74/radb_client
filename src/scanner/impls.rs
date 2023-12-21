@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crossbeam_channel::Sender;
-use indicatif::ProgressBar;
 
 use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
@@ -48,7 +47,7 @@ impl Scanner {
 		Scanner {}
 	}
 
-	pub fn scan(&self, adb: &Adb, tx: Sender<ClientResult>, progress: Option<ProgressBar>) {
+	pub fn scan(&self, adb: &Adb, tx: Sender<Option<ClientResult>>) {
 		let adb = Arc::new(adb.clone());
 		let cpus = std::thread::available_parallelism().map(|s| s.get()).unwrap_or(num_cpus::get());
 		let tp = threadpool::ThreadPool::new(cpus);
@@ -56,28 +55,12 @@ impl Scanner {
 		for i in 0..256 {
 			let adb = Arc::clone(&adb);
 			let tx = tx.clone();
-			let progress = progress.clone();
 
 			tp.execute(move || {
 				let addr = format!("192.168.1.{:}:5555", i);
-
-				if let Some(progress) = progress {
-					progress.set_message(format!("checking {addr}..."));
-					progress.inc(1);
-				}
-
-				if let Some(result) = connect(adb, addr.as_str()) {
-					let _ = tx.send(result);
-				}
-
+				let _ = tx.send(connect(adb, addr.as_str()));
 				drop(tx);
 			});
-		}
-
-		tp.join();
-
-		if let Some(progress) = progress {
-			progress.finish_with_message("done.");
 		}
 	}
 }

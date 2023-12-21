@@ -7,7 +7,6 @@ use std::process::Command;
 use std::str::FromStr;
 use std::time::Duration;
 
-use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
@@ -208,7 +207,6 @@ impl TryFrom<&dyn AdbDevice> for Device {
 	}
 }
 
-#[async_trait]
 impl AdbDevice for Device {
 	fn addr(&self) -> &DeviceAddress {
 		&self.0

@@ -9,13 +9,13 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use arboard::ImageData;
-use cmd::debug::CommandDebug;
-use cmd::output_ext::OutputExt;
-use cmd::CommandBuilder;
 use crossbeam::channel::Receiver;
 use log::trace;
 use mac_address::MacAddress;
 use rustix::path::Arg;
+use simple_cmd::debug::CommandDebug;
+use simple_cmd::output_ext::OutputExt;
+use simple_cmd::CommandBuilder;
 use uuid::Uuid;
 
 use crate::cmd_ext::CommandBuilderExt;
