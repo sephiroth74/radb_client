@@ -22,7 +22,6 @@ props-rs = "0.1.1"
 regex = "1.8.1"
 strum_macros = "0.25.1"
 time = "0.3.21"
-tokio = { version = "1.28.0", features = ["full"] }
 which = "5.0.0"
 mac_address = "1.1.5"
 uuid = { version = "1.6.1", features = ["v4"] }
@@ -40,13 +39,14 @@ crossbeam = "0.8.2"
 signal-hook = "0.3.17"
 crossbeam-channel = "0.5.9"
 threadpool = "1.8.1"
+indicatif = { version = "0.17.7", optional = true }
 
 [dev-dependencies]
+indicatif = { version = "0.17.7" }
 simple_logger = "4.3.0"
 anyhow = "1.0.71"
 
 [features]
 default = ["scanner"]
 derive = []
-scanner = []
-
+scanner = ["dep:indicatif"]

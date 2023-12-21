@@ -16,7 +16,9 @@ mod tests {
 	use chrono::Local;
 	use cmd::output_ext::OutputExt;
 	use cmd::{Cmd, CommandBuilder};
-	use crossbeam_channel::{bounded, tick, Receiver, Select};
+	use crossbeam_channel::{bounded, tick, unbounded, Receiver, Select};
+	use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+	use itertools::Itertools;
 	use log::*;
 	use once_cell::sync::Lazy;
 	use regex::Regex;
@@ -25,7 +27,6 @@ mod tests {
 	use signal_hook::iterator::Signals;
 	use time::Instant;
 
-	
 	use crate::dump_util::SimplePackageReader;
 	use crate::scanner::Scanner;
 	use crate::traits::{AdbDevice, AsArgs};
@@ -1383,10 +1384,28 @@ mod tests {
 	fn test_scan() {
 		init_log!();
 
+		let progress_style = ProgressStyle::with_template("{prefix:.cyan.bold/blue.bold}: {elapsed_precise} [{bar:40.cyan/blue}] {percent:.bold}% ETA: [{eta}]. {msg} ")
+			.unwrap()
+			.progress_chars("=> ");
+
+		let multi_progress = MultiProgress::new();
+		let progress = multi_progress.add(ProgressBar::new(255));
+		progress.set_style(progress_style.clone());
+		progress.set_prefix("Elapsed");
+
+		let (tx, rx) = unbounded();
+		let log_level = log::max_level();
+		log::set_max_level(LevelFilter::Off);
+
+		let adb = Adb::new().unwrap();
 		let scanner = Scanner::new();
 		let start = Instant::now();
-		let result = scanner.scan().unwrap();
+		scanner.scan(&adb, tx.clone(), Some(progress.clone()));
 		let elapsed = start.elapsed();
+
+		drop(tx);
+		log::set_max_level(log_level);
+		let result = rx.iter().collect_vec();
 
 		debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
 		debug!("Found {:} devices", result.len());

@@ -3,6 +3,7 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::net::{AddrParseError, SocketAddr};
+use std::process::Command;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -10,7 +11,6 @@ use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
-use tokio::process::Command;
 
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};

@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 
 use mac_address::MacAddress;
 
+#[cfg(feature = "scanner")]
 mod impls;
 
 #[allow(dead_code)]
