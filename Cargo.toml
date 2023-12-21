@@ -44,6 +44,7 @@ crossbeam = "0.8.2"
 signal-hook = "0.3.17"
 crossbeam-channel = "0.5.9"
 unreachable = "1.0.0"
+threadpool = "1.8.1"
 
 [dev-dependencies]
 simple_logger = "4.3.0"

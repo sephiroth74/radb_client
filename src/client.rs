@@ -275,6 +275,17 @@ impl Client {
 		Ok(true)
 	}
 
+	pub fn try_disconnect<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let serial = device.into().addr().serial().expect("Host[:Port] required");
+		match CommandBuilder::new(adb.as_os_str()).args(["disconnect", serial.as_str()]).build().run() {
+			Ok(status) => Ok(status.map_or(false, |status| status.success())),
+			Err(err) => Err(AdbError::CmdError(err)),
+		}
+	}
+
 	pub fn disconnect_all(adb: &Adb) -> crate::Result<bool> {
 		CommandBuilder::new(adb.0.as_path()).args(["disconnect"]).build().output()?;
 		Ok(true)
@@ -411,6 +422,10 @@ impl AdbClient {
 	}
 
 	pub fn disconnect(&self) -> crate::Result<bool> {
+		Client::disconnect(&self.adb, &self.device)
+	}
+
+	pub fn try_disconnect(&self) -> crate::Result<bool> {
 		Client::disconnect(&self.adb, &self.device)
 	}
 
