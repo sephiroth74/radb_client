@@ -37,7 +37,7 @@ crossbeam-channel = "0.5.9"
 threadpool = "1.8.1"
 cmd_lib = "1.9.3"
 simple-cmd = "0.0.4"
-radb-client-macros = { path = "./macros" }
+#radb-client-macros = { path = "./macros" }
 
 
 [dev-dependencies]
@@ -52,5 +52,5 @@ derive = []
 scanner = []
 
 [workspace]
-members = ["macros"]
+#members = ["macros"]
 
