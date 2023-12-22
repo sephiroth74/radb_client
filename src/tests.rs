@@ -14,7 +14,6 @@ mod tests {
 
 	use anyhow::anyhow;
 	use chrono::Local;
-	use cmd_lib::spawn;
 	use crossbeam_channel::{bounded, tick, Receiver, Select};
 	use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 	use log::*;
@@ -29,10 +28,9 @@ mod tests {
 
 	use crate::dump_util::SimplePackageReader;
 	use crate::scanner::Scanner;
-	use crate::traits::{AdbDevice, AsArgs};
 	use crate::types::{
-		DumpsysPriority, InputSource, InstallLocationOption, InstallOptions, KeyCode, KeyEventType, LogcatLevel, LogcatOptions, LogcatTag, MotionEvent, PackageFlags, SELinuxType, ScreenRecordOptions,
-		SettingsType, UninstallOptions,
+		DumpsysPriority, FFPlayOptions, InputSource, InstallLocationOption, InstallOptions, KeyCode, KeyEventType, LogcatLevel, LogcatOptions, LogcatTag, MotionEvent, PackageFlags, SELinuxType,
+		ScreenRecordOptions, SettingsType, UninstallOptions,
 	};
 	use crate::{intent, Adb, AdbClient, Client, Device, PackageManager};
 
@@ -1435,19 +1433,21 @@ mod tests {
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
 
-		let adb_path = client.adb.0.clone();
-		let adb_path_str = adb_path.as_str().unwrap();
-		let device_args = client.device.args();
-		let device_arg_name = device_args.get(0).unwrap();
-		let device_arg_addr = device_args.get(1).unwrap();
+		let cancel_signal = ctrl_channel().unwrap();
 
-		let mut handle = spawn!(
-			$adb_path_str $device_arg_name $device_arg_addr shell "while true; do screenrecord --output-format=h264 -; done" | ffplay -framerate 60 -probesize 320 -sync video -;
-		)
-		.unwrap();
+		let screen_record_options = ScreenRecordOptions {
+			bitrate: Some(4_000_000),
+			timelimit: Some(Duration::from_secs(10)),
+			rotate: None,
+			bug_report: None,
+			size: Some((1920, 1080)),
+			verbose: false,
+		};
 
-		let result = handle.wait();
-		trace!("result: {:?}", result);
+		let play_options = FFPlayOptions::default();
+
+		let result = client.shell().screen_mirror(Some(screen_record_options), Some(play_options), Some(cancel_signal)).unwrap();
+		trace!("result: {:#?}", result);
 	}
 
 	#[test]
@@ -1458,11 +1458,11 @@ mod tests {
 		assert_client_connected!(client);
 		assert_client_root!(client);
 
-		let adb = Adb::new().unwrap();
-		let device_ip = client.device.addr().as_args();
+		let ffplay = which::which("ffplay").expect("ffplay not found in PATH");
 
-		let child1 = Command::new(adb)
-			.args(device_ip)
+		let child1 = client
+			.shell()
+			.to_command()
 			.args(vec!["shell", "while true; do screenrecord --output-format=h264 -; done"])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
@@ -1472,7 +1472,7 @@ mod tests {
 		let out: ChildStdout = child1.stdout.ok_or(io::Error::new(ErrorKind::InvalidData, "child stdout unavailable")).unwrap();
 		let fd: Stdio = out.try_into().unwrap();
 
-		let mut command2 = Command::new("ffplay");
+		let mut command2 = Command::new(ffplay.clone());
 		command2.args(vec!["-framerate", "60", "-probesize", "32", "-sync", "video", "-"]).stdout(Stdio::piped());
 		command2.stdin(fd);
 
@@ -1483,16 +1483,6 @@ mod tests {
 		let output = child2.wait_with_output().unwrap();
 
 		trace!("exit status: {:?}", output.status);
-
-		if output.status.success() {
-			for line in output.stdout.lines() {
-				debug!("stdout => {:}", line.unwrap().trim_end());
-			}
-		} else {
-			for line in output.stderr.lines() {
-				warn!("stderr => {:}", line.unwrap().trim_end());
-			}
-		}
 	}
 
 	fn ctrl_channel() -> Result<Receiver<()>, ctrlc::Error> {

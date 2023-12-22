@@ -1,7 +1,8 @@
+
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::BufRead;
-use std::process::Output;
+use std::process::{Command, Output};
 use std::time::Duration;
 
 use crossbeam::channel::Receiver;
@@ -9,13 +10,14 @@ use lazy_static::lazy_static;
 use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
+use simple_cmd::debug::CommandDebug;
 use simple_cmd::CommandBuilder;
 
 use crate::cmd_ext::CommandBuilderExt;
 use crate::errors::AdbError;
 use crate::errors::AdbError::Unknown;
 use crate::traits::AdbDevice;
-use crate::types::{DumpsysPriority, Intent, PropType, ScreenRecordOptions, SettingsType};
+use crate::types::{DumpsysPriority, FFPlayOptions, Intent, PropType, ScreenRecordOptions, SettingsType};
 use crate::types::{InputSource, KeyCode, KeyEventType, MotionEvent, SELinuxType};
 use crate::{Adb, AdbShell, PackageManager, Shell};
 
@@ -190,6 +192,68 @@ impl Shell {
 		args.push(output.to_string());
 		let command = CommandBuilder::shell(adb, device).args(args).signal(cancel);
 		Ok(command.build().output()?)
+	}
+
+	pub fn screen_mirror<'d, D>(adb: &Adb, device: D, options: Option<ScreenRecordOptions>, play_options: Option<FFPlayOptions>, cancel: Option<Receiver<()>>) -> crate::Result<Output>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let mut screenrecord_options = options.unwrap_or(ScreenRecordOptions::default());
+		screenrecord_options.verbose = false;
+		screenrecord_options.bug_report = None;
+		let screenrecord_arg = format!("while true; do screenrecord --output-format=h264 {:} -; done", screenrecord_options);
+
+		let builder = CommandBuilder::shell(adb, device).args(vec![screenrecord_arg.as_str()]).signal(cancel).with_debug(true);
+
+		let command1 = builder.build();
+
+		let mut command2 = Command::new(which::which("ffplay")?);
+
+		let ffplay_options = play_options.unwrap_or(FFPlayOptions::default());
+
+		command2.args(ffplay_options.into_iter());
+		command2.args(&["-loglevel", "repeat+level+verbose", "-an", "-autoexit", "-sync", "video", "-"]);
+
+		//command2.args(vec!["-loglevel", "verbose",
+		//                   "-an",
+		//                   "-autoexit",
+		//                   "-framerate", "30",
+		//                   "-probesize", "300",
+		//                   "-vf", "scale=1024:-1",
+		//                   "-sync", "video",
+		//                   "-",
+		//]);
+
+		//command2.stdout(Stdio::piped());
+		//command2.stderr(Stdio::piped());
+		command2.debug();
+		command1.pipe(command2).map_err(|e| AdbError::CmdError(e))
+
+		/*
+		let mut args = vec![];
+
+		let screenrecord_arg = if let Some(options) = options {
+			format!("while true; do screenrecord {} -; done", options)
+		} else {
+			format!("while true; do screenrecord {} -; done", ScreenRecordOptions::default())
+		};
+
+		args.push(screenrecord_arg);
+
+		let command1 = CommandBuilder::shell(adb, device).args(args).signal(cancel).with_debug(true);
+		let mut command2 = Command::new("ffplay");
+
+		if let Some(play_options) = play_options {
+			command2.args(play_options.into_iter());
+		} else {
+			command2.args(FFPlayOptions::default().into_iter());
+		}
+
+		command2.args(&["-loglevel", "repeat+level+verbose", "-an", "-autoexit", "-sync", "video", "-", ]);
+		command2.stdout(Stdio::piped());
+		command2.debug();
+		command1.build().pipe(command2).map_err(|e| AdbError::CmdError(e))
+		*/
 	}
 
 	pub fn save_screencap<'d, 't, D, T>(adb: &Adb, device: D, path: T) -> crate::Result<Output>
@@ -714,6 +778,10 @@ impl Shell {
 }
 
 impl<'a> AdbShell<'a> {
+	pub fn to_command(&self) -> std::process::Command {
+		CommandBuilder::shell(&self.parent.adb, &self.parent.device).into()
+	}
+
 	pub fn pm(&self) -> PackageManager {
 		PackageManager { parent: self.clone() }
 	}
@@ -820,6 +888,10 @@ impl<'a> AdbShell<'a> {
 
 	pub fn screen_record(&self, options: Option<ScreenRecordOptions>, output: &str, signal: Option<Receiver<()>>) -> crate::Result<Output> {
 		Shell::screen_record(&self.parent.adb, &self.parent.device, options, output, signal)
+	}
+
+	pub fn screen_mirror(&self, options: Option<ScreenRecordOptions>, play_options: Option<FFPlayOptions>, cancel: Option<Receiver<()>>) -> crate::Result<Output> {
+		Shell::screen_mirror(&self.parent.adb, &self.parent.device, options, play_options, cancel)
 	}
 
 	pub fn get_events(&self) -> crate::Result<Vec<(String, String)>> {

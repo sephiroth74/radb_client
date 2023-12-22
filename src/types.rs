@@ -110,6 +110,13 @@ pub enum DumpsysPriority {
 }
 
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct FFPlayOptions {
+	pub framerate: Option<u16>,
+	pub size: Option<(u16, u16)>,
+	pub probesize: Option<u16>,
+}
+
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ScreenRecordOptions {
 	/// --bit-rate 4000000
 	/// Set the video bit rate, in bits per second. Value may be specified as bits or megabits, e.g. '4000000' is equivalent to '4M'.

@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -36,7 +36,9 @@ signal-hook = "0.3.17"
 crossbeam-channel = "0.5.9"
 threadpool = "1.8.1"
 cmd_lib = "1.9.3"
-simple-cmd = "0.0.2"
+simple-cmd = "0.0.4"
+radb-client-macros = { path = "./macros" }
+
 
 [dev-dependencies]
 indicatif = { version = "0.17.7" }
@@ -48,3 +50,7 @@ ctrlc = "3.4.1"
 default = ["scanner"]
 derive = []
 scanner = []
+
+[workspace]
+members = ["macros"]
+

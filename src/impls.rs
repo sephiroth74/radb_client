@@ -7,6 +7,7 @@ use std::process::Command;
 use std::str::FromStr;
 use std::time::Duration;
 
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
@@ -17,8 +18,8 @@ use crate::traits::{AdbDevice, AsArgs};
 use crate::types::AddressType::Sock;
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
-	AddressType, DeviceAddress, Extra, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags,
-	PropType, RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
+	AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag,
+	PackageFlags, PropType, RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
@@ -575,6 +576,38 @@ impl Default for ScreenRecordOptions {
 	}
 }
 
+impl Display for ScreenRecordOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let string = self.into_iter().join(" ");
+		write!(f, "{}", string)
+	}
+}
+
+impl IntoIterator for FFPlayOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+		if let Some(framerate) = self.framerate {
+			args.push("-framerate".to_string());
+			args.push(framerate.to_string());
+		}
+
+		if let Some(probesize) = self.probesize {
+			args.push("-probesize".to_string());
+			args.push(probesize.to_string());
+		}
+
+		if let Some(size) = self.size {
+			args.push("-vf".to_string());
+			args.push(format!("scale={:}:{:}", size.0, size.1));
+		}
+
+		args.into_iter()
+	}
+}
+
 impl IntoIterator for ScreenRecordOptions {
 	type Item = String;
 	type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -614,12 +647,22 @@ impl IntoIterator for ScreenRecordOptions {
 impl ScreenRecordOptions {
 	pub fn new() -> Self {
 		ScreenRecordOptions {
-			bitrate: Some(20000000),
+			bitrate: Some(4_000_000),
 			timelimit: Some(Duration::from_secs(10)),
 			rotate: None,
 			bug_report: None,
 			size: None,
 			verbose: false,
+		}
+	}
+}
+
+impl Default for FFPlayOptions {
+	fn default() -> Self {
+		FFPlayOptions {
+			framerate: Some(30),
+			size: Some((1440, 800)),
+			probesize: Some(300),
 		}
 	}
 }
