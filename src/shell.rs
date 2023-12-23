@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::BufRead;
@@ -918,6 +917,14 @@ impl<'a> AdbShell<'a> {
 
 	pub fn send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
 		Shell::send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes)
+	}
+
+	pub fn send_char(&self, text: &char, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::send_char(&self.parent.adb, &self.parent.device, text, source)
+	}
+
+	pub fn send_text(&self, text: &str, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::send_text(&self.parent.adb, &self.parent.device, text, source)
 	}
 
 	pub fn exec<T>(&self, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Output>

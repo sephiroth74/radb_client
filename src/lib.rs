@@ -31,7 +31,7 @@ pub struct ActivityManager<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AdbClient {
-	pub(crate) adb: Adb,
+	pub adb: Adb,
 	pub device: Device,
 }
 
