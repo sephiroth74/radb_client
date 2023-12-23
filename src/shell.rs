@@ -200,7 +200,8 @@ impl Shell {
 		let mut screenrecord_options = options.unwrap_or(ScreenRecordOptions::default());
 		screenrecord_options.verbose = false;
 		screenrecord_options.bug_report = None;
-		let screenrecord_arg = format!("while true; do screenrecord --output-format=h264 {:} -; done", screenrecord_options);
+		//let screenrecord_arg = format!("while true; do screenrecord --output-format=h264 {:} -; done", screenrecord_options);
+		let screenrecord_arg = format!("screenrecord --output-format=h264 {:} -", screenrecord_options);
 
 		let builder = CommandBuilder::shell(adb, device).args(vec![screenrecord_arg.as_str()]).signal(cancel).with_debug(true);
 
