@@ -121,6 +121,21 @@ mod tests {
 	// endregion MACROS
 
 	#[test]
+	fn test_copy() {
+		init_log!();
+
+		let client: AdbClient = client!();
+		test_copy_client(&client);
+	}
+
+	fn test_copy_client<'a>(client: &'a AdbClient) {
+		let cloned = AdbClient::copy(client);
+		thread::spawn(move || {
+			let _ = cloned.name();
+		});
+	}
+
+	#[test]
 	fn test_tracing() {
 		info!("starting test_tracing");
 		init_log!();

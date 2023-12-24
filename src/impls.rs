@@ -15,7 +15,6 @@ use rustix::path::Arg;
 use crate::errors::AdbError::InvalidDeviceError;
 use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::traits::{AdbDevice, AsArgs};
-use crate::types::AddressType::Sock;
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
 	AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag,
@@ -50,9 +49,27 @@ impl<'a> From<&'a Adb> for &'a OsStr {
 
 // endregion Adb
 
+// region AddressType
+
+impl AddressType {
+	pub fn copy(other: &AddressType) -> AddressType {
+		match other {
+			AddressType::Sock(sock) => AddressType::Sock(sock.clone()),
+			AddressType::Name(name) => AddressType::Name(String::from(name)),
+			AddressType::Transport(t) => AddressType::Transport(t.clone()),
+		}
+	}
+}
+
+// endregion AddressType
+
 // region DeviceAddress
 
 impl DeviceAddress {
+	pub fn copy(other: &DeviceAddress) -> DeviceAddress {
+		DeviceAddress(AddressType::copy(other.address_type()))
+	}
+
 	pub fn address_type(&self) -> &AddressType {
 		&self.0
 	}
@@ -123,6 +140,10 @@ impl Debug for DeviceAddress {
 
 // region Device
 impl Device {
+	pub fn copy(other: &Device) -> Device {
+		Device(DeviceAddress::copy(other.addr()))
+	}
+
 	pub fn try_from_address(value: &DeviceAddress) -> Result<Device, AddrParseError> {
 		match value.address_type() {
 			AddressType::Sock(addr) => Device::try_from_sock_addr(addr),
@@ -188,7 +209,7 @@ impl FromStr for Device {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let addr: Result<SocketAddr, AddrParseError> = s.parse();
 		match addr {
-			Ok(a) => Ok(Self(DeviceAddress(Sock(a)))),
+			Ok(a) => Ok(Self(DeviceAddress(AddressType::Sock(a)))),
 			Err(e) => Device::try_from_ip(s).or(Device::try_from_serial(s)).or(Err(e)),
 		}
 	}

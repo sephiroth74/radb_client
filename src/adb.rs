@@ -20,6 +20,10 @@ impl Adb {
 		Ok(Adb(adb))
 	}
 
+	pub fn copy(other: &Adb) -> Adb {
+		Adb(other.0.to_path_buf())
+	}
+
 	pub async fn root(&self) -> Result<(), AdbError> {
 		Cmd::builder(self.0.as_path()).args(["root"]).build().output().map_err(|e| e.into()).map(|_| ())
 	}

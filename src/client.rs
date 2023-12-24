@@ -386,6 +386,13 @@ impl Client {
 }
 
 impl AdbClient {
+	pub fn copy(other: &AdbClient) -> AdbClient {
+		AdbClient {
+			adb: Adb::copy(&other.adb),
+			device: Device::copy(&other.device),
+		}
+	}
+
 	pub fn try_from_device(device: Device) -> result::Result<AdbClient, AdbError> {
 		match Adb::new() {
 			Ok(adb) => Ok(AdbClient { adb, device }),
