@@ -3,11 +3,11 @@
 mod tests {
 	use std::fmt::{Display, Formatter};
 	use std::fs::{read_to_string, remove_file, File};
-	use std::io::{BufRead, ErrorKind, Write};
+	use std::io::{BufRead, ErrorKind, Write as IoWrite};
 	use std::path::{Path, PathBuf};
 	use std::process::{ChildStdout, Command, ExitStatus, Stdio};
 	use std::str::FromStr;
-	use std::sync::Once;
+	use std::sync::{Arc, Mutex, Once};
 	use std::thread::sleep;
 	use std::time::Duration;
 	use std::{env, io, thread, vec};
@@ -16,7 +16,6 @@ mod tests {
 	use chrono::Local;
 	use crossbeam_channel::{bounded, tick, Receiver, Select};
 	use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-	use log::*;
 	use once_cell::sync::Lazy;
 	use regex::Regex;
 	use rustix::path::Arg;
@@ -25,6 +24,10 @@ mod tests {
 	use simple_cmd::output_ext::OutputExt;
 	use simple_cmd::{Cmd, CommandBuilder};
 	use time::Instant;
+	use tracing::{debug, error, info, subscriber, trace, warn};
+	use tracing_appender::non_blocking::WorkerGuard;
+	use tracing_subscriber::prelude::*;
+	use tracing_subscriber::{fmt, reload, Registry};
 
 	use crate::dump_util::SimplePackageReader;
 	use crate::scanner::Scanner;
@@ -40,6 +43,8 @@ mod tests {
 
 	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.34:5555"));
 
+	// region MACROS
+
 	macro_rules! client {
 		() => {
 			DEVICE_IP.as_str().parse::<Device>().unwrap().try_into().unwrap()
@@ -54,7 +59,6 @@ mod tests {
 		($client:expr) => {
 			let result = $client.connect(Some(std::time::Duration::from_secs(1)));
 			debug_assert!(result.is_ok(), "failed to connect client: {:?}", $client);
-			trace!("connected!");
 		};
 	}
 
@@ -86,12 +90,66 @@ mod tests {
 		};
 	}
 
+	static GUARDS: Lazy<Arc<Mutex<Vec<WorkerGuard>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+
 	macro_rules! init_log {
 		() => {
 			INIT.call_once(|| {
-				simple_logger::SimpleLogger::new().env().init().unwrap();
+				let timer = time::format_description::parse("[hour]:[minute]:[second].[subsecond digits:3]").unwrap();
+				let time_offset = time::UtcOffset::current_local_offset().unwrap_or_else(|_| time::UtcOffset::UTC);
+				let timer = fmt::time::OffsetTime::new(time_offset, timer);
+
+				let registry = Registry::default();
+				let (non_blocking, guard) = tracing_appender::non_blocking(std::io::stdout());
+				let layer1 = fmt::layer()
+					.with_thread_names(false)
+					.with_thread_ids(false)
+					.with_line_number(false)
+					.with_file(false)
+					.with_target(true)
+					.with_timer(timer)
+					.with_writer(non_blocking);
+
+				let (layer, _reload_handle) = reload::Layer::new(layer1);
+				let subscriber = registry.with(layer);
+				subscriber::set_global_default(subscriber).unwrap();
+				GUARDS.lock().unwrap().push(guard);
 			})
 		};
+	}
+
+	// endregion MACROS
+
+	#[test]
+	fn test_tracing() {
+		info!("starting test_tracing");
+		init_log!();
+
+		let registry = Registry::default();
+		let (non_blocking, _guard) = tracing_appender::non_blocking(std::io::stdout());
+		let layer1 = fmt::layer().with_line_number(true).with_file(true).with_writer(non_blocking);
+		let (layer, _reload_handle) = reload::Layer::new(layer1);
+		let subscriber = registry.with(layer);
+		subscriber::set_global_default(subscriber).unwrap();
+
+		info!("info message");
+		debug!("debug message");
+		trace!("trace message");
+		warn!("warn message");
+		error!("error message");
+
+		//let _ = reload_handle.modify(|layer| {
+		//	let (non_blocking, _guard) = tracing_appender::non_blocking(std::io::empty());
+		//	*layer.writer_mut() = non_blocking;
+		//});
+
+		info!("info message 2");
+		debug!("debug message 2");
+		trace!("trace message 2");
+		warn!("warn message 2");
+		error!("error message 2");
+
+		//thread::sleep(Duration::from_secs(5));
 	}
 
 	#[test]
@@ -125,6 +183,9 @@ mod tests {
 		assert_client_connected!(client);
 
 		let whoami = client.shell().whoami().expect("whoami failed");
+
+		GUARDS.lock().unwrap().clear();
+
 		debug!("whoami: {:?}", whoami);
 		debug_assert!(whoami.is_some(), "unknown whoami");
 	}
@@ -1392,9 +1453,8 @@ mod tests {
 		progress.set_prefix("Elapsed");
 
 		let (tx, rx) = bounded(255);
-		let log_level = log::max_level();
-
-		log::set_max_level(LevelFilter::Off);
+		//let log_level = log::max_level();
+		//log::set_max_level(LevelFilter::Off);
 
 		let adb = Adb::new().unwrap();
 
@@ -1416,8 +1476,7 @@ mod tests {
 			}
 		}
 
-		log::set_max_level(log_level);
-		//let result = rx.iter().collect_vec();
+		//log::set_max_level(log_level);
 
 		debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
 		debug!("Found {:} devices", result.len());
