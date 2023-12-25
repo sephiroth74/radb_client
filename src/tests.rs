@@ -9,7 +9,7 @@ mod tests {
 	use std::str::FromStr;
 	use std::sync::{Arc, Mutex, Once};
 	use std::thread::sleep;
-	use std::time::Duration;
+	use std::time::{Duration, Instant};
 	use std::{env, io, thread, vec};
 
 	use anyhow::anyhow;
@@ -23,7 +23,6 @@ mod tests {
 	use signal_hook::iterator::Signals;
 	use simple_cmd::output_ext::OutputExt;
 	use simple_cmd::{Cmd, CommandBuilder};
-	use time::Instant;
 	use tracing::{debug, error, info, subscriber, trace, warn};
 	use tracing_appender::non_blocking::WorkerGuard;
 	use tracing_subscriber::prelude::*;
@@ -1493,7 +1492,7 @@ mod tests {
 
 		//log::set_max_level(log_level);
 
-		debug!("Time elapsed for scanning is: {:?}ms", elapsed.whole_milliseconds());
+		debug!("Time elapsed for scanning is: {:?}ms", elapsed.as_millis());
 		debug!("Found {:} devices", result.len());
 
 		for device in result.iter() {
@@ -1563,15 +1562,24 @@ mod tests {
 	fn test_try_send_events() {
 		init_log!();
 		let client: AdbClient = client!();
+		let now = Instant::now();
 
 		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
 		debug!("result = {:?}", r);
 
-		let r = client
-			.shell()
-			.try_send_keyevents(vec![KeyCode::KEYCODE_DPAD_DOWN, KeyCode::KEYCODE_DPAD_DOWN, KeyCode::KEYCODE_DPAD_LEFT], None)
-			.unwrap();
+		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
 		debug!("result = {:?}", r);
+
+		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		debug!("result = {:?}", r);
+
+		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		debug!("result = {:?}", r);
+
+		let elapsed = now.elapsed();
+		debug!("elapsed = {:?}ms", elapsed.as_millis());
+
+		debug_assert!(elapsed < Duration::from_secs(1), "elapsed = {:?}", elapsed);
 	}
 
 	fn ctrl_channel() -> Result<Receiver<()>, ctrlc::Error> {
