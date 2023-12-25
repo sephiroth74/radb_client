@@ -21,6 +21,7 @@ pub enum SELinuxType {
 	Permissive,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RebootType {
 	Bootloader,
 	Recovery,
@@ -270,7 +271,7 @@ pub enum InputSource {
 	trackball,
 }
 
-#[derive(IntoStaticStr, Display, Debug, Copy, Clone)]
+#[derive(IntoStaticStr, Display, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
 pub enum KeyCode {
 	KEYCODE_0,
