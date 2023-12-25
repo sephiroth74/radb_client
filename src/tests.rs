@@ -1401,6 +1401,17 @@ mod tests {
 	}
 
 	#[test]
+	fn test_shell_send_key_code() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let shell = client.shell();
+		shell.send_keycode(82, None, None).unwrap();
+	}
+
+	#[test]
 	fn test_shell_send_key_events() {
 		init_log!();
 		let client: AdbClient = client!();
