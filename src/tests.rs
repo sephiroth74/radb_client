@@ -1559,6 +1559,21 @@ mod tests {
 		trace!("exit status: {:?}", output.status);
 	}
 
+	#[test]
+	fn test_try_send_events() {
+		init_log!();
+		let client: AdbClient = client!();
+
+		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		debug!("result = {:?}", r);
+
+		let r = client
+			.shell()
+			.try_send_keyevents(vec![KeyCode::KEYCODE_DPAD_DOWN, KeyCode::KEYCODE_DPAD_DOWN, KeyCode::KEYCODE_DPAD_LEFT], None)
+			.unwrap();
+		debug!("result = {:?}", r);
+	}
+
 	fn ctrl_channel() -> Result<Receiver<()>, ctrlc::Error> {
 		let (sender, receiver) = bounded(1);
 		ctrlc::set_handler(move || {
@@ -1631,34 +1646,6 @@ mod tests {
 						}
 					}
 				}
-
-				//
-				//loop {
-				//    crossbeam_channel::select! {
-				//        recv(ticks) -> _ => {
-				//            trace!("[thread] TIMEOUT!");
-				//            let _ = child.kill().unwrap();
-				//            continue;
-				//        }
-				//
-				//        recv(ctrl_c_events) -> _ => {
-				//            trace!("[thread] CTRL+C");
-				//            let _ = child.kill().unwrap();
-				//            continue;
-				//        }
-				//
-				//        default => {
-				//            if let Ok(Some(status)) = child.try_wait() {
-				//                trace!("[thread] Exit Status Received... {:}", status);
-				//                let _= sender.send(status).unwrap();
-				//                break;
-				//            }
-				//        }
-				//    }
-				//}
-
-				//drop(ticks);
-				//drop(ctrl_c_events);
 			})
 			.unwrap();
 

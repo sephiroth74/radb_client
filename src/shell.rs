@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::BufRead;
-use std::process::{Command, Output};
+use std::process::{Command, ExitStatus, Output};
 use std::time::Duration;
 
 use crossbeam::channel::Receiver;
@@ -32,6 +32,15 @@ impl Shell {
 	{
 		let builder = CommandBuilder::shell(adb, device).args(args).signal(cancel).timeout(timeout);
 		Ok(builder.build().output()?)
+	}
+
+	pub fn try_exec<'a, D, T>(adb: &Adb, device: D, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Option<ExitStatus>>
+	where
+		T: Into<String> + AsRef<OsStr>,
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let builder = CommandBuilder::shell(adb, device).args(args).signal(cancel).timeout(timeout);
+		Ok(builder.build().run()?)
 	}
 
 	pub fn list_settings<'a, D>(adb: &Adb, device: D, settings_type: SettingsType) -> crate::Result<Vec<Property>>
@@ -118,21 +127,21 @@ impl Shell {
 
 	///
 	/// usage: dumpsys
-	//         To dump all services.
-	//or:
-	//       dumpsys [-t TIMEOUT] [--priority LEVEL] [--pid] [--thread] [--help | -l | --skip SERVICES | SERVICE [ARGS]]
-	//         --help: shows this help
-	//         -l: only list services, do not dump them
-	//         -t TIMEOUT_SEC: TIMEOUT to use in seconds instead of default 10 seconds
-	//         -T TIMEOUT_MS: TIMEOUT to use in milliseconds instead of default 10 seconds
-	//         --pid: dump PID instead of usual dump
-	//         --thread: dump thread usage instead of usual dump
-	//         --proto: filter services that support dumping data in proto format. Dumps
-	//               will be in proto format.
-	//         --priority LEVEL: filter services based on specified priority
-	//               LEVEL must be one of CRITICAL | HIGH | NORMAL
-	//         --skip SERVICES: dumps all services but SERVICES (comma-separated list)
-	//         SERVICE [ARGS]: dumps only service SERVICE, optionally passing ARGS to it
+	///         To dump all services.
+	///or:
+	///       dumpsys [-t TIMEOUT] [--priority LEVEL] [--pid] [--thread] [--help | -l | --skip SERVICES | SERVICE [ARGS]]
+	///         --help: shows this help
+	///         -l: only list services, do not dump them
+	///         -t TIMEOUT_SEC: TIMEOUT to use in seconds instead of default 10 seconds
+	///         -T TIMEOUT_MS: TIMEOUT to use in milliseconds instead of default 10 seconds
+	///         --pid: dump PID instead of usual dump
+	///         --thread: dump thread usage instead of usual dump
+	///         --proto: filter services that support dumping data in proto format. Dumps
+	///               will be in proto format.
+	///         --priority LEVEL: filter services based on specified priority
+	///               LEVEL must be one of CRITICAL | HIGH | NORMAL
+	///         --skip SERVICES: dumps all services but SERVICES (comma-separated list)
+	///         SERVICE [ARGS]: dumps only service SERVICE, optionally passing ARGS to it
 	pub fn dumpsys<'d, D>(
 		adb: &Adb,
 		device: D,
@@ -339,6 +348,22 @@ impl Shell {
 		Ok(())
 	}
 
+	pub fn try_send_char<'a, D>(adb: &Adb, device: D, text: &char, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		let formatted = format!("{:}", text);
+		args.push("text");
+		args.push(formatted.as_str());
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
 	pub fn send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -356,11 +381,42 @@ impl Shell {
 		Ok(())
 	}
 
+	pub fn try_send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("text");
+		let formatted = format!("{:?}", text);
+		args.push(formatted.as_str());
+
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
 	pub fn send_event<'a, D>(adb: &Adb, device: D, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
 		Shell::exec(
+			adb,
+			device,
+			vec!["sendevent", event, format!("{}", code_type).as_str(), format!("{}", code).as_str(), format!("{}", value).as_str()],
+			None,
+			None,
+		)?;
+		Ok(())
+	}
+
+	pub fn try_send_event<'a, D>(adb: &Adb, device: D, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		Shell::try_exec(
 			adb,
 			device,
 			vec!["sendevent", event, format!("{}", code_type).as_str(), format!("{}", code).as_str(), format!("{}", value).as_str()],
@@ -452,6 +508,27 @@ impl Shell {
 		Ok(())
 	}
 
+	pub fn try_send_keyevent<'a, D>(adb: &Adb, device: D, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+
+		if let Some(event_type) = event_type {
+			args.push(event_type.into());
+		}
+
+		args.push(keycode.into());
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
 	pub fn send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -469,6 +546,23 @@ impl Shell {
 		Ok(())
 	}
 
+	pub fn try_send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+		args.extend(keycodes.iter().map(|k| k.into()).collect::<Vec<&str>>());
+
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
 	pub fn send_keycombination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -482,6 +576,22 @@ impl Shell {
 		args.push("keycombination");
 		args.extend(keycodes);
 		Shell::exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
+	pub fn try_send_keycombination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keycombination");
+		args.extend(keycodes);
+		Shell::try_exec(adb, device, args, None, None)?;
 		Ok(())
 	}
 
@@ -904,6 +1014,10 @@ impl<'a> AdbShell<'a> {
 		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value)
 	}
 
+	pub fn try_send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()> {
+		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value)
+	}
+
 	pub fn send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> crate::Result<()> {
 		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos)
 	}
@@ -920,12 +1034,24 @@ impl<'a> AdbShell<'a> {
 		Shell::send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes)
 	}
 
+	pub fn try_send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
+		Shell::try_send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes)
+	}
+
 	pub fn send_char(&self, text: &char, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::send_char(&self.parent.adb, &self.parent.device, text, source)
 	}
 
+	pub fn try_send_char(&self, text: &char, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::try_send_char(&self.parent.adb, &self.parent.device, text, source)
+	}
+
 	pub fn send_text(&self, text: &str, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::send_text(&self.parent.adb, &self.parent.device, text, source)
+	}
+
+	pub fn try_send_text(&self, text: &str, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::try_send_text(&self.parent.adb, &self.parent.device, text, source)
 	}
 
 	pub fn exec<T>(&self, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Output>
@@ -933,6 +1059,13 @@ impl<'a> AdbShell<'a> {
 		T: Into<String> + AsRef<OsStr>,
 	{
 		Shell::exec(&self.parent.adb, &self.parent.device, args, cancel, timeout)
+	}
+
+	pub fn try_exec<T>(&self, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Option<ExitStatus>>
+	where
+		T: Into<String> + AsRef<OsStr>,
+	{
+		Shell::try_exec(&self.parent.adb, &self.parent.device, args, cancel, timeout)
 	}
 
 	pub fn broadcast(&self, intent: &Intent) -> crate::Result<()> {
@@ -963,7 +1096,15 @@ impl<'a> AdbShell<'a> {
 		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 
+	pub fn try_send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::try_send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+	}
+
 	pub fn send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source)
+	}
+
+	pub fn try_send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::try_send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source)
 	}
 }
