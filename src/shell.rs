@@ -508,6 +508,29 @@ impl Shell {
 		Ok(())
 	}
 
+	pub fn send_keycode<'a, D>(adb: &Adb, device: D, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+
+		if let Some(event_type) = event_type {
+			args.push(event_type.into());
+		}
+
+		let keycode_str = keycode.to_string();
+
+		args.push(keycode_str.as_str());
+		Shell::exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
 	pub fn try_send_keyevent<'a, D>(adb: &Adb, device: D, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -529,6 +552,28 @@ impl Shell {
 		Ok(())
 	}
 
+	pub fn try_send_keycode<'a, D>(adb: &Adb, device: D, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+
+		if let Some(event_type) = event_type {
+			args.push(event_type.into());
+		}
+
+		let keycode_str = keycode.to_string();
+		args.push(keycode_str.as_str());
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
 	pub fn send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -541,6 +586,24 @@ impl Shell {
 
 		args.push("keyevent");
 		args.extend(keycodes.iter().map(|k| k.into()).collect::<Vec<&str>>());
+
+		Shell::exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
+	pub fn send_keycodes<'a, D>(adb: &Adb, device: D, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
 
 		Shell::exec(adb, device, args, None, None)?;
 		Ok(())
@@ -563,7 +626,25 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn send_keycombination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
+	pub fn try_send_keycodes<'a, D>(adb: &Adb, device: D, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keyevent");
+		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
+
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
+	pub fn send_keyevent_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -579,7 +660,24 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn try_send_keycombination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
+	pub fn send_keycode_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keycombination");
+		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
+		Shell::exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
+	pub fn try_send_keyevent_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -591,6 +689,23 @@ impl Shell {
 
 		args.push("keycombination");
 		args.extend(keycodes);
+		Shell::try_exec(adb, device, args, None, None)?;
+		Ok(())
+	}
+
+	pub fn try_send_keycode_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()>
+	where
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let mut args = vec!["input"];
+
+		if let Some(source) = source {
+			args.push(source.into());
+		}
+
+		args.push("keycombination");
+		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
 		Shell::try_exec(adb, device, args, None, None)?;
 		Ok(())
 	}
@@ -1030,12 +1145,20 @@ impl<'a> AdbShell<'a> {
 		Shell::send_press(&self.parent.adb, &self.parent.device, source)
 	}
 
-	pub fn send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
-		Shell::send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes)
+	pub fn send_keyevent_combination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
+		Shell::send_keyevent_combination(&self.parent.adb, &self.parent.device, source, keycodes)
 	}
 
-	pub fn try_send_keycombination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
-		Shell::try_send_keycombination(&self.parent.adb, &self.parent.device, source, keycodes)
+	pub fn send_keycode_combination(&self, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()> {
+		Shell::send_keycode_combination(&self.parent.adb, &self.parent.device, source, keycodes)
+	}
+
+	pub fn try_send_keyevent_combination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
+		Shell::try_send_keyevent_combination(&self.parent.adb, &self.parent.device, source, keycodes)
+	}
+
+	pub fn try_send_keycode_combination(&self, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()> {
+		Shell::try_send_keycode_combination(&self.parent.adb, &self.parent.device, source, keycodes)
 	}
 
 	pub fn send_char(&self, text: &char, source: Option<InputSource>) -> crate::Result<()> {
@@ -1096,15 +1219,31 @@ impl<'a> AdbShell<'a> {
 		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 
+	pub fn send_keycode(&self, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::send_keycode(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+	}
+
 	pub fn try_send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::try_send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+	}
+
+	pub fn try_send_keycode(&self, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::try_send_keycode(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 
 	pub fn send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source)
 	}
 
+	pub fn send_keycodes(&self, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source)
+	}
+
 	pub fn try_send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::try_send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source)
+	}
+
+	pub fn try_send_keycodes(&self, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()> {
+		Shell::try_send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source)
 	}
 }

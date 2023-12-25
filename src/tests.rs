@@ -1397,7 +1397,7 @@ mod tests {
 		assert_client_root!(client);
 
 		let shell = client.shell();
-		shell.send_keycombination(None, vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_3]).unwrap();
+		shell.send_keyevent_combination(None, vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_3]).unwrap();
 	}
 
 	#[test]
