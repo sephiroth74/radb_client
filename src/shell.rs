@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::io::BufRead;
+use std::io::{BufRead, ErrorKind};
 use std::process::{Command, ExitStatus, Output};
 use std::time::Duration;
 
@@ -10,6 +10,7 @@ use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
+use simple_cmd::output_ext::OutputExt;
 use simple_cmd::CommandBuilder;
 
 use crate::cmd_ext::CommandBuilderExt;
@@ -868,6 +869,23 @@ impl Shell {
 		}
 	}
 
+	pub fn get_command_path<'d, D, T: Arg>(adb: &Adb, device: D, command: T) -> crate::Result<String>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let output = Shell::exec(adb, device, vec![format!("command -v {}", command.as_str()?).as_str()], None, None)?;
+		if output.success() {
+			let line = Arg::as_str(&output.stdout)?.trim();
+			if line.is_empty() {
+				Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+			} else {
+				Ok(line.to_string())
+			}
+		} else {
+			Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+		}
+	}
+
 	pub fn exists<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
@@ -1254,6 +1272,10 @@ impl<'a> AdbShell<'a> {
 
 	pub fn exists<T: Arg>(&self, path: T) -> crate::Result<bool> {
 		Shell::exists(&self.parent.adb, &self.parent.device, path)
+	}
+
+	pub fn get_command_path<T: Arg>(&self, command: T) -> crate::Result<String> {
+		Shell::get_command_path(&self.parent.adb, &self.parent.device, command)
 	}
 
 	pub fn rm<'s, S: Arg>(&self, path: S, options: Option<Vec<&str>>) -> crate::Result<bool> {

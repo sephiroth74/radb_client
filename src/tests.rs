@@ -1,6 +1,7 @@
 /// cargo test --color=always --bin randroid tests -- --test-threads=1 --show-output
 #[cfg(test)]
 mod tests {
+	use anyhow::anyhow;
 	use std::fmt::{Display, Formatter};
 	use std::fs::{read_to_string, remove_file, File};
 	use std::io::{BufRead, ErrorKind, Write as IoWrite};
@@ -12,7 +13,6 @@ mod tests {
 	use std::time::{Duration, Instant};
 	use std::{env, io, thread, vec};
 
-	use anyhow::anyhow;
 	use chrono::Local;
 	use crossbeam_channel::{bounded, tick, Receiver, Select};
 	use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -212,17 +212,6 @@ mod tests {
 
 		client.root().expect("root failed");
 		client.remount().expect("remount failed");
-	}
-
-	#[test]
-	fn test_disable_verity() {
-		init_log!();
-
-		let client: AdbClient = client!();
-		assert_client_connected!(client);
-		assert_client_root!(client);
-
-		client.disable_verity().expect("disable_verity failed");
 	}
 
 	#[test]
@@ -1768,6 +1757,51 @@ mod tests {
 		debug!("stdout = {:?}", output.0.to_string_lossy());
 		debug!("stderr = {:?}", output.1.to_string_lossy());
 		debug!("status = {:?}", status);
+	}
+
+	#[test]
+	fn test_get_command() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let command = client.shell().get_command_path("avbctl").unwrap();
+		assert_eq!("/system/bin/avbctl", command.as_str());
+
+		let _ = client.shell().get_command_path("this_should_not_exist!").expect_err("Error expected!");
+	}
+
+	#[test]
+	fn test_get_verity() {
+		init_log!();
+		let client: AdbClient = client!();
+		let verity_enabled = client.get_verity().unwrap();
+		println!("verity enabled: {verity_enabled}");
+	}
+
+	#[test]
+	fn test_enabled_disable_verity() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert_client_root!(client);
+
+		let enabled = client.get_verity().unwrap();
+		println!("verity enabled: {enabled}");
+
+		if enabled {
+			client.disable_verity().unwrap();
+		} else {
+			client.enable_verity().unwrap();
+		}
+		client.reboot(None).unwrap();
+		client.wait_for_device(None).unwrap();
+
+		assert_client_root!(client);
+		let enabled2 = client.get_verity().unwrap();
+		println!("now verity enabled: {enabled2}");
+		assert_ne!(enabled, enabled2);
 	}
 
 	// Creates a channel that gets a message every time `SIGINT` is signalled.

@@ -14,6 +14,7 @@ use mac_address::MacAddress;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
 use simple_cmd::output_ext::OutputExt;
+use simple_cmd::Error::CommandError;
 use simple_cmd::{Cmd, CommandBuilder};
 use tracing::trace;
 use uuid::Uuid;
@@ -375,14 +376,6 @@ impl Client {
 		Ok(())
 	}
 
-	pub fn disable_verity<'a, T>(adb: &Adb, device: T) -> crate::Result<()>
-	where
-		T: Into<&'a dyn AdbDevice>,
-	{
-		CommandBuilder::adb(adb).device(device.into()).arg("disable-verity").build().output()?;
-		Ok(())
-	}
-
 	pub fn mount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
@@ -473,6 +466,81 @@ impl Client {
 		let output_str = Arg::as_str(&output)?.trim();
 		let boot_id = output_str.try_into()?;
 		Ok(boot_id)
+	}
+
+	pub fn get_verity<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let d: &dyn AdbDevice = device.into();
+		let _ = Client::check_avbctl(adb, d)?;
+		let output = Shell::exec(
+			adb,
+			d,
+			vec![
+				"avbctl",
+				"get-verity",
+			],
+			None,
+			None,
+		)?;
+		let string = Arg::as_str(&output.stdout)?;
+		Ok(string.contains("enabled"))
+	}
+
+	pub fn disable_verity<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let d: &dyn AdbDevice = device.into();
+		let _ = Client::check_avbctl(adb, d)?;
+		let output = Shell::exec(
+			adb,
+			d,
+			vec![
+				"avbctl",
+				"disable-verity",
+			],
+			None,
+			None,
+		)?;
+		if !output.success() {
+			let e: simple_cmd::errors::CmdError = output.into();
+			Err(AdbError::CmdError(CommandError(e)))
+		} else {
+			Ok(())
+		}
+	}
+
+	pub fn enable_verity<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let d: &dyn AdbDevice = device.into();
+		let _ = Client::check_avbctl(adb, d)?;
+		let output = Shell::exec(
+			adb,
+			d,
+			vec![
+				"avbctl",
+				"enable-verity",
+			],
+			None,
+			None,
+		)?;
+		if !output.success() {
+			let e: simple_cmd::errors::CmdError = output.into();
+			Err(AdbError::CmdError(CommandError(e)))
+		} else {
+			Ok(())
+		}
+	}
+
+	fn check_avbctl<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		Shell::get_command_path(adb, device, "avbctl").map(|_| ())
 	}
 }
 
@@ -566,13 +634,6 @@ impl AdbClient {
 	///
 	/// Root is required
 	///
-	pub fn disable_verity(&self) -> crate::Result<()> {
-		Client::disable_verity(&self.adb, &self.device)
-	}
-
-	///
-	/// Root is required
-	///
 	pub fn get_mac_address(&self) -> crate::Result<MacAddress> {
 		Client::get_mac_address(&self.adb, &self.device)
 	}
@@ -637,6 +698,18 @@ impl AdbClient {
 
 	pub fn wait_for_device(&self, timeout: Option<Duration>) -> crate::Result<()> {
 		Client::wait_for_device(&self.adb, &self.device, timeout)
+	}
+
+	pub fn get_verity(&self) -> crate::Result<bool> {
+		Client::get_verity(&self.adb, &self.device)
+	}
+
+	pub fn disable_verity(&self) -> crate::Result<()> {
+		Client::disable_verity(&self.adb, &self.device)
+	}
+
+	pub fn enable_verity(&self) -> crate::Result<()> {
+		Client::enable_verity(&self.adb, &self.device)
 	}
 
 	pub fn shell(&self) -> AdbShell {

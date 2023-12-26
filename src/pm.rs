@@ -5,7 +5,7 @@ use std::time::Duration;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
-use simple_cmd::Error::CmdError;
+use simple_cmd::Error::CommandError;
 
 use crate::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;
@@ -77,11 +77,11 @@ impl<'a> PackageManager<'a> {
 		match r {
 			Ok(r) => Ok(r),
 			Err(err) => match err {
-				AdbError::CmdError(CmdError(err)) => {
+				AdbError::CmdError(CommandError(err)) => {
 					if err.stderr.is_empty() && err.stdout.is_empty() {
 						Ok(false)
 					} else {
-						Err(AdbError::CmdError(CmdError(err)))
+						Err(AdbError::CmdError(CommandError(err)))
 					}
 				}
 				_ => Err(err),
