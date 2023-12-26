@@ -109,9 +109,18 @@ impl DeviceAddress {
 impl AsArgs<String> for DeviceAddress {
 	fn as_args(&self) -> Vec<String> {
 		match &self.0 {
-			AddressType::Sock(addr) => vec!["-s".to_string(), addr.to_string()],
-			AddressType::Name(name) => vec!["-s".to_string(), name.as_str().to_string()],
-			AddressType::Transport(id) => vec!["-t".to_string(), id.to_string()],
+			AddressType::Sock(addr) => vec![
+				"-s".to_string(),
+				addr.to_string(),
+			],
+			AddressType::Name(name) => vec![
+				"-s".to_string(),
+				name.as_str().to_string(),
+			],
+			AddressType::Transport(id) => vec![
+				"-t".to_string(),
+				id.to_string(),
+			],
 		}
 	}
 }
@@ -190,9 +199,18 @@ impl Device {
 
 	pub fn args(&self) -> Vec<String> {
 		match &self.0 .0 {
-			AddressType::Sock(addr) => vec!["-s".to_string(), addr.to_string()],
-			AddressType::Name(name) => vec!["-s".to_string(), name.to_string()],
-			AddressType::Transport(id) => vec!["-t".to_string(), id.to_string()],
+			AddressType::Sock(addr) => vec![
+				"-s".to_string(),
+				addr.to_string(),
+			],
+			AddressType::Name(name) => vec![
+				"-s".to_string(),
+				name.to_string(),
+			],
+			AddressType::Transport(id) => vec![
+				"-t".to_string(),
+				id.to_string(),
+			],
 		}
 	}
 }
@@ -929,6 +947,18 @@ impl From<&str> for PropType {
 				return PropType::Unknown(value.to_string());
 			}
 		};
+	}
+}
+
+impl ToString for PropType {
+	fn to_string(&self) -> String {
+		match self {
+			PropType::String => "String".to_string(),
+			PropType::Bool => "Bool".to_string(),
+			PropType::Int => "Int".to_string(),
+			PropType::Enum(_) => "Enum".to_string(),
+			PropType::Unknown(_) => "Unknown".to_string(),
+		}
 	}
 }
 

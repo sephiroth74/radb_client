@@ -37,7 +37,10 @@ impl Client {
 		command.with_arg("logcat");
 
 		if let Some(expr) = options.expr {
-			command.with_args(["-e", expr.as_str()]);
+			command.with_args([
+				"-e",
+				expr.as_str(),
+			]);
 		}
 
 		if options.dump {
@@ -45,19 +48,31 @@ impl Client {
 		}
 
 		if let Some(filename) = options.filename {
-			command.with_args(["-f", filename.as_str()]);
+			command.with_args([
+				"-f",
+				filename.as_str(),
+			]);
 		}
 
 		if let Some(format) = options.format {
-			command.with_args(["-v", format.as_str()]);
+			command.with_args([
+				"-v",
+				format.as_str(),
+			]);
 		}
 
 		if let Some(pid) = options.pid {
-			command.with_args(["--pid", format!("{}", pid).as_str()]);
+			command.with_args([
+				"--pid",
+				format!("{}", pid).as_str(),
+			]);
 		}
 
 		if let Some(since) = options.since {
-			command.with_args(["-T", since.format("%m-%d %H:%M:%S.%3f").to_string().as_str()]);
+			command.with_args([
+				"-T",
+				since.format("%m-%d %H:%M:%S.%3f").to_string().as_str(),
+			]);
 		}
 
 		if let Some(tags) = options.tags {
@@ -145,7 +160,11 @@ impl Client {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let args = vec!["exec-out", "screencap", "-p"];
+		let args = vec![
+			"exec-out",
+			"screencap",
+			"-p",
+		];
 		let pipe_out = Stdio::from(output);
 		let output = std::process::Command::new(adb.as_os_str())
 			.args(device.into().args())
@@ -192,7 +211,11 @@ impl Client {
 	{
 		CommandBuilder::adb(adb)
 			.device(device)
-			.args(["wait-for-device", "shell", "while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 143"])
+			.args([
+				"wait-for-device",
+				"shell",
+				"while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 143",
+			])
 			.timeout(timeout)
 			.build()
 			.output()?;
@@ -244,7 +267,12 @@ impl Client {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let command1 = CommandBuilder::adb(adb).device(device).args(vec!["shell", "dumpsys", "power"]).build();
+		let command1 = CommandBuilder::adb(adb)
+			.device(device)
+			.args(vec![
+				"shell", "dumpsys", "power",
+			])
+			.build();
 		let command2 = Cmd::builder("sed")
 			.arg("-n")
 			.arg("s/mWakefulness=\\(\\S*\\)/\\1/p")
@@ -275,7 +303,13 @@ impl Client {
 			command.with_timeout(timeout);
 		}
 
-		command.args(["connect", serial.as_str()]).build().output()?;
+		command
+			.args([
+				"connect",
+				serial.as_str(),
+			])
+			.build()
+			.output()?;
 
 		match Client::is_connected(adb, d) {
 			true => Ok(()),
@@ -288,7 +322,13 @@ impl Client {
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let serial = device.into().addr().serial().expect("Host[:Port] required");
-		CommandBuilder::new(adb.as_os_str()).args(["disconnect", serial.as_str()]).build().output()?;
+		CommandBuilder::new(adb.as_os_str())
+			.args([
+				"disconnect",
+				serial.as_str(),
+			])
+			.build()
+			.output()?;
 		Ok(true)
 	}
 
@@ -297,7 +337,14 @@ impl Client {
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let serial = device.into().addr().serial().expect("Host[:Port] required");
-		match CommandBuilder::new(adb.as_os_str()).args(["disconnect", serial.as_str()]).build().run() {
+		match CommandBuilder::new(adb.as_os_str())
+			.args([
+				"disconnect",
+				serial.as_str(),
+			])
+			.build()
+			.run()
+		{
 			Ok(status) => Ok(status.map_or(false, |status| status.success())),
 			Err(err) => Err(AdbError::CmdError(err)),
 		}
@@ -340,7 +387,16 @@ impl Client {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["mount -o rw,remount", dir.as_str()?], None, None)?;
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"mount -o rw,remount",
+				dir.as_str()?,
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -348,7 +404,16 @@ impl Client {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["mount -o ro,remount", dir.as_str()?], None, None)?;
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"mount -o ro,remount",
+				dir.as_str()?,
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -357,7 +422,10 @@ impl Client {
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let args = match output.as_ref() {
-			Some(s) => vec!["bugreport", s.as_str()?],
+			Some(s) => vec![
+				"bugreport",
+				s.as_str()?,
+			],
 			None => vec!["bugreport"],
 		};
 		CommandBuilder::adb(adb).device(device).args(args).build().output().map_err(|e| e.into())
@@ -367,7 +435,13 @@ impl Client {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		CommandBuilder::adb(adb).device(device).args(["logcat", "-b", "all", "-c"]).build().output()?;
+		CommandBuilder::adb(adb)
+			.device(device)
+			.args([
+				"logcat", "-b", "all", "-c",
+			])
+			.build()
+			.output()?;
 		Ok(())
 	}
 

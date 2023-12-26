@@ -122,7 +122,9 @@ impl<'a> PackageManager<'a> {
 	}
 
 	pub fn path(&self, package_name: &str, user: Option<&str>) -> Result<String, AdbError> {
-		let mut args = vec!["pm", "path"];
+		let mut args = vec![
+			"pm", "path",
+		];
 		if let Some(u) = user {
 			args.push("--user");
 			args.push(u);
@@ -137,7 +139,9 @@ impl<'a> PackageManager<'a> {
 	pub fn grant(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::Result<()> {
 		let mut args = vec!["pm grant"];
 		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
+			args.extend(vec![
+				"--user", u,
+			]);
 		}
 		args.push(package_name);
 		args.push(permission);
@@ -147,7 +151,9 @@ impl<'a> PackageManager<'a> {
 	pub fn revoke(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::Result<()> {
 		let mut args = vec!["pm revoke"];
 		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
+			args.extend(vec![
+				"--user", u,
+			]);
 		}
 		args.push(package_name);
 		args.push(permission);
@@ -166,11 +172,24 @@ impl<'a> PackageManager<'a> {
 	build_pm_operation!(enable, "enable", &str, Option<&str>);
 
 	pub fn reset_permissions(&self) -> crate::Result<()> {
-		self.parent.exec(vec!["pm", "reset-permissions"], None, None).map(|_f| ())
+		self.parent
+			.exec(
+				vec![
+					"pm",
+					"reset-permissions",
+				],
+				None,
+				None,
+			)
+			.map(|_f| ())
 	}
 
 	pub fn list_packages(&self, filters: Option<ListPackageFilter>, display: Option<ListPackageDisplayOptions>, name_filter: Option<&str>) -> Result<Vec<Package>, AdbError> {
-		let mut args = vec!["pm".into(), "list".into(), "packages".into()];
+		let mut args = vec![
+			"pm".into(),
+			"list".into(),
+			"packages".into(),
+		];
 
 		match filters {
 			Some(filters) => args.extend(filters),
@@ -231,9 +250,13 @@ impl<'a> PackageManager<'a> {
 	// private methods
 
 	fn op(&self, operation: &str, package_or_component: &str, user: Option<&str>) -> crate::Result<()> {
-		let mut args = vec!["pm", operation];
+		let mut args = vec![
+			"pm", operation,
+		];
 		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
+			args.extend(vec![
+				"--user", u,
+			]);
 		}
 		args.push(package_or_component);
 		self.parent.exec(args, None, None).map(|_f| ())

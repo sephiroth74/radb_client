@@ -47,7 +47,17 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let output = Shell::exec(adb, device, vec!["settings", "list", settings_type.into()], None, None)?;
+		let output = Shell::exec(
+			adb,
+			device,
+			vec![
+				"settings",
+				"list",
+				settings_type.into(),
+			],
+			None,
+			None,
+		)?;
 		let result = props_rs::parse(&output.stdout)?;
 		Ok(result)
 	}
@@ -56,16 +66,42 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		simple_cmd::Vec8ToString::as_str(&Shell::exec(adb, device, vec!["settings", "get", settings_type.into(), key], None, None)?.stdout)
-			.map(|s| Some(s.trim_end().to_string()))
-			.ok_or(Unknown("unexpected error".to_string()))
+		simple_cmd::Vec8ToString::as_str(
+			&Shell::exec(
+				adb,
+				device,
+				vec![
+					"settings",
+					"get",
+					settings_type.into(),
+					key,
+				],
+				None,
+				None,
+			)?
+			.stdout,
+		)
+		.map(|s| Some(s.trim_end().to_string()))
+		.ok_or(Unknown("unexpected error".to_string()))
 	}
 
 	pub fn put_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str, value: &str) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["settings", "put", settings_type.into(), key, value], None, None)?;
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"settings",
+				"put",
+				settings_type.into(),
+				key,
+				value,
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -73,7 +109,18 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["settings", "delete", settings_type.into(), key], None, None)?;
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"settings",
+				"delete",
+				settings_type.into(),
+				key,
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -97,7 +144,9 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let mut args = vec!["dumpsys", "-l"];
+		let mut args = vec![
+			"dumpsys", "-l",
+		];
 		if proto_only {
 			args.push("--proto");
 		}
@@ -221,7 +270,15 @@ impl Shell {
 		let ffplay_options = play_options.unwrap_or(FFPlayOptions::default());
 
 		command2.args(ffplay_options.into_iter());
-		command2.args(&["-loglevel", "repeat+level+verbose", "-an", "-autoexit", "-sync", "video", "-"]);
+		command2.args(&[
+			"-loglevel",
+			"repeat+level+verbose",
+			"-an",
+			"-autoexit",
+			"-sync",
+			"video",
+			"-",
+		]);
 
 		//command2.args(vec!["-loglevel", "verbose",
 		//                   "-an",
@@ -270,7 +327,17 @@ impl Shell {
 		D: Into<&'d dyn AdbDevice>,
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
 	{
-		Shell::exec(adb, device, vec!["screencap", "-p", path.into()], None, None)
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"screencap",
+				"-p",
+				path.into(),
+			],
+			None,
+			None,
+		)
 	}
 
 	pub fn is_screen_on<'a, D>(adb: &Adb, device: D) -> crate::Result<bool>
@@ -405,7 +472,13 @@ impl Shell {
 		Shell::exec(
 			adb,
 			device,
-			vec!["sendevent", event, format!("{}", code_type).as_str(), format!("{}", code).as_str(), format!("{}", value).as_str()],
+			vec![
+				"sendevent",
+				event,
+				format!("{}", code_type).as_str(),
+				format!("{}", code).as_str(),
+				format!("{}", value).as_str(),
+			],
 			None,
 			None,
 		)?;
@@ -419,7 +492,13 @@ impl Shell {
 		Shell::try_exec(
 			adb,
 			device,
-			vec!["sendevent", event, format!("{}", code_type).as_str(), format!("{}", code).as_str(), format!("{}", value).as_str()],
+			vec![
+				"sendevent",
+				event,
+				format!("{}", code_type).as_str(),
+				format!("{}", code).as_str(),
+				format!("{}", value).as_str(),
+			],
 			None,
 			None,
 		)?;
@@ -714,7 +793,16 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let result = Shell::exec(adb, device, vec!["getevent", "-S"], None, None)?.stdout;
+		let result = Shell::exec(
+			adb,
+			device,
+			vec![
+				"getevent", "-S",
+			],
+			None,
+			None,
+		)?
+		.stdout;
 
 		lazy_static! {
 			static ref RE: Regex = Regex::new("^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?").unwrap();
@@ -745,9 +833,24 @@ impl Shell {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Arg::as_str(&Shell::exec(adb, device, vec!["stat", "-L", "-c", "'%a'", format!("{:?}", path).as_str()], None, None)?.stdout)?
-			.trim_end()
-			.parse::<u32>()?;
+		let output = Arg::as_str(
+			&Shell::exec(
+				adb,
+				device,
+				vec![
+					"stat",
+					"-L",
+					"-c",
+					"'%a'",
+					format!("{:?}", path).as_str(),
+				],
+				None,
+				None,
+			)?
+			.stdout,
+		)?
+		.trim_end()
+		.parse::<u32>()?;
 
 		let mode = file_mode::Mode::from(output);
 		Ok(mode)
@@ -811,7 +914,16 @@ impl Shell {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let result = Shell::exec(adb, device, vec!["getprop", key], None, None).map(|s| s.stdout)?;
+		let result = Shell::exec(
+			adb,
+			device,
+			vec![
+				"getprop", key,
+			],
+			None,
+			None,
+		)
+		.map(|s| s.stdout)?;
 		Ok(Arg::as_str(&result).map(|f| f.trim_end())?.to_string())
 	}
 
@@ -824,7 +936,16 @@ impl Shell {
 			new_value = "\"\""
 		}
 
-		Shell::exec(adb, device, vec!["setprop", key, new_value], None, None).map(|_| ())
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"setprop", key, new_value,
+			],
+			None,
+			None,
+		)
+		.map(|_| ())
 	}
 
 	pub fn clear_prop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str) -> crate::Result<()>
@@ -838,14 +959,32 @@ impl Shell {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["getprop", "-T", key], None, None).map(|s| s.stdout)
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"getprop", "-T", key,
+			],
+			None,
+			None,
+		)
+		.map(|s| s.stdout)
 	}
 
 	pub fn getprop_types<'d, D>(adb: &Adb, device: D) -> crate::Result<HashMap<String, PropType>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::exec(adb, device, vec!["getprop", "-T"], None, None).map(|s| s.stdout)?;
+		let output = Shell::exec(
+			adb,
+			device,
+			vec![
+				"getprop", "-T",
+			],
+			None,
+			None,
+		)
+		.map(|s| s.stdout)?;
 		let hash_map = output
 			.lines()
 			.filter_map(|l| l.ok())
@@ -897,14 +1036,32 @@ impl Shell {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::exec(adb, device, vec!["cat", path.as_str()?], None, None).map(|s| s.stdout)
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"cat",
+				path.as_str()?,
+			],
+			None,
+			None,
+		)
+		.map(|s| s.stdout)
 	}
 
 	pub fn which<'a, D>(adb: &Adb, device: D, command: &str) -> crate::Result<Option<String>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let output = Shell::exec(adb, device, vec!["which", command], None, None);
+		let output = Shell::exec(
+			adb,
+			device,
+			vec![
+				"which", command,
+			],
+			None,
+			None,
+		);
 		output.map(|s| simple_cmd::Vec8ToString::as_str(&s.stdout).map(|ss| String::from(ss.trim_end())))
 	}
 
@@ -952,7 +1109,17 @@ impl Shell {
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let _result = Shell::exec(adb, device, vec!["am", "broadcast", format!("{:}", intent).as_str()], None, Some(Duration::from_secs(1)))?;
+		let _result = Shell::exec(
+			adb,
+			device,
+			vec![
+				"am",
+				"broadcast",
+				format!("{:}", intent).as_str(),
+			],
+			None,
+			Some(Duration::from_secs(1)),
+		)?;
 		Ok(())
 	}
 
@@ -960,7 +1127,17 @@ impl Shell {
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let _result = Shell::exec(adb, device, vec!["am", "start", format!("{:}", intent).as_str()], None, None)?;
+		let _result = Shell::exec(
+			adb,
+			device,
+			vec![
+				"am",
+				"start",
+				format!("{:}", intent).as_str(),
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -968,7 +1145,17 @@ impl Shell {
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let _result = Shell::exec(adb, device, vec!["am", "startservice", format!("{:}", intent).as_str()], None, None)?;
+		let _result = Shell::exec(
+			adb,
+			device,
+			vec![
+				"am",
+				"startservice",
+				format!("{:}", intent).as_str(),
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -976,7 +1163,17 @@ impl Shell {
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let _result = Shell::exec(adb, device, vec!["am", "force-stop", package_name], None, None)?;
+		let _result = Shell::exec(
+			adb,
+			device,
+			vec![
+				"am",
+				"force-stop",
+				package_name,
+			],
+			None,
+			None,
+		)?;
 		Ok(())
 	}
 
@@ -998,7 +1195,17 @@ impl Shell {
 			SELinuxType::Enforcing => "1",
 		};
 
-		Shell::exec(adb, device, vec!["setenforce", new_value], None, None).map(|_| ())
+		Shell::exec(
+			adb,
+			device,
+			vec![
+				"setenforce",
+				new_value,
+			],
+			None,
+			None,
+		)
+		.map(|_| ())
 	}
 }
 

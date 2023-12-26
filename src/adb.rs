@@ -45,7 +45,12 @@ impl Adb {
 
 	/// List connected devices
 	pub fn devices(&self) -> Result<Vec<Box<dyn AdbDevice>>, AdbError> {
-		let output = Cmd::builder(self.0.as_path()).args(["devices", "-l"]).build().output()?;
+		let output = Cmd::builder(self.0.as_path())
+			.args([
+				"devices", "-l",
+			])
+			.build()
+			.output()?;
 
 		lazy_static! {
 			static ref RE: Regex = Regex::new(

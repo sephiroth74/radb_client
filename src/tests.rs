@@ -609,7 +609,11 @@ mod tests {
 
 		let output_file = File::create(local_path.as_path()).unwrap();
 
-		let builder: CommandBuilder = <AdbClient as Into<CommandBuilder>>::into(client).args(vec!["ls", "-la", "/"]).stdout(Some(Stdio::from(output_file)));
+		let builder: CommandBuilder = <AdbClient as Into<CommandBuilder>>::into(client)
+			.args(vec![
+				"ls", "-la", "/",
+			])
+			.stdout(Some(Stdio::from(output_file)));
 		trace!("builder: {:?}", &builder);
 
 		let output = builder.build().output().unwrap();
@@ -669,14 +673,32 @@ mod tests {
 		file.flush().unwrap();
 
 		if shell.exists(remote_path.as_path().to_str().unwrap()).unwrap() {
-			shell.exec(vec!["rm", remote_path.as_path().to_str().unwrap()], None, None).unwrap();
+			shell
+				.exec(
+					vec![
+						"rm",
+						remote_path.as_path().to_str().unwrap(),
+					],
+					None,
+					None,
+				)
+				.unwrap();
 		}
 
 		let result = client.push(local_path.as_path(), remote_path.as_path().to_str().unwrap()).unwrap();
 		trace!("{:?}", result);
 
 		assert!(shell.exists(remote_path.as_path().to_str().unwrap()).unwrap());
-		shell.exec(vec!["rm", remote_path.as_path().to_str().unwrap()], None, None).unwrap();
+		shell
+			.exec(
+				vec![
+					"rm",
+					remote_path.as_path().to_str().unwrap(),
+				],
+				None,
+				None,
+			)
+			.unwrap();
 
 		remove_file(local_path.as_path()).unwrap();
 	}
@@ -849,7 +871,10 @@ mod tests {
 
 		let package_name = "com.swisscom.aot.library.standalone";
 		let mut intent = intent!["swisscom.android.tv.action.PRINT_SESSION_INFO"];
-		intent.component = Some(format!["{:}/.receiver.PropertiesReceiver", package_name]);
+		intent.component = Some(format![
+			"{:}/.receiver.PropertiesReceiver",
+			package_name
+		]);
 		intent.extra.put_string_extra("swisscom.android.tv.extra.TAG", "SESSION_INFO");
 		intent.wait = true;
 
@@ -864,10 +889,12 @@ mod tests {
 			expr: None,
 			dump: true,
 			filename: None,
-			tags: Some(vec![LogcatTag {
-				name: "SESSION_INFO".to_string(),
-				level: LogcatLevel::Info,
-			}]),
+			tags: Some(vec![
+				LogcatTag {
+					name: "SESSION_INFO".to_string(),
+					level: LogcatLevel::Info,
+				},
+			]),
 			format: None,
 			since,
 			pid: None,
@@ -1310,7 +1337,10 @@ mod tests {
 
 		let package_name = "com.swisscom.aot.library.standalone";
 		let mut intent = intent!["swisscom.android.tv.action.PRINT_SESSION_INFO"];
-		intent.component = Some(format!["{:}/.receiver.PropertiesReceiver", package_name]);
+		intent.component = Some(format![
+			"{:}/.receiver.PropertiesReceiver",
+			package_name
+		]);
 		intent.extra.put_string_extra("swisscom.android.tv.extra.TAG", "SESSION_INFO");
 		intent.wait = true;
 
@@ -1397,7 +1427,15 @@ mod tests {
 		assert_client_root!(client);
 
 		let shell = client.shell();
-		shell.send_keyevent_combination(None, vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_3]).unwrap();
+		shell
+			.send_keyevent_combination(
+				None,
+				vec![
+					KeyCode::KEYCODE_1,
+					KeyCode::KEYCODE_3,
+				],
+			)
+			.unwrap();
 	}
 
 	#[test]
@@ -1419,7 +1457,15 @@ mod tests {
 		assert_client_root!(client);
 
 		let shell = client.shell();
-		shell.send_keyevents(vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_9], Some(InputSource::dpad)).unwrap();
+		shell
+			.send_keyevents(
+				vec![
+					KeyCode::KEYCODE_1,
+					KeyCode::KEYCODE_9,
+				],
+				Some(InputSource::dpad),
+			)
+			.unwrap();
 	}
 
 	#[test]
@@ -1563,7 +1609,10 @@ mod tests {
 		let child1 = client
 			.shell()
 			.to_command()
-			.args(vec!["shell", "while true; do screenrecord --output-format=h264 -; done"])
+			.args(vec![
+				"shell",
+				"while true; do screenrecord --output-format=h264 -; done",
+			])
 			.stdout(Stdio::piped())
 			.stderr(Stdio::piped())
 			.spawn()
@@ -1573,7 +1622,17 @@ mod tests {
 		let fd: Stdio = out.try_into().unwrap();
 
 		let mut command2 = Command::new(ffplay.clone());
-		command2.args(vec!["-framerate", "60", "-probesize", "32", "-sync", "video", "-"]).stdout(Stdio::piped());
+		command2
+			.args(vec![
+				"-framerate",
+				"60",
+				"-probesize",
+				"32",
+				"-sync",
+				"video",
+				"-",
+			])
+			.stdout(Stdio::piped());
 		command2.stdin(fd);
 
 		//command2.stdin(Stdio::from(child1.stdout.unwrap()))
