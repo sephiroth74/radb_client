@@ -579,3 +579,10 @@ pub enum PropType {
 	Enum(Vec<String>),
 	Unknown(String),
 }
+
+#[derive(Debug, Display, Eq, PartialEq, Hash)]
+pub enum Wakefulness {
+	Awake,
+	Asleep,
+	Dreaming,
+}

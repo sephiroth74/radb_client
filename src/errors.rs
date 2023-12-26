@@ -49,7 +49,7 @@ pub enum AdbError {
 	IoError(#[from] std::io::Error),
 
 	#[error(transparent)]
-	ClipbardError(#[from] arboard::Error),
+	ClipboardError(#[from] arboard::Error),
 
 	#[error(transparent)]
 	UuidError(#[from] uuid::Error),

@@ -12,13 +12,13 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
 
-use crate::errors::AdbError::InvalidDeviceError;
+use crate::errors::AdbError::{InvalidDeviceError, ParseError};
 use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::traits::{AdbDevice, AsArgs};
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
 	AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag,
-	PackageFlags, PropType, RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
+	PackageFlags, PropType, RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions, Wakefulness,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
@@ -933,3 +933,20 @@ impl From<&str> for PropType {
 }
 
 // endregion PropType
+
+// region Wakefulness
+
+impl TryFrom<&str> for Wakefulness {
+	type Error = AdbError;
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value.to_lowercase().as_str() {
+			"awake" => Ok(Wakefulness::Awake),
+			"asleep" => Ok(Wakefulness::Asleep),
+			"dreaming" => Ok(Wakefulness::Dreaming),
+			_ => Err(ParseError(value.to_string())),
+		}
+	}
+}
+
+// endregion Wakefulness

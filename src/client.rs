@@ -14,7 +14,7 @@ use mac_address::MacAddress;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
 use simple_cmd::output_ext::OutputExt;
-use simple_cmd::CommandBuilder;
+use simple_cmd::{Cmd, CommandBuilder};
 use tracing::trace;
 use uuid::Uuid;
 
@@ -22,7 +22,7 @@ use crate::cmd_ext::CommandBuilderExt;
 use crate::errors::AdbError;
 use crate::errors::AdbError::InvalidDeviceAddressError;
 use crate::traits::AdbDevice;
-use crate::types::{LogcatOptions, RebootType};
+use crate::types::{LogcatOptions, RebootType, Wakefulness};
 use crate::{ActivityManager, AdbClient, AdbShell, Client, Device, PackageManager};
 use crate::{Adb, Shell};
 
@@ -240,6 +240,23 @@ impl Client {
 		return if let Ok(output) = output { output.success() } else { false };
 	}
 
+	pub fn get_wakefulness<'d, D>(adb: &Adb, device: D) -> crate::Result<Wakefulness>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let command1 = CommandBuilder::adb(adb).device(device).args(vec!["shell", "dumpsys", "power"]).build();
+		let command2 = Cmd::builder("sed")
+			.arg("-n")
+			.arg("s/mWakefulness=\\(\\S*\\)/\\1/p")
+			.with_debug(true)
+			.stdout(Some(Stdio::piped()))
+			.build();
+
+		let result = command1.pipe(command2)?;
+		let awake = Arg::as_str(&result.stdout)?.trim();
+		Ok(awake.try_into()?)
+	}
+
 	pub fn connect<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
@@ -402,6 +419,14 @@ impl AdbClient {
 
 	pub fn is_connected(&self) -> bool {
 		Client::is_connected(&self.adb, &self.device)
+	}
+
+	pub fn is_awake(&self) -> crate::Result<bool> {
+		Ok(Client::get_wakefulness(&self.adb, &self.device)? != Wakefulness::Asleep)
+	}
+
+	pub fn get_wakefulness(&self) -> crate::Result<Wakefulness> {
+		Client::get_wakefulness(&self.adb, &self.device)
 	}
 
 	/// Try to connect to the inner device.

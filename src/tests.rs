@@ -40,7 +40,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.34:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.6:5555"));
 
 	// region MACROS
 
@@ -1420,6 +1420,22 @@ mod tests {
 
 		let shell = client.shell();
 		shell.send_keyevents(vec![KeyCode::KEYCODE_1, KeyCode::KEYCODE_9], Some(InputSource::dpad)).unwrap();
+	}
+
+	#[test]
+	fn test_is_awake() {
+		init_log!();
+		let client: AdbClient = client!();
+		let is_awake = client.is_awake().unwrap();
+		debug!("is_awake: {}", is_awake);
+	}
+
+	#[test]
+	fn test_get_awake_status() {
+		init_log!();
+		let client: AdbClient = client!();
+		let status = client.get_wakefulness().unwrap();
+		debug!("device status: {}", status);
 	}
 
 	#[test]
