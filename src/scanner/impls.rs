@@ -37,7 +37,7 @@ impl Display for ClientResult {
 			strings.push(format!("version:{}", n));
 		}
 
-		write!(f, "{:}	device {:}", self.addr, strings.join(" "))
+		write!(f, "{:}    device {:}", self.addr, strings.join(" "))
 	}
 }
 
