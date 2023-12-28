@@ -47,7 +47,7 @@ impl Scanner {
 		Scanner {}
 	}
 
-	pub fn scan(&self, adb: &Adb, tx: Sender<Option<ClientResult>>) {
+	pub fn scan(&self, adb: &Adb, connection_timeout: Option<Duration>, tx: Sender<Option<ClientResult>>) {
 		let adb = Arc::new(adb.clone());
 		let cpus = std::thread::available_parallelism().map(|s| s.get()).unwrap_or(num_cpus::get());
 		let tp = threadpool::ThreadPool::new(cpus);
@@ -58,7 +58,7 @@ impl Scanner {
 
 			tp.execute(move || {
 				let addr = format!("192.168.1.{:}:5555", i);
-				let _ = tx.send(connect(adb, addr.as_str()));
+				let _ = tx.send(connect(adb, addr.as_str(), connection_timeout.unwrap_or(Duration::from_millis(TCP_TIMEOUT_MS))));
 				drop(tx);
 			});
 		}
@@ -100,13 +100,13 @@ impl TryFrom<&ClientResult> for AdbClient {
 	}
 }
 
-fn connect(adb: Arc<Adb>, host: &str) -> Option<ClientResult> {
+fn connect(adb: Arc<Adb>, host: &str, timeout: Duration) -> Option<ClientResult> {
 	let sock_addr = SocketAddr::from_str(host).ok();
 	if sock_addr.is_none() {
 		return None;
 	}
 
-	if let Ok(response) = std::net::TcpStream::connect_timeout(sock_addr.as_ref().unwrap(), Duration::from_millis(TCP_TIMEOUT_MS)) {
+	if let Ok(response) = std::net::TcpStream::connect_timeout(sock_addr.as_ref().unwrap(), timeout) {
 		if let Ok(addr) = response.peer_addr() {
 			//let device = adb.device(host.as_str()).unwrap();
 			let client = adb.client(host).unwrap();

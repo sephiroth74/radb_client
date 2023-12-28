@@ -1529,18 +1529,11 @@ mod tests {
 		progress.set_prefix("Elapsed");
 
 		let (tx, rx) = bounded(255);
-		//let log_level = log::max_level();
-		//log::set_max_level(LevelFilter::Off);
 
 		let adb = Adb::new().unwrap();
-
 		let scanner = Scanner::new();
 		let start = Instant::now();
-
-		scanner.scan(&adb, tx.clone());
-
-		let elapsed = start.elapsed();
-
+		scanner.scan(&adb, Some(Duration::from_millis(100)), tx.clone());
 		drop(tx);
 
 		let mut result = Vec::new();
@@ -1552,7 +1545,7 @@ mod tests {
 			}
 		}
 
-		//log::set_max_level(log_level);
+		let elapsed = start.elapsed();
 
 		debug!("Time elapsed for scanning is: {:?}ms", elapsed.as_millis());
 		debug!("Found {:} devices", result.len());

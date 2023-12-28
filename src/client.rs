@@ -304,7 +304,7 @@ impl Client {
 			command.with_timeout(timeout);
 		}
 
-		command
+		let output = command
 			.args([
 				"connect",
 				serial.as_str(),
@@ -312,9 +312,13 @@ impl Client {
 			.build()
 			.output()?;
 
-		match Client::is_connected(adb, d) {
-			true => Ok(()),
-			false => Err(AdbError::ConnectToDeviceError()),
+		if output.error() {
+			return Err(AdbError::ConnectToDeviceError());
+		} else {
+			match Client::is_connected(adb, d) {
+				true => Ok(()),
+				false => Err(AdbError::ConnectToDeviceError()),
+			}
 		}
 	}
 
