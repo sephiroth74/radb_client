@@ -19,23 +19,23 @@ pub struct Client {}
 #[repr(transparent)]
 pub struct Device(DeviceAddress);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PackageManager<'a> {
 	pub(crate) parent: AdbShell<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ActivityManager<'a> {
 	pub(crate) parent: AdbShell<'a>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AdbClient {
 	pub adb: Adb,
 	pub device: Device,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AdbShell<'a> {
 	pub(crate) parent: &'a AdbClient,
 }
