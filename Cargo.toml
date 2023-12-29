@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.20"
+version = "0.2.21"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -37,6 +37,7 @@ threadpool = "1.8.1"
 cmd_lib = "1.9.3"
 tracing = "0.1.40"
 simple-cmd = "0.0.11"
+cached = { version = "0.46.1" }
 #radb-client-macros = { path = "./macros" }
 
 

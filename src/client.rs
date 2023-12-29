@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::env::temp_dir;
 use std::ffi::OsStr;
 use std::fs::File;
+use std::io::ErrorKind;
 use std::path::Path;
 use std::process::{Output, Stdio};
 use std::result;
@@ -544,7 +545,9 @@ impl Client {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::get_command_path(adb, device, "avbctl").map(|_| ())
+		Shell::get_command_path(adb, device, "avbctl")
+			.map(|_| ())
+			.ok_or(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
 	}
 }
 
@@ -592,7 +595,7 @@ impl AdbClient {
 	/// pub fn connect() {
 	///  let device: Device = "192.168.1.24:5555".parse().unwrap();
 	///  let client: AdbClient = device.try_into().unwrap();
-	///  client.connect(None).await.unwrap();
+	///  client.connect(None).unwrap();
 	/// }
 	/// ```
 	pub fn connect(&self, timeout: Option<Duration>) -> Result<(), AdbError> {

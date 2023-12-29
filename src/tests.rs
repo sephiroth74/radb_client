@@ -41,7 +41,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.6:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.3:5555"));
 
 	// region MACROS
 
@@ -1730,6 +1730,9 @@ mod tests {
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
 		assert_client_root!(client);
+
+		let command = client.shell().get_command_path("avbctl").unwrap();
+		assert_eq!("/system/bin/avbctl", command.as_str());
 
 		let command = client.shell().get_command_path("avbctl").unwrap();
 		assert_eq!("/system/bin/avbctl", command.as_str());

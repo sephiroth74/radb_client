@@ -2,15 +2,16 @@ use std::collections::HashMap;
 use std::ffi::OsStr;
 use std::io::{BufRead, ErrorKind};
 use std::process::{Command, ExitStatus, Output};
+use std::sync::Mutex;
 use std::time::Duration;
 
+use cached::{Cached, SizedCache};
 use crossbeam::channel::Receiver;
 use lazy_static::lazy_static;
 use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
-use simple_cmd::output_ext::OutputExt;
 use simple_cmd::CommandBuilder;
 
 use crate::cmd_ext::CommandBuilderExt;
@@ -23,6 +24,7 @@ use crate::{Adb, AdbShell, PackageManager, Shell};
 
 lazy_static! {
 	static ref RE_GET_PROPS: Regex = Regex::new("(?m)^\\[(.*)\\]\\s*:\\s*\\[([^\\]]*)\\]$").unwrap();
+	static ref COMMANDS_CACHE: Mutex<SizedCache<String, Option<String>>> = Mutex::new(SizedCache::with_size(10));
 }
 
 impl Shell {
@@ -869,20 +871,32 @@ impl Shell {
 		}
 	}
 
-	pub fn get_command_path<'d, D, T: Arg>(adb: &Adb, device: D, command: T) -> crate::Result<String>
+	pub fn get_command_path<'d, D, T: Arg>(adb: &Adb, device: D, command: T) -> Option<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::exec(adb, device, vec![format!("command -v {}", command.as_str()?).as_str()], None, None)?;
-		if output.success() {
-			let line = Arg::as_str(&output.stdout)?.trim();
-			if line.is_empty() {
-				Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
-			} else {
-				Ok(line.to_string())
-			}
+		if let Ok(command_string) = command.as_str() {
+			let cloned_device = device.into();
+
+			let mut binding = COMMANDS_CACHE.lock().unwrap();
+			let cache_key = format!("{}{}", cloned_device.addr(), command_string);
+
+			binding
+				.cache_get_or_set_with(cache_key.clone(), || {
+					Shell::exec(adb, cloned_device, vec![format!("command -v {}", command_string).as_str()], None, None)
+						.and_then(|result| Arg::as_str(&result.stdout).map(|s| s.trim().to_string()).map_err(|e| AdbError::Errno(e)))
+						.and_then(|result| {
+							if result.is_empty() {
+								Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+							} else {
+								Ok(result)
+							}
+						})
+						.ok()
+				})
+				.clone()
 		} else {
-			Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+			None
 		}
 	}
 
@@ -1275,7 +1289,11 @@ impl<'a> AdbShell<'a> {
 	}
 
 	pub fn get_command_path<T: Arg>(&self, command: T) -> crate::Result<String> {
-		Shell::get_command_path(&self.parent.adb, &self.parent.device, command)
+		Shell::get_command_path(&self.parent.adb, &self.parent.device, command).ok_or(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+	}
+
+	pub fn has_command<T: Arg>(&self, command: T) -> crate::Result<bool> {
+		self.get_command_path(command).map(|_| true)
 	}
 
 	pub fn rm<'s, S: Arg>(&self, path: S, options: Option<Vec<&str>>) -> crate::Result<bool> {
