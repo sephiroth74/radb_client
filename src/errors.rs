@@ -87,7 +87,9 @@ impl Display for ParseSELinuxTypeError {
 
 impl From<Errno> for ParseSELinuxTypeError {
 	fn from(value: Errno) -> Self {
-		ParseSELinuxTypeError { msg: Some(value.to_string()) }
+		ParseSELinuxTypeError {
+			msg: Some(value.to_string()),
+		}
 	}
 }
 

@@ -297,7 +297,10 @@ impl Client {
 			return Ok(());
 		}
 
-		let serial = d.addr().serial().ok_or(InvalidDeviceAddressError("Host[:Port] required".to_string()))?;
+		let serial = d
+			.addr()
+			.serial()
+			.ok_or(InvalidDeviceAddressError("Host[:Port] required".to_string()))?;
 
 		let mut command = CommandBuilder::new(adb.as_os_str());
 
@@ -426,7 +429,12 @@ impl Client {
 			],
 			None => vec!["bugreport"],
 		};
-		CommandBuilder::adb(adb).device(device).args(args).build().output().map_err(|e| e.into())
+		CommandBuilder::adb(adb)
+			.device(device)
+			.args(args)
+			.build()
+			.output()
+			.map_err(|e| e.into())
 	}
 
 	pub fn clear_logcat<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
@@ -724,10 +732,14 @@ impl AdbClient {
 	}
 
 	pub fn pm(&self) -> PackageManager {
-		PackageManager { parent: AdbShell { parent: self } }
+		PackageManager {
+			parent: AdbShell { parent: self },
+		}
 	}
 
 	pub fn am(&self) -> ActivityManager {
-		ActivityManager { parent: AdbShell { parent: self } }
+		ActivityManager {
+			parent: AdbShell { parent: self },
+		}
 	}
 }

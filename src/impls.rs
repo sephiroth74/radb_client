@@ -17,8 +17,9 @@ use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::traits::{AdbDevice, AsArgs};
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
-	AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag,
-	PackageFlags, PropType, RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions, Wakefulness,
+	AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType,
+	ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, PropType, RebootType, SELinuxType,
+	ScreenRecordOptions, UninstallOptions, Wakefulness,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
@@ -190,8 +191,13 @@ impl Device {
 		}
 
 		if let Some(cap) = RE.captures(input) {
-			let ip = cap.name("ip").ok_or(InvalidDeviceError("Device serial not found".to_string()))?.as_str();
-			DeviceAddress::from_ip(ip).map(|address| Device(address)).map_err(|e| AdbError::from(e))
+			let ip = cap
+				.name("ip")
+				.ok_or(InvalidDeviceError("Device serial not found".to_string()))?
+				.as_str();
+			DeviceAddress::from_ip(ip)
+				.map(|address| Device(address))
+				.map_err(|e| AdbError::from(e))
 		} else {
 			Err(AdbError::InvalidDeviceAddressError(input.to_string()))
 		}
@@ -846,19 +852,31 @@ impl Display for Extra {
 
 		if !self.eia.is_empty() {
 			self.eia.iter().for_each(|entry| {
-				output.push(format!("--eia {:} {:}", entry.0, entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")));
+				output.push(format!(
+					"--eia {:} {:}",
+					entry.0,
+					entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+				));
 			});
 		}
 
 		if !self.ela.is_empty() {
 			self.ela.iter().for_each(|entry| {
-				output.push(format!("--ela {:} {:}", entry.0, entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")));
+				output.push(format!(
+					"--ela {:} {:}",
+					entry.0,
+					entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+				));
 			});
 		}
 
 		if !self.efa.is_empty() {
 			self.efa.iter().for_each(|entry| {
-				output.push(format!("--efa {:} {:}", entry.0, entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")));
+				output.push(format!(
+					"--efa {:} {:}",
+					entry.0,
+					entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+				));
 			});
 		}
 

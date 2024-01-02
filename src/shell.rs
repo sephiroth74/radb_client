@@ -28,7 +28,13 @@ lazy_static! {
 }
 
 impl Shell {
-	pub fn exec<'a, D, T>(adb: &Adb, device: D, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Output>
+	pub fn exec<'a, D, T>(
+		adb: &Adb,
+		device: D,
+		args: Vec<T>,
+		cancel: Option<Receiver<()>>,
+		timeout: Option<Duration>,
+	) -> crate::Result<Output>
 	where
 		T: Into<String> + AsRef<OsStr>,
 		D: Into<&'a dyn AdbDevice>,
@@ -37,7 +43,13 @@ impl Shell {
 		Ok(builder.build().output()?)
 	}
 
-	pub fn try_exec<'a, D, T>(adb: &Adb, device: D, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Option<ExitStatus>>
+	pub fn try_exec<'a, D, T>(
+		adb: &Adb,
+		device: D,
+		args: Vec<T>,
+		cancel: Option<Receiver<()>>,
+		timeout: Option<Duration>,
+	) -> crate::Result<Option<ExitStatus>>
 	where
 		T: Into<String> + AsRef<OsStr>,
 		D: Into<&'a dyn AdbDevice>,
@@ -143,7 +155,12 @@ impl Shell {
 		Ok(lines)
 	}
 
-	pub fn dumpsys_list<'a, D>(adb: &Adb, device: D, proto_only: bool, priority: Option<DumpsysPriority>) -> crate::Result<Vec<String>>
+	pub fn dumpsys_list<'a, D>(
+		adb: &Adb,
+		device: D,
+		proto_only: bool,
+		priority: Option<DumpsysPriority>,
+	) -> crate::Result<Vec<String>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -239,7 +256,13 @@ impl Shell {
 		Shell::exec(adb, device, args, None, None)
 	}
 
-	pub fn screen_record<'d, D>(adb: &Adb, device: D, options: Option<ScreenRecordOptions>, output: &str, cancel: Option<Receiver<()>>) -> crate::Result<Output>
+	pub fn screen_record<'d, D>(
+		adb: &Adb,
+		device: D,
+		options: Option<ScreenRecordOptions>,
+		output: &str,
+		cancel: Option<Receiver<()>>,
+	) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -254,7 +277,13 @@ impl Shell {
 		Ok(command.build().output()?)
 	}
 
-	pub fn screen_mirror<'d, D>(adb: &Adb, device: D, options: Option<ScreenRecordOptions>, play_options: Option<FFPlayOptions>, cancel: Option<Receiver<()>>) -> crate::Result<Output>
+	pub fn screen_mirror<'d, D>(
+		adb: &Adb,
+		device: D,
+		options: Option<ScreenRecordOptions>,
+		play_options: Option<FFPlayOptions>,
+		cancel: Option<Receiver<()>>,
+	) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -264,7 +293,10 @@ impl Shell {
 		//let screenrecord_arg = format!("while true; do screenrecord --output-format=h264 {:} -; done", screenrecord_options);
 		let screenrecord_arg = format!("screenrecord --output-format=h264 {:} -", screenrecord_options);
 
-		let builder = CommandBuilder::shell(adb, device).args(vec![screenrecord_arg.as_str()]).signal(cancel).with_debug(true);
+		let builder = CommandBuilder::shell(adb, device)
+			.args(vec![screenrecord_arg.as_str()])
+			.signal(cancel)
+			.with_debug(true);
 
 		let command1 = builder.build();
 
@@ -347,14 +379,27 @@ impl Shell {
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let process_result = Shell::exec(adb, device, vec!["dumpsys input_method | egrep 'mInteractive=(true|false)'"], None, None)?;
+		let process_result = Shell::exec(
+			adb,
+			device,
+			vec!["dumpsys input_method | egrep 'mInteractive=(true|false)'"],
+			None,
+			None,
+		)?;
 		let result = simple_cmd::Vec8ToString::as_str(&process_result.stdout)
 			.map(|f| f.contains("mInteractive=true"))
 			.ok_or(AdbError::ParseInputError())?;
 		Ok(result)
 	}
 
-	pub fn send_swipe<'a, D>(adb: &Adb, device: D, from_pos: (i32, i32), to_pos: (i32, i32), duration: Option<Duration>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_swipe<'a, D>(
+		adb: &Adb,
+		device: D,
+		from_pos: (i32, i32),
+		to_pos: (i32, i32),
+		duration: Option<Duration>,
+		source: Option<InputSource>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -508,7 +553,13 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn send_motion<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> crate::Result<()>
+	pub fn send_motion<'a, D>(
+		adb: &Adb,
+		device: D,
+		source: Option<InputSource>,
+		motion: MotionEvent,
+		pos: (i32, i32),
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -527,7 +578,14 @@ impl Shell {
 		Shell::exec(adb, device, args, None, None).map(|_| ())
 	}
 
-	pub fn send_draganddrop<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, duration: Option<Duration>, from_pos: (i32, i32), to_pos: (i32, i32)) -> crate::Result<()>
+	pub fn send_draganddrop<'a, D>(
+		adb: &Adb,
+		device: D,
+		source: Option<InputSource>,
+		duration: Option<Duration>,
+		from_pos: (i32, i32),
+		to_pos: (i32, i32),
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -569,7 +627,13 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn send_keyevent<'a, D>(adb: &Adb, device: D, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_keyevent<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycode: KeyCode,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -590,7 +654,13 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn send_keycode<'a, D>(adb: &Adb, device: D, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_keycode<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycode: u32,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -613,7 +683,13 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn try_send_keyevent<'a, D>(adb: &Adb, device: D, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn try_send_keyevent<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycode: KeyCode,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -634,7 +710,13 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn try_send_keycode<'a, D>(adb: &Adb, device: D, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn try_send_keycode<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycode: u32,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -726,7 +808,12 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn send_keyevent_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
+	pub fn send_keyevent_combination<'a, D>(
+		adb: &Adb,
+		device: D,
+		source: Option<InputSource>,
+		keycodes: Vec<KeyCode>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -742,7 +829,12 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn send_keycode_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()>
+	pub fn send_keycode_combination<'a, D>(
+		adb: &Adb,
+		device: D,
+		source: Option<InputSource>,
+		keycodes: Vec<u32>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -759,7 +851,12 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn try_send_keyevent_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()>
+	pub fn try_send_keyevent_combination<'a, D>(
+		adb: &Adb,
+		device: D,
+		source: Option<InputSource>,
+		keycodes: Vec<KeyCode>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -775,7 +872,12 @@ impl Shell {
 		Ok(())
 	}
 
-	pub fn try_send_keycode_combination<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()>
+	pub fn try_send_keycode_combination<'a, D>(
+		adb: &Adb,
+		device: D,
+		source: Option<InputSource>,
+		keycodes: Vec<u32>,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -808,7 +910,8 @@ impl Shell {
 		.stdout;
 
 		lazy_static! {
-			static ref RE: Regex = Regex::new("^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?").unwrap();
+			static ref RE: Regex =
+				Regex::new("^add\\s+device\\s+[0-9]+:\\s(?P<event>[^\n]+)\\s*name:\\s*\"(?P<name>[^\"]+)\"\n?").unwrap();
 		}
 
 		let mut v: Vec<(String, String)> = vec![];
@@ -821,7 +924,10 @@ impl Shell {
 				let n = cap.name("name");
 
 				if e.is_some() && n.is_some() {
-					v.push((e.ok_or(AdbError::ParseInputError())?.as_str().to_string(), n.ok_or(AdbError::ParseInputError())?.as_str().to_string()));
+					v.push((
+						e.ok_or(AdbError::ParseInputError())?.as_str().to_string(),
+						n.ok_or(AdbError::ParseInputError())?.as_str().to_string(),
+					));
 				}
 
 				string = &string[cap[0].len()..]
@@ -863,7 +969,13 @@ impl Shell {
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::exec(adb, device, vec![format!("test -{:} {:?} && echo 1 || echo 0", mode, path.as_str()?).as_str()], None, None);
+		let output = Shell::exec(
+			adb,
+			device,
+			vec![format!("test -{:} {:?} && echo 1 || echo 0", mode, path.as_str()?).as_str()],
+			None,
+			None,
+		);
 
 		match simple_cmd::Vec8ToString::as_str(&output?.stdout) {
 			Some(s) => Ok(s.trim_end() == "1"),
@@ -883,16 +995,26 @@ impl Shell {
 
 			binding
 				.cache_get_or_set_with(cache_key.clone(), || {
-					Shell::exec(adb, cloned_device, vec![format!("command -v {}", command_string).as_str()], None, None)
-						.and_then(|result| Arg::as_str(&result.stdout).map(|s| s.trim().to_string()).map_err(|e| AdbError::Errno(e)))
-						.and_then(|result| {
-							if result.is_empty() {
-								Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
-							} else {
-								Ok(result)
-							}
-						})
-						.ok()
+					Shell::exec(
+						adb,
+						cloned_device,
+						vec![format!("command -v {}", command_string).as_str()],
+						None,
+						None,
+					)
+					.and_then(|result| {
+						Arg::as_str(&result.stdout)
+							.map(|s| s.trim().to_string())
+							.map_err(|e| AdbError::Errno(e))
+					})
+					.and_then(|result| {
+						if result.is_empty() {
+							Err(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+						} else {
+							Ok(result)
+						}
+					})
+					.ok()
 				})
 				.clone()
 		} else {
@@ -1289,7 +1411,8 @@ impl<'a> AdbShell<'a> {
 	}
 
 	pub fn get_command_path<T: Arg>(&self, command: T) -> crate::Result<String> {
-		Shell::get_command_path(&self.parent.adb, &self.parent.device, command).ok_or(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
+		Shell::get_command_path(&self.parent.adb, &self.parent.device, command)
+			.ok_or(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
 	}
 
 	pub fn has_command<T: Arg>(&self, command: T) -> crate::Result<bool> {
@@ -1350,19 +1473,48 @@ impl<'a> AdbShell<'a> {
 		Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority)
 	}
 
-	pub fn dumpsys(&self, service: Option<&str>, arguments: Option<Vec<String>>, timeout: Option<Duration>, pid: bool, thread: bool, proto: bool, skip: Option<Vec<String>>) -> crate::Result<Output> {
-		Shell::dumpsys(&self.parent.adb, &self.parent.device, service, arguments, timeout, pid, thread, proto, skip)
+	pub fn dumpsys(
+		&self,
+		service: Option<&str>,
+		arguments: Option<Vec<String>>,
+		timeout: Option<Duration>,
+		pid: bool,
+		thread: bool,
+		proto: bool,
+		skip: Option<Vec<String>>,
+	) -> crate::Result<Output> {
+		Shell::dumpsys(
+			&self.parent.adb,
+			&self.parent.device,
+			service,
+			arguments,
+			timeout,
+			pid,
+			thread,
+			proto,
+			skip,
+		)
 	}
 
 	pub fn is_screen_on(&self) -> crate::Result<bool> {
 		Shell::is_screen_on(&self.parent.adb, &self.parent.device)
 	}
 
-	pub fn screen_record(&self, options: Option<ScreenRecordOptions>, output: &str, signal: Option<Receiver<()>>) -> crate::Result<Output> {
+	pub fn screen_record(
+		&self,
+		options: Option<ScreenRecordOptions>,
+		output: &str,
+		signal: Option<Receiver<()>>,
+	) -> crate::Result<Output> {
 		Shell::screen_record(&self.parent.adb, &self.parent.device, options, output, signal)
 	}
 
-	pub fn screen_mirror(&self, options: Option<ScreenRecordOptions>, play_options: Option<FFPlayOptions>, cancel: Option<Receiver<()>>) -> crate::Result<Output> {
+	pub fn screen_mirror(
+		&self,
+		options: Option<ScreenRecordOptions>,
+		play_options: Option<FFPlayOptions>,
+		cancel: Option<Receiver<()>>,
+	) -> crate::Result<Output> {
 		Shell::screen_mirror(&self.parent.adb, &self.parent.device, options, play_options, cancel)
 	}
 
@@ -1384,7 +1536,13 @@ impl<'a> AdbShell<'a> {
 		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos)
 	}
 
-	pub fn send_draganddrop(&self, source: Option<InputSource>, duration: Option<Duration>, from_pos: (i32, i32), to_pos: (i32, i32)) -> crate::Result<()> {
+	pub fn send_draganddrop(
+		&self,
+		source: Option<InputSource>,
+		duration: Option<Duration>,
+		from_pos: (i32, i32),
+		to_pos: (i32, i32),
+	) -> crate::Result<()> {
 		Shell::send_draganddrop(&self.parent.adb, &self.parent.device, source, duration, from_pos, to_pos)
 	}
 
@@ -1431,7 +1589,12 @@ impl<'a> AdbShell<'a> {
 		Shell::exec(&self.parent.adb, &self.parent.device, args, cancel, timeout)
 	}
 
-	pub fn try_exec<T>(&self, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Option<ExitStatus>>
+	pub fn try_exec<T>(
+		&self,
+		args: Vec<T>,
+		cancel: Option<Receiver<()>>,
+		timeout: Option<Duration>,
+	) -> crate::Result<Option<ExitStatus>>
 	where
 		T: Into<String> + AsRef<OsStr>,
 	{
@@ -1462,7 +1625,12 @@ impl<'a> AdbShell<'a> {
 		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce)
 	}
 
-	pub fn send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
+	pub fn send_keyevent(
+		&self,
+		keycode: KeyCode,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()> {
 		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 
@@ -1470,11 +1638,21 @@ impl<'a> AdbShell<'a> {
 		Shell::send_keycode(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 
-	pub fn try_send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
+	pub fn try_send_keyevent(
+		&self,
+		keycode: KeyCode,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()> {
 		Shell::try_send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 
-	pub fn try_send_keycode(&self, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
+	pub fn try_send_keycode(
+		&self,
+		keycode: u32,
+		event_type: Option<KeyEventType>,
+		source: Option<InputSource>,
+	) -> crate::Result<()> {
 		Shell::try_send_keycode(&self.parent.adb, &self.parent.device, keycode, event_type, source)
 	}
 

@@ -32,8 +32,8 @@ mod tests {
 	use crate::dump_util::SimplePackageReader;
 	use crate::scanner::Scanner;
 	use crate::types::{
-		DumpsysPriority, FFPlayOptions, InputSource, InstallLocationOption, InstallOptions, KeyCode, KeyEventType, LogcatLevel, LogcatOptions, LogcatTag, MotionEvent, PackageFlags, SELinuxType,
-		ScreenRecordOptions, SettingsType, UninstallOptions,
+		DumpsysPriority, FFPlayOptions, InputSource, InstallLocationOption, InstallOptions, KeyCode, KeyEventType, LogcatLevel,
+		LogcatOptions, LogcatTag, MotionEvent, PackageFlags, SELinuxType, ScreenRecordOptions, SettingsType, UninstallOptions,
 	};
 	use crate::{intent, Adb, AdbClient, Client, Device, PackageManager};
 
@@ -268,7 +268,10 @@ mod tests {
 		let output = client.shell().getprop("wifi.interface").expect("getprop failed");
 		assert_eq!("wlan0", output.trim_end());
 
-		let stb_name = client.shell().getprop("persist.sys.stb.name").expect("failed to read persist.sys.stb.name");
+		let stb_name = client
+			.shell()
+			.getprop("persist.sys.stb.name")
+			.expect("failed to read persist.sys.stb.name");
 		debug!("stb name: `{:}`", stb_name.trim_end());
 		assert!(stb_name.len() > 1);
 	}
@@ -333,7 +336,10 @@ mod tests {
 		assert_client_connected!(client);
 		assert_client_root!(client);
 
-		let output = client.shell().cat("/timeshift/conf/tvlib-aot.properties").expect("cat failed");
+		let output = client
+			.shell()
+			.cat("/timeshift/conf/tvlib-aot.properties")
+			.expect("cat failed");
 		assert!(output.lines().into_iter().all(|f| f.is_ok()));
 		assert!(output.lines().into_iter().filter(|f| f.is_ok()).all(|l| l.is_ok()));
 
@@ -456,7 +462,10 @@ mod tests {
 		eprintln!("{:#?}", settings);
 
 		for s in settings {
-			let value = shell.get_setting(SettingsType::system, s.key.as_str()).expect("get setting failed").expect("parse value failed");
+			let value = shell
+				.get_setting(SettingsType::system, s.key.as_str())
+				.expect("get setting failed")
+				.expect("parse value failed");
 			eprintln!("{} = {} [{:}]", s.key, s.value, value);
 		}
 	}
@@ -468,7 +477,10 @@ mod tests {
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
 
-		let output = client.shell().dumpsys_list(false, Some(DumpsysPriority::CRITICAL)).expect("dumpsys failed");
+		let output = client
+			.shell()
+			.dumpsys_list(false, Some(DumpsysPriority::CRITICAL))
+			.expect("dumpsys failed");
 
 		for line in output {
 			trace!("{:?}", line);
@@ -488,7 +500,10 @@ mod tests {
 			client.shell().rm("/sdcard/Download/screencap.png", None).unwrap();
 		}
 
-		client.shell().save_screencap("/sdcard/Download/screencap.png").expect("save screencap failed");
+		client
+			.shell()
+			.save_screencap("/sdcard/Download/screencap.png")
+			.expect("save screencap failed");
 
 		assert!(client.shell().exists("/sdcard/Download").unwrap());
 
@@ -675,7 +690,9 @@ mod tests {
 				.unwrap();
 		}
 
-		let result = client.push(local_path.as_path(), remote_path.as_path().to_str().unwrap()).unwrap();
+		let result = client
+			.push(local_path.as_path(), remote_path.as_path().to_str().unwrap())
+			.unwrap();
 		trace!("{:?}", result);
 
 		assert!(shell.exists(remote_path.as_path().to_str().unwrap()).unwrap());
@@ -699,30 +716,40 @@ mod tests {
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
 
-		let receiver = sigint_notifier().unwrap();
-		let timeout = Some(Duration::from_secs(5));
-		let since = Some(Local::now() - chrono::Duration::seconds(30));
+		let _receiver = sigint_notifier().unwrap();
+		let timeout = Some(Duration::from_secs(3));
+		let since = Some(Local::now() - chrono::Duration::seconds(600));
 
 		let options = LogcatOptions {
 			expr: None,
 			dump: false,
 			filename: None,
-			tags: None,
+			tags: Some(vec![
+				LogcatTag {
+					name: "DATASTORE_INFO".to_string(),
+					level: LogcatLevel::Info,
+				},
+			]),
 			format: None,
 			since,
 			pid: None,
 			timeout,
 		};
 
-		let output = client.logcat(options, Some(receiver.clone()));
+		let output = client.logcat(options, None);
 
 		match output {
 			Ok(o) => {
 				if o.status.success() || o.kill() || o.interrupt() {
+					let mut index = 0;
 					let stdout = o.stdout;
 					let lines = stdout.lines().map(|l| l.unwrap());
-					for _line in lines {
-						//trace!("{}", line);
+					for line in lines {
+						trace!("{}", line);
+						index = index + 1;
+						if index > 10 {
+							break;
+						}
 					}
 				} else if o.error() {
 					warn!("{:?}", o);
@@ -1149,7 +1176,13 @@ mod tests {
 
 		assert!(installed);
 
-		let package = client.pm().list_packages(None, None, Some(package_name)).unwrap().first().unwrap().to_owned();
+		let package = client
+			.pm()
+			.list_packages(None, None, Some(package_name))
+			.unwrap()
+			.first()
+			.unwrap()
+			.to_owned();
 
 		client
 			.pm()
@@ -1187,7 +1220,10 @@ mod tests {
 		assert_client_root!(client);
 
 		let package_name = "com.swisscom.aot.library.appservice";
-		client.pm().grant(package_name, Some("1000"), "android.permission.ACCESS_FINE_LOCATION").unwrap();
+		client
+			.pm()
+			.grant(package_name, Some("1000"), "android.permission.ACCESS_FINE_LOCATION")
+			.unwrap();
 		assert!(client
 			.pm()
 			.dump_runtime_permissions(package_name)
@@ -1204,7 +1240,10 @@ mod tests {
 		assert_client_root!(client);
 
 		let package_name = "com.swisscom.aot.library.appservice";
-		client.pm().revoke(package_name, Some("1000"), "android.permission.ACCESS_FINE_LOCATION").unwrap();
+		client
+			.pm()
+			.revoke(package_name, Some("1000"), "android.permission.ACCESS_FINE_LOCATION")
+			.unwrap();
 	}
 
 	#[test]
@@ -1359,7 +1398,10 @@ mod tests {
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
 		assert_client_root!(client);
-		client.am().force_stop("com.swisscom.aot.ui").expect("unable to force stop package");
+		client
+			.am()
+			.force_stop("com.swisscom.aot.ui")
+			.expect("unable to force stop package");
 	}
 
 	#[test]
@@ -1370,7 +1412,9 @@ mod tests {
 		assert_client_root!(client);
 
 		let shell = client.shell();
-		shell.send_keyevent(KeyCode::KEYCODE_1, Some(KeyEventType::DoubleTap), Some(InputSource::dpad)).unwrap();
+		shell
+			.send_keyevent(KeyCode::KEYCODE_1, Some(KeyEventType::DoubleTap), Some(InputSource::dpad))
+			.unwrap();
 	}
 
 	#[test]
@@ -1395,7 +1439,9 @@ mod tests {
 		assert_client_root!(client);
 
 		let shell = client.shell();
-		shell.send_draganddrop(None, Some(Duration::from_millis(1500)), (1800, 600), (1700, 100)).unwrap();
+		shell
+			.send_draganddrop(None, Some(Duration::from_millis(1500)), (1800, 600), (1700, 100))
+			.unwrap();
 	}
 
 	#[test]
@@ -1491,9 +1537,11 @@ mod tests {
 	fn test_scan() {
 		init_log!();
 
-		let progress_style = ProgressStyle::with_template("{prefix:.cyan.bold/blue.bold}: {elapsed_precise} [{bar:40.cyan/blue}] {percent:.bold}% ETA: [{eta}]. {msg} ")
-			.unwrap()
-			.progress_chars("=> ");
+		let progress_style = ProgressStyle::with_template(
+			"{prefix:.cyan.bold/blue.bold}: {elapsed_precise} [{bar:40.cyan/blue}] {percent:.bold}% ETA: [{eta}]. {msg} ",
+		)
+		.unwrap()
+		.progress_chars("=> ");
 
 		let multi_progress = MultiProgress::new();
 		let progress = multi_progress.add(ProgressBar::new(255));
@@ -1546,7 +1594,10 @@ mod tests {
 
 		let play_options = FFPlayOptions::default();
 
-		let result = client.shell().screen_mirror(Some(screen_record_options), Some(play_options), Some(cancel_signal)).unwrap();
+		let result = client
+			.shell()
+			.screen_mirror(Some(screen_record_options), Some(play_options), Some(cancel_signal))
+			.unwrap();
 		trace!("result: {:#?}", result);
 	}
 
@@ -1572,7 +1623,10 @@ mod tests {
 			.spawn()
 			.unwrap();
 
-		let out: ChildStdout = child1.stdout.ok_or(io::Error::new(ErrorKind::InvalidData, "child stdout unavailable")).unwrap();
+		let out: ChildStdout = child1
+			.stdout
+			.ok_or(io::Error::new(ErrorKind::InvalidData, "child stdout unavailable"))
+			.unwrap();
 		let fd: Stdio = out.try_into().unwrap();
 
 		let mut command2 = Command::new(ffplay.clone());
@@ -1604,16 +1658,28 @@ mod tests {
 		let client: AdbClient = client!();
 		let now = Instant::now();
 
-		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		let r = client
+			.shell()
+			.try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None)
+			.unwrap();
 		debug!("result = {:?}", r);
 
-		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		let r = client
+			.shell()
+			.try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None)
+			.unwrap();
 		debug!("result = {:?}", r);
 
-		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		let r = client
+			.shell()
+			.try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None)
+			.unwrap();
 		debug!("result = {:?}", r);
 
-		let r = client.shell().try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None).unwrap();
+		let r = client
+			.shell()
+			.try_send_keyevent(KeyCode::KEYCODE_DPAD_UP, None, None)
+			.unwrap();
 		debug!("result = {:?}", r);
 
 		let elapsed = now.elapsed();
@@ -1737,7 +1803,10 @@ mod tests {
 		let command = client.shell().get_command_path("avbctl").unwrap();
 		assert_eq!("/system/bin/avbctl", command.as_str());
 
-		let _ = client.shell().get_command_path("this_should_not_exist!").expect_err("Error expected!");
+		let _ = client
+			.shell()
+			.get_command_path("this_should_not_exist!")
+			.expect_err("Error expected!");
 	}
 
 	#[test]

@@ -49,7 +49,9 @@ impl Scanner {
 
 	pub fn scan(&self, adb: &Adb, connection_timeout: Option<Duration>, tx: Sender<Option<ClientResult>>) {
 		let adb = Arc::new(adb.clone());
-		let cpus = std::thread::available_parallelism().map(|s| s.get()).unwrap_or(num_cpus::get());
+		let cpus = std::thread::available_parallelism()
+			.map(|s| s.get())
+			.unwrap_or(num_cpus::get());
 		let tp = threadpool::ThreadPool::new(cpus);
 
 		for i in 0..256 {
@@ -58,7 +60,11 @@ impl Scanner {
 
 			tp.execute(move || {
 				let addr = format!("192.168.1.{:}:5555", i);
-				let _ = tx.send(connect(adb, addr.as_str(), connection_timeout.unwrap_or(Duration::from_millis(TCP_TIMEOUT_MS))));
+				let _ = tx.send(connect(
+					adb,
+					addr.as_str(),
+					connection_timeout.unwrap_or(Duration::from_millis(TCP_TIMEOUT_MS)),
+				));
 				drop(tx);
 			});
 		}

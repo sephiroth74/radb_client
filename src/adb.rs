@@ -25,11 +25,21 @@ impl Adb {
 	}
 
 	pub async fn root(&self) -> Result<(), AdbError> {
-		Cmd::builder(self.0.as_path()).args(["root"]).build().output().map_err(|e| e.into()).map(|_| ())
+		Cmd::builder(self.0.as_path())
+			.args(["root"])
+			.build()
+			.output()
+			.map_err(|e| e.into())
+			.map(|_| ())
 	}
 
 	pub fn unroot(&self) -> Result<(), AdbError> {
-		Cmd::builder(self.0.as_path()).args(["unroot"]).build().output().map_err(|e| e.into()).map(|_| ())
+		Cmd::builder(self.0.as_path())
+			.args(["unroot"])
+			.build()
+			.output()
+			.map_err(|e| e.into())
+			.map(|_| ())
 	}
 
 	pub fn from(path: &Path) -> Result<Adb, AdbError> {
@@ -70,7 +80,8 @@ impl Adb {
 					Some(c) => {
 						let ip = c.name("ip").unwrap().as_str();
 						let tr = c.name("transport_id").unwrap().as_str().parse::<u8>().unwrap();
-						let device = Device::try_from_ip(ip).or(Device::try_from_transport_id(tr).or(Device::try_from_serial(line_str.as_str())));
+						let device = Device::try_from_ip(ip)
+							.or(Device::try_from_transport_id(tr).or(Device::try_from_serial(line_str.as_str())));
 						if let Ok(d) = device {
 							devices.push(Box::new(d))
 						}

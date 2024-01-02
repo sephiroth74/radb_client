@@ -9,7 +9,10 @@ use simple_cmd::Error::CommandError;
 
 use crate::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;
-use crate::types::{InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, RuntimePermission, UninstallOptions};
+use crate::types::{
+	InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, RuntimePermission,
+	UninstallOptions,
+};
 use crate::PackageManager;
 
 static DUMP_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
@@ -132,7 +135,10 @@ impl<'a> PackageManager<'a> {
 		args.push(package_name);
 		let result = self.parent.exec(args, None, None)?.stdout;
 		let output = Arg::as_str(&result)?.trim_end();
-		let split = output.split_once("package:").map(|s| s.1.to_string()).ok_or(AdbError::NameNotFoundError(package_name.to_string()));
+		let split = output
+			.split_once("package:")
+			.map(|s| s.1.to_string())
+			.ok_or(AdbError::NameNotFoundError(package_name.to_string()));
 		split
 	}
 
@@ -184,7 +190,12 @@ impl<'a> PackageManager<'a> {
 			.map(|_f| ())
 	}
 
-	pub fn list_packages(&self, filters: Option<ListPackageFilter>, display: Option<ListPackageDisplayOptions>, name_filter: Option<&str>) -> Result<Vec<Package>, AdbError> {
+	pub fn list_packages(
+		&self,
+		filters: Option<ListPackageFilter>,
+		display: Option<ListPackageDisplayOptions>,
+		name_filter: Option<&str>,
+	) -> Result<Vec<Package>, AdbError> {
 		let mut args = vec![
 			"pm".into(),
 			"list".into(),
@@ -211,7 +222,10 @@ impl<'a> PackageManager<'a> {
 		let string = Arg::as_str(&output)?;
 
 		lazy_static! {
-			static ref RE: Regex = Regex::new("package:((?P<file>.*\\.apk)=)?(?P<name>\\S+)(\\s(versionCode|uid):(\\d+))?(\\s(versionCode|uid):(\\d+))?").unwrap();
+			static ref RE: Regex = Regex::new(
+				"package:((?P<file>.*\\.apk)=)?(?P<name>\\S+)(\\s(versionCode|uid):(\\d+))?(\\s(versionCode|uid):(\\d+))?"
+			)
+			.unwrap();
 		}
 
 		let captures = RE.captures_iter(string);
@@ -229,9 +243,17 @@ impl<'a> PackageManager<'a> {
 						_ => (None, None),
 					};
 
-					let version_code = if let Some(vcode) = version_code_str { Some(vcode.parse::<i32>().ok()?) } else { None };
+					let version_code = if let Some(vcode) = version_code_str {
+						Some(vcode.parse::<i32>().ok()?)
+					} else {
+						None
+					};
 
-					let uid = if let Some(uid) = uid_str { Some(uid.parse::<i32>().ok()?) } else { None };
+					let uid = if let Some(uid) = uid_str {
+						Some(uid.parse::<i32>().ok()?)
+					} else {
+						None
+					};
 
 					Some(Package {
 						package_name: name.to_string(),

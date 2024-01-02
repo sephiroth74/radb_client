@@ -9,29 +9,38 @@ lazy_static! {
 	static ref RE_NEW_EMPTY_LINE: Regex = Regex::new("(?m)^$").unwrap();
 	static ref RE_REQUESTED_PERMISSIONS: Regex = Regex::new("(?m)^\\s{3,}requested permissions:\\n((\\s{4,}[\\w\\.]+$)+)").unwrap();
 	static ref RE_SINGLE_PERMISSION: Regex = Regex::new("(?m)^\\s{4,}([\\w\\.]+)$").unwrap();
-	static ref RE_RUNTIME_PERMISSIONS: Regex = RegexBuilder::new("(?m)^\\s{3,}runtime permissions:\\s+").multi_line(true).build().unwrap();
-	static ref RE_SINGLE_RUNTIME_PERMISSION: Regex = RegexBuilder::new("^\\s*([^:]+):\\s+granted=(false|true),\\s+flags=\\[\\s*([^\\]]+)\\]$")
+	static ref RE_RUNTIME_PERMISSIONS: Regex = RegexBuilder::new("(?m)^\\s{3,}runtime permissions:\\s+")
 		.multi_line(true)
 		.build()
 		.unwrap();
-	static ref RE_INSTALL_PERMISSIONS: Regex = Regex::new("(?m)^\\s{3,}install permissions:\n(?P<permissions>(\\s{4,}[^\\:]+:\\s+granted=(true|false)\n)+)").unwrap();
-	static ref RE_INSTALL_PERMISSION: Regex = Regex::new("(?m)^\\s{4,}(?P<name>[^\\:]+):\\s+granted=(?P<granted>true|false)$").unwrap();
+	static ref RE_SINGLE_RUNTIME_PERMISSION: Regex =
+		RegexBuilder::new("^\\s*([^:]+):\\s+granted=(false|true),\\s+flags=\\[\\s*([^\\]]+)\\]$")
+			.multi_line(true)
+			.build()
+			.unwrap();
+	static ref RE_INSTALL_PERMISSIONS: Regex =
+		Regex::new("(?m)^\\s{3,}install permissions:\n(?P<permissions>(\\s{4,}[^\\:]+:\\s+granted=(true|false)\n)+)").unwrap();
+	static ref RE_INSTALL_PERMISSION: Regex =
+		Regex::new("(?m)^\\s{4,}(?P<name>[^\\:]+):\\s+granted=(?P<granted>true|false)$").unwrap();
 }
 
-pub struct SimplePackageReader<'a> {
-	data: &'a str,
+pub struct SimplePackageReader {
+	data: String,
 }
 
 #[allow(dead_code)]
-impl<'a> SimplePackageReader<'a> {
-	pub fn new(data: &'a str) -> crate::Result<SimplePackageReader<'a>> {
-		if let Some(m) = RE_PACKAGES.captures(data) {
+impl SimplePackageReader {
+	pub fn new<T: Into<String>>(data: T) -> crate::Result<SimplePackageReader> {
+		let data = data.into();
+		if let Some(m) = RE_PACKAGES.captures(&data.as_str()) {
 			if m.len() == 1 {
 				let mut new_data = &data[m.get(0).unwrap().end()..];
 				if let Some(m) = RE_NEW_EMPTY_LINE.captures(new_data) {
 					if m.len() == 1 {
 						new_data = &new_data[..m.get(0).unwrap().start()];
-						return Ok(SimplePackageReader { data: new_data });
+						return Ok(SimplePackageReader {
+							data: new_data.to_string(),
+						});
 					}
 				}
 			}
@@ -40,7 +49,7 @@ impl<'a> SimplePackageReader<'a> {
 	}
 
 	pub(crate) fn requested_permissions(&self) -> crate::Result<Vec<String>> {
-		if let Some(m) = RE_REQUESTED_PERMISSIONS.captures(self.data) {
+		if let Some(m) = RE_REQUESTED_PERMISSIONS.captures(&self.data) {
 			if m.len() > 0 {
 				let new_data = &self.data[m.get(0).unwrap().range()];
 				let mut result = vec![];
@@ -54,7 +63,7 @@ impl<'a> SimplePackageReader<'a> {
 	}
 
 	pub(crate) fn install_permissions(&self) -> crate::Result<Vec<InstallPermission>> {
-		if let Some(m) = RE_INSTALL_PERMISSIONS.captures(self.data) {
+		if let Some(m) = RE_INSTALL_PERMISSIONS.captures(&self.data) {
 			if m.len() > 0 {
 				let mut result = vec![];
 				let new_data = &self.data[m.get(0).unwrap().range()];
@@ -125,7 +134,7 @@ impl<'a> SimplePackageReader<'a> {
 
 	#[inline]
 	fn parse(&self, regex: Regex) -> crate::Result<&str> {
-		if let Some(m) = regex.captures(self.data) {
+		if let Some(m) = regex.captures(&self.data) {
 			if m.len() == 2 {
 				return Ok(m.get(1).unwrap().as_str());
 			}
@@ -162,7 +171,10 @@ pub fn runtime_permissions(data: &str) -> crate::Result<Vec<RuntimePermission>> 
 
 pub fn package_flags(dump: &str) -> crate::Result<Vec<PackageFlags>> {
 	lazy_static! {
-		static ref RE: Regex = RegexBuilder::new("^\\s*pkgFlags=\\[\\s(.*)\\s]").multi_line(true).build().unwrap();
+		static ref RE: Regex = RegexBuilder::new("^\\s*pkgFlags=\\[\\s(.*)\\s]")
+			.multi_line(true)
+			.build()
+			.unwrap();
 	}
 
 	if let Some(captures) = RE.captures(dump) {
