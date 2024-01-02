@@ -105,12 +105,14 @@ impl<'a> PackageManager<'a> {
 		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
 		let pr = SimplePackageReader::new(dump.as_str())?;
 		pr.requested_permissions()
+			.ok_or(AdbError::NameNotFoundError("requested_permissions".to_string()))
 	}
 
 	pub fn install_permissions(&self, package_name: &str) -> crate::Result<Vec<InstallPermission>> {
 		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
 		let pr = SimplePackageReader::new(dump.as_str())?;
 		pr.install_permissions()
+			.ok_or(AdbError::NameNotFoundError("install_permissions".to_string()))
 	}
 
 	pub fn dump_runtime_permissions(&self, package_name: &str) -> crate::Result<Vec<RuntimePermission>> {

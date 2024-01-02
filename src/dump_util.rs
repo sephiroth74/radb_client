@@ -24,23 +24,20 @@ lazy_static! {
 		Regex::new("(?m)^\\s{4,}(?P<name>[^\\:]+):\\s+granted=(?P<granted>true|false)$").unwrap();
 }
 
-pub struct SimplePackageReader {
-	data: String,
+pub struct SimplePackageReader<'a> {
+	data: &'a str,
 }
 
 #[allow(dead_code)]
-impl SimplePackageReader {
-	pub fn new<T: Into<String>>(data: T) -> crate::Result<SimplePackageReader> {
-		let data = data.into();
-		if let Some(m) = RE_PACKAGES.captures(&data.as_str()) {
+impl<'a> SimplePackageReader<'a> {
+	pub fn new(data: &'a str) -> crate::Result<SimplePackageReader<'a>> {
+		if let Some(m) = RE_PACKAGES.captures(data) {
 			if m.len() == 1 {
 				let mut new_data = &data[m.get(0).unwrap().end()..];
 				if let Some(m) = RE_NEW_EMPTY_LINE.captures(new_data) {
 					if m.len() == 1 {
 						new_data = &new_data[..m.get(0).unwrap().start()];
-						return Ok(SimplePackageReader {
-							data: new_data.to_string(),
-						});
+						return Ok(SimplePackageReader { data: new_data });
 					}
 				}
 			}
@@ -48,22 +45,22 @@ impl SimplePackageReader {
 		return Err(AdbError::ParseInputError());
 	}
 
-	pub(crate) fn requested_permissions(&self) -> crate::Result<Vec<String>> {
-		if let Some(m) = RE_REQUESTED_PERMISSIONS.captures(&self.data) {
+	pub fn requested_permissions(&self) -> Option<Vec<String>> {
+		if let Some(m) = RE_REQUESTED_PERMISSIONS.captures(self.data) {
 			if m.len() > 0 {
 				let new_data = &self.data[m.get(0).unwrap().range()];
 				let mut result = vec![];
 				for (_, [name]) in RE_SINGLE_PERMISSION.captures_iter(new_data).map(|c| c.extract()) {
 					result.push(name.to_string())
 				}
-				return Ok(result);
+				return Some(result);
 			}
 		}
-		Err(AdbError::ParseInputError())
+		None
 	}
 
-	pub(crate) fn install_permissions(&self) -> crate::Result<Vec<InstallPermission>> {
-		if let Some(m) = RE_INSTALL_PERMISSIONS.captures(&self.data) {
+	pub fn install_permissions(&self) -> Option<Vec<InstallPermission>> {
+		if let Some(m) = RE_INSTALL_PERMISSIONS.captures(self.data) {
 			if m.len() > 0 {
 				let mut result = vec![];
 				let new_data = &self.data[m.get(0).unwrap().range()];
@@ -73,57 +70,65 @@ impl SimplePackageReader {
 						granted: granted == "true",
 					})
 				}
-				return Ok(result);
+				return Some(result);
 			}
 		}
-		return Err(AdbError::ParseInputError());
+		return None;
 	}
 
-	pub fn get_version_name(&self) -> crate::Result<&str> {
-		self.get_item("versionName")
+	pub fn get_version_name(&self) -> Option<&str> {
+		self.get_item("versionName").ok()
 	}
 
-	pub fn get_first_install_time(&self) -> crate::Result<&str> {
-		self.get_item("firstInstallTime")
+	pub fn get_first_install_time(&self) -> Option<&str> {
+		self.get_item("firstInstallTime").ok()
 	}
 
-	pub fn get_last_update_time(&self) -> crate::Result<&str> {
-		self.get_item("lastUpdateTime")
+	pub fn get_last_update_time(&self) -> Option<&str> {
+		self.get_item("lastUpdateTime").ok()
 	}
 
-	pub fn get_timestamp(&self) -> crate::Result<&str> {
-		self.get_item("timeStamp")
+	pub fn get_timestamp(&self) -> Option<&str> {
+		self.get_item("timeStamp").ok()
 	}
 
-	pub fn get_data_dir(&self) -> crate::Result<&str> {
-		self.get_item("dataDir")
+	pub fn get_data_dir(&self) -> Option<&str> {
+		self.get_item("dataDir").ok()
 	}
 
-	pub fn get_user_id(&self) -> crate::Result<&str> {
-		self.get_item("userId")
+	pub fn get_user_id(&self) -> Option<&str> {
+		self.get_item("userId").ok()
 	}
 
-	pub fn get_code_path(&self) -> crate::Result<&str> {
-		self.get_item("codePath")
+	pub fn get_code_path(&self) -> Option<&str> {
+		self.get_item("codePath").ok()
 	}
 
-	pub fn get_resource_path(&self) -> crate::Result<&str> {
-		self.get_item("resourcePath")
+	pub fn get_resource_path(&self) -> Option<&str> {
+		self.get_item("resourcePath").ok()
 	}
 
-	pub fn get_version_code(&self) -> crate::Result<i32> {
+	pub fn get_version_code(&self) -> Option<i32> {
 		if let Ok(string) = self.get_item("versionCode") {
 			let re = Regex::new("^(?P<versionCode>\\d+)").unwrap();
 			if let Some(m) = re.captures(string) {
 				if m.len() == 2 {
-					return Ok(m.get(1).unwrap().as_str().parse::<i32>()?);
+					return m.get(1).unwrap().as_str().parse::<i32>().ok();
 				}
 			}
 		}
-		return Err(AdbError::NameNotFoundError("versionCode".to_string()));
+		return None;
 	}
 
-	fn get_item(&self, name: &str) -> crate::Result<&str> {
+	pub fn get_package_flags(&self) -> Option<Vec<PackageFlags>> {
+		package_flags(&self.data).ok()
+	}
+
+	pub fn is_system(&self) -> Option<bool> {
+		is_system(self.data).ok()
+	}
+
+	pub fn get_item(&self, name: &str) -> crate::Result<&str> {
 		let re = Regex::new(format!("(?m)^\\s{{3,}}{:}=(.*)$", name).as_str()).unwrap();
 
 		match self.parse(re) {
@@ -134,13 +139,17 @@ impl SimplePackageReader {
 
 	#[inline]
 	fn parse(&self, regex: Regex) -> crate::Result<&str> {
-		if let Some(m) = regex.captures(&self.data) {
+		if let Some(m) = regex.captures(self.data) {
 			if m.len() == 2 {
 				return Ok(m.get(1).unwrap().as_str());
 			}
 		}
 		return Err(AdbError::ParseInputError());
 	}
+}
+
+pub fn is_system(data: &str) -> crate::Result<bool> {
+	Ok(package_flags(data)?.contains(&PackageFlags::System))
 }
 
 pub fn runtime_permissions(data: &str) -> crate::Result<Vec<RuntimePermission>> {
