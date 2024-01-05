@@ -1,9 +1,7 @@
 use std::borrow::Cow;
 use std::env::temp_dir;
-use std::ffi::OsStr;
 use std::fs::File;
 use std::io::ErrorKind;
-use std::path::Path;
 use std::process::{Output, Stdio};
 use std::result;
 use std::thread::sleep;
@@ -139,22 +137,22 @@ impl Client {
 	pub fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
-		S: Into<&'s str> + AsRef<OsStr> + Arg,
-		T: AsRef<Path>,
+		S: Arg,
+		T: Arg,
 	{
 		let mut command = CommandBuilder::adb(adb).device(device);
-		command = command.arg("pull").arg(src.as_ref()).arg(dst.as_ref());
+		command = command.arg("pull").arg(src.as_str()?).arg(dst.as_str()?);
 		command.build().output().map_err(|e| e.into())
 	}
 
 	pub fn push<'d, 't, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
-		S: AsRef<Path>,
-		T: Into<&'t str> + AsRef<OsStr> + Arg,
+		S: Arg,
+		T: Arg,
 	{
 		let mut command = CommandBuilder::adb(adb).device(device);
-		command = command.arg("push").arg(src.as_ref()).arg(dst.as_ref());
+		command = command.arg("push").arg(src.as_str()?).arg(dst.as_str()?);
 		command.build().output().map_err(|e| e.into())
 	}
 
@@ -661,16 +659,16 @@ impl AdbClient {
 
 	pub fn pull<'s, S, D>(&self, src: S, dst: D) -> crate::Result<Output>
 	where
-		S: Into<&'s str> + AsRef<OsStr> + Arg,
-		D: AsRef<Path>,
+		S: Arg,
+		D: Arg,
 	{
 		Client::pull(&self.adb, &self.device, src, dst)
 	}
 
 	pub fn push<'d, S, D>(&self, src: S, dst: D) -> crate::Result<Output>
 	where
-		D: Into<&'d str> + AsRef<OsStr> + Arg,
-		S: AsRef<Path>,
+		D: Arg,
+		S: Arg,
 	{
 		Client::push(&self.adb, &self.device, src, dst)
 	}
