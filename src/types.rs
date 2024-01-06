@@ -146,7 +146,7 @@ pub struct ScreenRecordOptions {
 	pub verbose: bool,
 }
 
-#[derive(IntoStaticStr)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, IntoStaticStr)]
 #[allow(non_camel_case_types)]
 pub enum SettingsType {
 	global,
