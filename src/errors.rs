@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display, Formatter};
 use std::net::AddrParseError;
 use std::num::ParseIntError;
+use std::process::Output;
 
 use image::ImageError;
 use mac_address::MacParseError;
@@ -100,59 +101,9 @@ impl From<nom::Err<nom::error::Error<&[u8]>>> for AdbError {
 		AdbError::PropertyParseError(value.to_string())
 	}
 }
-//
-//impl From<cmd::Error> for AdbError {
-//    fn from(value: cmd::Error) -> Self {
-//        AdbError::CmdError(value)
-//    }
-//}
 
-//impl From<&which::Error> for CommandError {
-//	fn from(value: &which::Error) -> Self {
-//		CommandError {
-//			status: None,
-//			stdout: vec![],
-//			stderr: value.to_string().to_bytes(),
-//		}
-//	}
-//}
-//
-//impl From<std::io::Error> for CommandError {
-//	fn from(value: std::io::Error) -> Self {
-//		CommandError {
-//			status: None,
-//			stdout: vec![],
-//			stderr: value.to_string().to_bytes(),
-//		}
-//	}
-//}
-//
-//impl From<ParseIntError> for CommandError {
-//	fn from(value: ParseIntError) -> Self {
-//		CommandError {
-//			status: None,
-//			stdout: vec![],
-//			stderr: value.to_string().to_bytes(),
-//		}
-//	}
-//}
-//
-//impl From<Elapsed> for CommandError {
-//	fn from(value: Elapsed) -> Self {
-//		CommandError {
-//			status: None,
-//			stdout: vec![],
-//			stderr: value.to_string().to_bytes(),
-//		}
-//	}
-//}
-//
-//impl From<nom::Err<nom::error::Error<&[u8]>>> for CommandError {
-//	fn from(value: nom::Err<nom::error::Error<&[u8]>>) -> Self {
-//		CommandError {
-//			status: None,
-//			stdout: vec![],
-//			stderr: value.to_string().to_bytes(),
-//		}
-//	}
-//}
+impl From<Output> for AdbError {
+	fn from(value: Output) -> Self {
+		AdbError::CmdError(value.into())
+	}
+}
