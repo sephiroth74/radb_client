@@ -4,8 +4,8 @@ use std::num::ParseIntError;
 use std::process::Output;
 
 use image::ImageError;
+use java_properties::PropertiesError;
 use mac_address::MacParseError;
-use nom::error::Error;
 use rustix::io::Errno;
 use thiserror::Error;
 
@@ -33,6 +33,9 @@ pub enum AdbError {
 
 	#[error("failed to parse properties: {0}")]
 	PropertyParseError(String),
+
+	#[error(transparent)]
+	PropertiesError(#[from] PropertiesError),
 
 	#[error("parse int error")]
 	ParseIntError(#[from] ParseIntError),
@@ -95,12 +98,6 @@ impl From<Errno> for ParseSELinuxTypeError {
 }
 
 /// implementation
-
-impl From<nom::Err<nom::error::Error<&[u8]>>> for AdbError {
-	fn from(value: nom::Err<Error<&[u8]>>) -> Self {
-		AdbError::PropertyParseError(value.to_string())
-	}
-}
 
 impl From<Output> for AdbError {
 	fn from(value: Output) -> Self {

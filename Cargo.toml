@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.24-alpha3"
+version = "0.2.24-alpha4"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -15,8 +15,7 @@ once_cell = "1.19.0"
 chrono = "0.4.31"
 file-mode = "0.1.2"
 lazy_static = "1.4.0"
-nom = "7.1.3"
-props-rs = "0.1.1"
+java-properties = "2.0.0"
 regex = "1.10.2"
 strum_macros = "0.25.3"
 time = { version = "0.3.31", features = ["macros"] }

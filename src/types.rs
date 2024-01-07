@@ -586,3 +586,9 @@ pub enum Wakefulness {
 	Asleep,
 	Dreaming,
 }
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Property {
+	pub key: String,
+	pub value: String,
+}

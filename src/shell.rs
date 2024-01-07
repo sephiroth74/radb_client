@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::ffi::OsStr;
-use std::io::{BufRead, ErrorKind};
+use std::io::{BufRead, BufReader, ErrorKind};
 use std::process::{Command, ExitStatus, Output};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -8,7 +8,6 @@ use std::time::Duration;
 use cached::{Cached, SizedCache};
 use crossbeam::channel::Receiver;
 use lazy_static::lazy_static;
-use props_rs::Property;
 use regex::Regex;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
@@ -18,7 +17,7 @@ use crate::cmd_ext::CommandBuilderExt;
 use crate::errors::AdbError;
 use crate::errors::AdbError::Unknown;
 use crate::traits::AdbDevice;
-use crate::types::{DumpsysPriority, FFPlayOptions, Intent, PropType, ScreenRecordOptions, SettingsType};
+use crate::types::{DumpsysPriority, FFPlayOptions, Intent, PropType, Property, ScreenRecordOptions, SettingsType};
 use crate::types::{InputSource, KeyCode, KeyEventType, MotionEvent, SELinuxType};
 use crate::{Adb, AdbShell, PackageManager, Shell};
 
@@ -73,7 +72,10 @@ impl Shell {
 			None,
 			None,
 		)?;
-		let result = props_rs::parse(&output.stdout)?;
+
+		let reader = BufReader::new(output.stdout.as_slice());
+		let hashmap = java_properties::read(reader)?;
+		let result = hashmap.into_iter().map(|(key, value)| Property { key, value }).collect();
 		Ok(result)
 	}
 
