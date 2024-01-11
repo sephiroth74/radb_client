@@ -22,7 +22,7 @@ use crate::cmd_ext::CommandBuilderExt;
 use crate::errors::AdbError;
 use crate::errors::AdbError::InvalidDeviceAddressError;
 use crate::traits::AdbDevice;
-use crate::types::{LogcatOptions, RebootType, Wakefulness};
+use crate::types::{AdbInstallOptions, LogcatOptions, RebootType, Wakefulness};
 use crate::{ActivityManager, AdbClient, AdbShell, Client, Device, PackageManager};
 use crate::{Adb, Shell};
 
@@ -132,6 +132,38 @@ impl Client {
 	{
 		let result = Shell::getprop(adb, device, "ro.build.version.release")?;
 		result.parse::<u8>().map_err(From::from)
+	}
+
+	pub fn install<'d, D, T: Arg>(
+		adb: &Adb,
+		device: D,
+		path: T,
+		install_options: Option<AdbInstallOptions>,
+	) -> crate::Result<Output>
+	where
+		D: Into<&'d dyn AdbDevice>,
+		T: Arg,
+	{
+		let mut args = vec!["install".to_string()];
+		match install_options {
+			None => {}
+			Some(options) => args.extend(options),
+		}
+		args.push(path.as_str()?.to_string());
+		adb.exec(device, args, None, None)
+	}
+
+	pub fn uninstall<'d, D>(adb: &Adb, device: D, package_name: &str, keep_data: Option<bool>) -> crate::Result<Output>
+	where
+		D: Into<&'d dyn AdbDevice>,
+	{
+		let mut args = vec!["uninstall"];
+		if let Some(_keep_data) = keep_data {
+			args.push("-k");
+		}
+
+		args.push(package_name);
+		adb.exec(device, args, None, None)
 	}
 
 	pub fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
@@ -723,6 +755,14 @@ impl AdbClient {
 
 	pub fn enable_verity(&self) -> crate::Result<()> {
 		Client::enable_verity(&self.adb, &self.device)
+	}
+
+	pub fn install<T: Arg>(&self, path: T, install_options: Option<AdbInstallOptions>) -> crate::Result<Output> {
+		Client::install(&self.adb, &self.device, path, install_options)
+	}
+
+	pub fn uninstall(&self, package_name: &str, keep_data: Option<bool>) -> crate::Result<Output> {
+		Client::uninstall(&self.adb, &self.device, package_name, keep_data)
 	}
 
 	pub fn shell(&self) -> AdbShell {

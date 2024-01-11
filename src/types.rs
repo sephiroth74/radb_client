@@ -4,6 +4,8 @@ use std::time::Duration;
 
 use strum_macros::{Display, IntoStaticStr};
 
+
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AddressType {
 	Sock(SocketAddr),
@@ -223,6 +225,24 @@ pub struct InstallOptions {
 	pub replace_existing_application: bool,
 	// -d: allow version code downgrade
 	pub allow_version_downgrade: bool,
+}
+
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct AdbInstallOptions {
+	// -d: allow version code downgrade
+	pub allow_version_downgrade: bool,
+	// -t: allow test packages
+	pub allow_test_package: bool,
+	// -r: replace existing application
+	pub replace: bool,
+	// -l: forward lock the app
+	pub forward_lock: bool,
+	// -s: Install on SD card instead of internal storage
+	pub install_external: bool,
+	// -g: grant all runtime permissions
+	pub grant_permissions: bool,
+	// --instant: Cause the app to be installed as an ephemeral install app
+	pub instant: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy, IntoStaticStr)]

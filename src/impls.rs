@@ -17,9 +17,9 @@ use crate::errors::{AdbError, ParseSELinuxTypeError};
 use crate::traits::{AdbDevice, AsArgs};
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
-	AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType,
-	ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, PropType, RebootType, SELinuxType,
-	ScreenRecordOptions, UninstallOptions, Wakefulness,
+	AdbInstallOptions, AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode,
+	KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, PropType, RebootType,
+	SELinuxType, ScreenRecordOptions, UninstallOptions, Wakefulness,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
@@ -463,13 +463,63 @@ impl IntoIterator for InstallOptions {
 }
 
 impl Display for InstallOptions {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let args = self.clone().into_iter().collect::<Vec<_>>();
 		write!(f, "{:}", args.join(" "))
 	}
 }
 
 // endregion InstallOptions
+
+// region AdbInstallOptions
+
+impl IntoIterator for AdbInstallOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+
+		if self.allow_version_downgrade {
+			args.push("-d".to_string());
+		}
+
+		if self.allow_test_package {
+			args.push("-t".to_string());
+		}
+
+		if self.replace {
+			args.push("-r".to_string());
+		}
+
+		if self.forward_lock {
+			args.push("-l".to_string());
+		}
+
+		if self.install_external {
+			args.push("-s".to_string());
+		}
+
+		if self.grant_permissions {
+			args.push("-g".to_string());
+		}
+
+		if self.instant {
+			args.push("--instant".to_string());
+		}
+
+		args.into_iter()
+	}
+}
+
+impl Display for AdbInstallOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let args = self.clone().into_iter().collect::<Vec<_>>();
+		write!(f, "{:}", args.join(" "))
+	}
+}
+
+// endregion AdbInstallOptions
 
 // region ListPackageDisplayOptions
 impl IntoIterator for ListPackageDisplayOptions {

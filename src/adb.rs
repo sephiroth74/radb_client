@@ -1,10 +1,14 @@
+use crossbeam_channel::Receiver;
 use std::ffi::OsStr;
 use std::io::BufRead;
 use std::path::Path;
+use std::process::Output;
+use std::time::Duration;
 
+use crate::cmd_ext::CommandBuilderExt;
 use lazy_static::lazy_static;
 use regex::Regex;
-use simple_cmd::Cmd;
+use simple_cmd::{Cmd, CommandBuilder};
 use which::which;
 
 use crate::errors::AdbError;
@@ -40,6 +44,25 @@ impl Adb {
 			.output()
 			.map_err(|e| e.into())
 			.map(|_| ())
+	}
+
+	pub fn exec<'a, D, T>(
+		&self,
+		device: D,
+		args: Vec<T>,
+		cancel: Option<Receiver<()>>,
+		timeout: Option<Duration>,
+	) -> crate::Result<Output>
+	where
+		T: Into<String> + AsRef<OsStr>,
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let builder = CommandBuilder::adb(self)
+			.device(device)
+			.args(args)
+			.signal(cancel)
+			.timeout(timeout);
+		Ok(builder.build().output()?)
 	}
 
 	pub fn from(path: &Path) -> Result<Adb, AdbError> {

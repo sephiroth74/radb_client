@@ -940,9 +940,10 @@ impl Shell {
 		Ok(v)
 	}
 
-	pub fn stat<'d, D>(adb: &Adb, device: D, path: &OsStr) -> crate::Result<file_mode::Mode>
+	pub fn file_mode<'d, D, T>(adb: &Adb, device: D, path: T) -> crate::Result<file_mode::Mode>
 	where
 		D: Into<&'d dyn AdbDevice>,
+		T: Arg,
 	{
 		let output = Arg::as_str(
 			&Shell::exec(
@@ -953,7 +954,7 @@ impl Shell {
 					"-L",
 					"-c",
 					"'%a'",
-					format!("{:?}", path).as_str(),
+					path.as_str()?,
 				],
 				None,
 				None,
@@ -1672,5 +1673,9 @@ impl<'a> AdbShell<'a> {
 
 	pub fn try_send_keycodes(&self, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()> {
 		Shell::try_send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source)
+	}
+
+	pub fn file_mode<T: Arg>(&self, path: T) -> crate::Result<file_mode::Mode> {
+		Shell::file_mode(&self.parent.adb, &self.parent.device, path)
 	}
 }
