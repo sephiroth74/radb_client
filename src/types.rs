@@ -4,8 +4,6 @@ use std::time::Duration;
 
 use strum_macros::{Display, IntoStaticStr};
 
-
-
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AddressType {
 	Sock(SocketAddr),

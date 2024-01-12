@@ -140,7 +140,7 @@ impl<'a> PackageManager<'a> {
 		let split = output
 			.split_once("package:")
 			.map(|s| s.1.to_string())
-			.ok_or(AdbError::NameNotFoundError(package_name.to_string()));
+			.ok_or(AdbError::PackageNotFoundError(package_name.to_string()));
 		split
 	}
 

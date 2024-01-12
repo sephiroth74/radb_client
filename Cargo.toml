@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.24-alpha5"
+version = "0.2.24-alpha6"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"

@@ -76,6 +76,9 @@ pub enum AdbError {
 	#[error("parse error: {0}")]
 	ParseError(String),
 
+	#[error("Package {0} not found or not installed")]
+	PackageNotFoundError(String),
+
 	#[error("unknown error: {0}")]
 	Unknown(String),
 }
