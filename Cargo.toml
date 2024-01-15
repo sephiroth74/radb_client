@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.24-alpha6"
+version = "0.2.24-alpha9"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -23,28 +23,27 @@ which = "5.0.0"
 mac_address = "1.1.5"
 uuid = { version = "1.6.1", features = ["v4"] }
 arboard = "3.3.0"
-image = "0.24.7"
+image = "0.24.8"
 num_cpus = "1.16.0"
-thiserror = "1.0.51"
-rustix = "0.38.28"
+thiserror = "1.0.56"
+rustix = "0.38.30"
 dirs = "5.0.1"
 itertools = "0.12.0"
-crossbeam = "0.8.3"
+crossbeam = "0.8.4"
 signal-hook = "0.3.17"
-crossbeam-channel = "0.5.10"
+crossbeam-channel = "0.5.11"
 threadpool = "1.8.1"
 cmd_lib = "1.9.3"
 tracing = "0.1.40"
-simple-cmd = "0.0.12-alpha1"
+simple-cmd = "0.0.12-alpha4"
 cached = { version = "0.47.0" }
 serde = { version = "1.0.195", features = ["derive"] }
-#radb-client-macros = { path = "./macros" }
 
 
 [dev-dependencies]
 indicatif = { version = "0.17.7" }
-anyhow = "1.0.71"
-ctrlc = "3.4.1"
+anyhow = "1.0.79"
+ctrlc = "3.4.2"
 tracing-subscriber = { version = "0.3.18", features = ["local-time"] }
 tracing-appender = "0.2.3"
 

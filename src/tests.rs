@@ -1551,9 +1551,9 @@ mod tests {
 		let (tx, rx) = bounded(255);
 
 		let adb = Adb::new().unwrap();
-		let scanner = Scanner::new();
+		let scanner = Scanner::default();
 		let start = Instant::now();
-		scanner.scan(&adb, Some(Duration::from_millis(100)), tx.clone());
+		scanner.scan(&adb, tx.clone());
 		drop(tx);
 
 		let mut result = Vec::new();

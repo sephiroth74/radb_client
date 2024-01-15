@@ -30,7 +30,7 @@ pub enum RebootType {
 }
 
 pub struct LogcatOptions {
-	/// -e    Only prints lines where the log message matches <expr>, where <expr> is a regular expression.
+	/// -e    Only prints lines where the log message matches expr, where expr is a regular expression.
 	pub expr: Option<String>,
 
 	/// -d    Dumps the log to the screen and exits.

@@ -52,6 +52,7 @@ impl Adb {
 		args: Vec<T>,
 		cancel: Option<Receiver<()>>,
 		timeout: Option<Duration>,
+		debug: bool,
 	) -> crate::Result<Output>
 	where
 		T: Into<String> + AsRef<OsStr>,
@@ -61,6 +62,7 @@ impl Adb {
 			.device(device)
 			.args(args)
 			.signal(cancel)
+			.with_debug(debug)
 			.timeout(timeout);
 		Ok(builder.build().output()?)
 	}

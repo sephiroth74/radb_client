@@ -10,7 +10,8 @@ use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
 use crate::{Adb, AdbClient, Device};
 
-static TCP_TIMEOUT_MS: u64 = 400;
+static TCP_TIMEOUT_MS: u64 = 200;
+static ADB_TIMEOUT_MS: u64 = 100;
 
 impl Display for ClientResult {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
@@ -41,18 +42,36 @@ impl Display for ClientResult {
 	}
 }
 
+impl Default for Scanner {
+	fn default() -> Self {
+		Scanner::new(
+			Duration::from_millis(TCP_TIMEOUT_MS),
+			Duration::from_millis(ADB_TIMEOUT_MS),
+			true,
+		)
+	}
+}
+
 #[allow(dead_code)]
 impl Scanner {
-	pub fn new() -> Scanner {
-		Scanner {}
+	pub fn new(tcp_timeout: Duration, adb_timeout: Duration, debug: bool) -> Scanner {
+		Scanner {
+			tcp_timeout,
+			adb_timeout,
+			debug,
+		}
 	}
 
-	pub fn scan(&self, adb: &Adb, connection_timeout: Option<Duration>, tx: Sender<Option<ClientResult>>) {
+	pub fn scan(&self, adb: &Adb, tx: Sender<Option<ClientResult>>) {
 		let adb = Arc::new(adb.clone());
 		let cpus = std::thread::available_parallelism()
 			.map(|s| s.get())
 			.unwrap_or(num_cpus::get());
 		let tp = threadpool::ThreadPool::new(cpus);
+
+		let tcp_timeout = self.tcp_timeout.clone();
+		let adb_timeout = self.adb_timeout.clone();
+		let debug = self.debug;
 
 		for i in 0..256 {
 			let adb = Arc::clone(&adb);
@@ -60,11 +79,7 @@ impl Scanner {
 
 			tp.execute(move || {
 				let addr = format!("192.168.1.{:}:5555", i);
-				let _ = tx.send(connect(
-					adb,
-					addr.as_str(),
-					connection_timeout.unwrap_or(Duration::from_millis(TCP_TIMEOUT_MS)),
-				));
+				let _ = tx.send(connect(adb, addr.as_str(), tcp_timeout, adb_timeout, debug));
 				drop(tx);
 			});
 		}
@@ -106,17 +121,19 @@ impl TryFrom<&ClientResult> for AdbClient {
 	}
 }
 
-fn connect(adb: Arc<Adb>, host: &str, timeout: Duration) -> Option<ClientResult> {
+fn connect(adb: Arc<Adb>, host: &str, tcp_timeout: Duration, adb_timeout: Duration, debug: bool) -> Option<ClientResult> {
 	let sock_addr = SocketAddr::from_str(host).ok();
 	if sock_addr.is_none() {
 		return None;
 	}
 
-	if let Ok(response) = std::net::TcpStream::connect_timeout(sock_addr.as_ref().unwrap(), timeout) {
+	if let Ok(response) = std::net::TcpStream::connect_timeout(sock_addr.as_ref().unwrap(), tcp_timeout) {
 		if let Ok(addr) = response.peer_addr() {
 			//let device = adb.device(host.as_str()).unwrap();
-			let client = adb.client(host).unwrap();
-			if client.connect(Some(Duration::from_millis(400))).is_ok() {
+			let mut client = adb.client(host).unwrap();
+			client.debug = debug;
+
+			if client.connect(Some(adb_timeout)).is_ok() {
 				let shell = client.shell();
 				let root = client.root().unwrap_or(false);
 

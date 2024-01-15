@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use std::fmt::Debug;
 use std::path::PathBuf;
 
@@ -33,6 +35,7 @@ pub struct ActivityManager<'a> {
 pub struct AdbClient {
 	pub adb: Adb,
 	pub device: Device,
+	pub debug: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

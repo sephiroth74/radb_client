@@ -3,7 +3,6 @@ use std::env::temp_dir;
 use std::fs::File;
 use std::io::ErrorKind;
 use std::process::{Output, Stdio};
-use std::result;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -15,7 +14,6 @@ use simple_cmd::debug::CommandDebug;
 use simple_cmd::output_ext::OutputExt;
 use simple_cmd::Error::CommandError;
 use simple_cmd::{Cmd, CommandBuilder};
-use tracing::trace;
 use uuid::Uuid;
 
 use crate::cmd_ext::CommandBuilderExt;
@@ -28,48 +26,54 @@ use crate::{Adb, Shell};
 
 #[allow(dead_code)]
 impl Client {
-	pub fn logcat<'d, D>(adb: &Adb, device: D, options: LogcatOptions, cancel: Option<Receiver<()>>) -> crate::Result<Output>
+	pub fn logcat<'d, D>(
+		adb: &Adb,
+		device: D,
+		options: LogcatOptions,
+		cancel: Option<Receiver<()>>,
+		debug: bool,
+	) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let mut command = CommandBuilder::adb(adb).device(device);
 
-		command.with_arg("logcat");
+		command = command.with_arg("logcat").with_debug(debug);
 
 		if let Some(expr) = options.expr {
-			command.with_args([
+			command = command.with_args([
 				"-e",
 				expr.as_str(),
 			]);
 		}
 
 		if options.dump {
-			command.with_arg("-d");
+			command = command.with_arg("-d");
 		}
 
 		if let Some(filename) = options.filename {
-			command.with_args([
+			command = command.with_args([
 				"-f",
 				filename.as_str(),
 			]);
 		}
 
 		if let Some(format) = options.format {
-			command.with_args([
+			command = command.with_args([
 				"-v",
 				format.as_str(),
 			]);
 		}
 
 		if let Some(pid) = options.pid {
-			command.with_args([
+			command = command.with_args([
 				"--pid",
 				format!("{}", pid).as_str(),
 			]);
 		}
 
 		if let Some(since) = options.since {
-			command.with_args([
+			command = command.with_args([
 				"-T",
 				since.format("%m-%d %H:%M:%S.%3f").to_string().as_str(),
 			]);
@@ -78,18 +82,18 @@ impl Client {
 		if let Some(tags) = options.tags {
 			if !tags.is_empty() {
 				for tag in tags {
-					command.with_arg(format!("{:}", tag).as_str());
+					command = command.with_arg(format!("{:}", tag).as_str());
 				}
-				command.with_arg("*:S");
+				command = command.with_arg("*:S");
 			}
 		}
 
 		if let Some(timeout) = options.timeout {
-			command.with_timeout(timeout);
+			command = command.with_timeout(timeout);
 		}
 
 		if let Some(signal) = cancel {
-			command.with_signal(signal);
+			command = command.with_signal(signal);
 		}
 
 		command.build().output().map_err(|e| e.into())
@@ -110,27 +114,27 @@ impl Client {
 	/// use radb_client::{Adb, Client};
 	/// let adb = Adb::new().unwrap();
 	/// let device = adb.device("192.168.1.24:5555");
-	/// let name = Client::name(&adb, &device).unwrap();
+	/// let name = Client::name(&adb, &device, true).unwrap();
 	/// ```
-	pub fn name<'d, D>(adb: &Adb, device: D) -> crate::Result<String>
+	pub fn name<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::getprop(adb, device, "ro.build.product")
+		Shell::getprop(adb, device, "ro.build.product", debug)
 	}
 
-	pub fn api_level<'d, D>(adb: &Adb, device: D) -> crate::Result<String>
+	pub fn api_level<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::getprop(adb, device, "ro.build.version.sdk")
+		Shell::getprop(adb, device, "ro.build.version.sdk", debug)
 	}
 
-	pub fn version<'d, D>(adb: &Adb, device: D) -> crate::Result<u8>
+	pub fn version<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<u8>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let result = Shell::getprop(adb, device, "ro.build.version.release")?;
+		let result = Shell::getprop(adb, device, "ro.build.version.release", debug)?;
 		result.parse::<u8>().map_err(From::from)
 	}
 
@@ -139,6 +143,7 @@ impl Client {
 		device: D,
 		path: T,
 		install_options: Option<AdbInstallOptions>,
+		debug: bool,
 	) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
@@ -150,10 +155,10 @@ impl Client {
 			Some(options) => args.extend(options),
 		}
 		args.push(path.as_str()?.to_string());
-		adb.exec(device, args, None, None)
+		adb.exec(device, args, None, None, debug)
 	}
 
-	pub fn uninstall<'d, D>(adb: &Adb, device: D, package_name: &str, keep_data: Option<bool>) -> crate::Result<Output>
+	pub fn uninstall<'d, D>(adb: &Adb, device: D, package_name: &str, keep_data: Option<bool>, debug: bool) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -163,32 +168,32 @@ impl Client {
 		}
 
 		args.push(package_name);
-		adb.exec(device, args, None, None)
+		adb.exec(device, args, None, None, debug)
 	}
 
-	pub fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
+	pub fn pull<'d, 's, D, S, T>(adb: &Adb, device: D, src: S, dst: T, debug: bool) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		S: Arg,
 		T: Arg,
 	{
 		let mut command = CommandBuilder::adb(adb).device(device);
-		command = command.arg("pull").arg(src.as_str()?).arg(dst.as_str()?);
+		command = command.arg("pull").arg(src.as_str()?).arg(dst.as_str()?).with_debug(debug);
 		command.build().output().map_err(|e| e.into())
 	}
 
-	pub fn push<'d, 't, D, S, T>(adb: &Adb, device: D, src: S, dst: T) -> crate::Result<Output>
+	pub fn push<'d, 't, D, S, T>(adb: &Adb, device: D, src: S, dst: T, debug: bool) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		S: Arg,
 		T: Arg,
 	{
 		let mut command = CommandBuilder::adb(adb).device(device);
-		command = command.arg("push").arg(src.as_str()?).arg(dst.as_str()?);
+		command = command.arg("push").arg(src.as_str()?).arg(dst.as_str()?).with_debug(debug);
 		command.build().output().map_err(|e| e.into())
 	}
 
-	pub fn save_screencap<'d, D>(adb: &Adb, device: D, output: File) -> crate::Result<()>
+	pub fn save_screencap<'d, D>(adb: &Adb, device: D, output: File, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -198,19 +203,24 @@ impl Client {
 			"-p",
 		];
 		let pipe_out = Stdio::from(output);
-		let output = std::process::Command::new(adb.as_os_str())
-			.args(device.into().args())
+
+		let mut cmd = std::process::Command::new(adb.as_os_str());
+
+		cmd.args(device.into().args())
 			.args(args)
 			.stdout(pipe_out)
-			.stderr(Stdio::piped())
-			.debug()
-			.output()?;
+			.stderr(Stdio::piped());
 
-		trace!("output: {:?}", output);
+		if debug {
+			cmd.debug();
+		}
+
+		cmd.output()?;
+
 		Ok(())
 	}
 
-	pub fn copy_screencap<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	pub fn copy_screencap<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -219,8 +229,8 @@ impl Client {
 		dir.push(file_name);
 
 		let path = dir.as_path().to_owned();
-		let _file = File::create(path.as_path())?;
-		Client::save_screencap(adb, device, _file)?;
+		let file = File::create(path.as_path())?;
+		Client::save_screencap(adb, device, file, debug)?;
 
 		let img = image::open(path.as_path())?;
 		let width = img.width();
@@ -237,12 +247,13 @@ impl Client {
 		Ok(())
 	}
 
-	pub fn wait_for_device<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> crate::Result<()>
+	pub fn wait_for_device<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		CommandBuilder::adb(adb)
 			.device(device)
+			.with_debug(debug)
 			.args([
 				"wait-for-device",
 				"shell",
@@ -254,21 +265,21 @@ impl Client {
 		Ok(())
 	}
 
-	pub fn is_root<'a, T>(adb: &Adb, device: T) -> crate::Result<bool>
+	pub fn is_root<'a, T>(adb: &Adb, device: T, debug: bool) -> crate::Result<bool>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		Shell::is_root(adb, device.into())
+		Shell::is_root(adb, device.into(), debug)
 	}
 
 	/// Attempt to run adb as root
-	pub fn root<'a, T>(adb: &Adb, device: T) -> crate::Result<bool>
+	pub fn root<'a, T>(adb: &Adb, device: T, debug: bool) -> crate::Result<bool>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
 		let d = device.into();
 
-		if Shell::is_root(adb, d)? {
+		if Shell::is_root(adb, d, debug)? {
 			return Ok(true);
 		}
 		CommandBuilder::adb(adb).device(d).arg("root").build().output()?;
@@ -276,26 +287,31 @@ impl Client {
 		Ok(true)
 	}
 
-	pub fn unroot<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
+	pub fn unroot<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		CommandBuilder::adb(adb).device(device).arg("unroot").build().output()?;
+		CommandBuilder::adb(adb)
+			.device(device)
+			.with_debug(debug)
+			.arg("unroot")
+			.build()
+			.output()?;
 		Ok(true)
 	}
 
-	pub fn is_connected<'d, D>(adb: &Adb, device: D) -> bool
+	pub fn is_connected<'d, D>(adb: &Adb, device: D, debug: bool) -> bool
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let mut command = CommandBuilder::adb(adb).device(device);
+		let mut command = CommandBuilder::adb(adb).device(device).with_debug(debug);
 		command = command.arg("get-state").timeout(Some(Duration::from_millis(200)));
 		let output = command.build().output();
 
 		return if let Ok(output) = output { output.success() } else { false };
 	}
 
-	pub fn get_wakefulness<'d, D>(adb: &Adb, device: D) -> crate::Result<Wakefulness>
+	pub fn get_wakefulness<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<Wakefulness>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -308,7 +324,7 @@ impl Client {
 		let command2 = Cmd::builder("sed")
 			.arg("-n")
 			.arg("s/mWakefulness=\\(\\S*\\)/\\1/p")
-			.with_debug(true)
+			.with_debug(debug)
 			.stdout(Some(Stdio::piped()))
 			.build();
 
@@ -317,13 +333,16 @@ impl Client {
 		Ok(awake.try_into()?)
 	}
 
-	pub fn connect<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>) -> crate::Result<()>
+	/// Attempt to connect to the given device, optionally waiting until the given
+	/// timeout expires.
+	/// If debug is set to true, the executed command will be logged out.
+	pub fn connect<'d, D>(adb: &Adb, device: D, timeout: Option<Duration>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let d = device.into();
 
-		if Client::is_connected(adb, d) {
+		if Client::is_connected(adb, d, debug) {
 			return Ok(());
 		}
 
@@ -335,7 +354,7 @@ impl Client {
 		let mut command = CommandBuilder::new(adb.as_os_str());
 
 		if let Some(timeout) = timeout {
-			command.with_timeout(timeout);
+			command = command.with_timeout(timeout);
 		}
 
 		let output = command
@@ -349,7 +368,7 @@ impl Client {
 		if output.error() {
 			return Err(AdbError::ConnectToDeviceError());
 		} else {
-			match Client::is_connected(adb, d) {
+			match Client::is_connected(adb, d, debug) {
 				true => Ok(()),
 				false => Err(AdbError::ConnectToDeviceError()),
 			}
@@ -394,7 +413,7 @@ impl Client {
 		Ok(true)
 	}
 
-	pub fn reboot<'d, D>(adb: &Adb, device: D, reboot_type: Option<RebootType>) -> crate::Result<()>
+	pub fn reboot<'d, D>(adb: &Adb, device: D, reboot_type: Option<RebootType>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -402,19 +421,29 @@ impl Client {
 		let s = reboot_type.map(|f| f.value()).unwrap_or_default();
 		args.push(s.as_str());
 
-		CommandBuilder::adb(adb).device(device).args(args).build().output()?;
+		CommandBuilder::adb(adb)
+			.device(device)
+			.with_debug(debug)
+			.args(args)
+			.build()
+			.output()?;
 		Ok(())
 	}
 
-	pub fn remount<'a, T>(adb: &Adb, device: T) -> crate::Result<()>
+	pub fn remount<'a, T>(adb: &Adb, device: T, debug: bool) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		CommandBuilder::adb(adb).device(device).arg("remount").build().output()?;
+		CommandBuilder::adb(adb)
+			.device(device)
+			.with_debug(debug)
+			.arg("remount")
+			.build()
+			.output()?;
 		Ok(())
 	}
 
-	pub fn mount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> crate::Result<()>
+	pub fn mount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -427,11 +456,12 @@ impl Client {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn unmount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T) -> crate::Result<()>
+	pub fn unmount<'d, D, T: Arg>(adb: &Adb, device: D, dir: T, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -444,11 +474,12 @@ impl Client {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn bug_report<'d, D, T: Arg>(adb: &Adb, device: D, output: Option<T>) -> crate::Result<Output>
+	pub fn bug_report<'d, D, T: Arg>(adb: &Adb, device: D, output: Option<T>, debug: bool) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -462,12 +493,13 @@ impl Client {
 		CommandBuilder::adb(adb)
 			.device(device)
 			.args(args)
+			.with_debug(debug)
 			.build()
 			.output()
 			.map_err(|e| e.into())
 	}
 
-	pub fn clear_logcat<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	pub fn clear_logcat<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -476,47 +508,48 @@ impl Client {
 			.args([
 				"logcat", "-b", "all", "-c",
 			])
+			.with_debug(debug)
 			.build()
 			.output()?;
 		Ok(())
 	}
 
-	pub fn get_mac_address<'d, D>(adb: &Adb, device: D) -> crate::Result<MacAddress>
+	pub fn get_mac_address<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<MacAddress>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::cat(adb, device, "/sys/class/net/eth0/address")?;
+		let output = Shell::cat(adb, device, "/sys/class/net/eth0/address", debug)?;
 		let mac_address_str = Arg::as_str(&output)?.trim_end();
 		let mac_address = MacAddress::try_from(mac_address_str)?;
 		Ok(mac_address)
 	}
 
-	pub fn get_wlan_address<'d, D>(adb: &Adb, device: D) -> crate::Result<MacAddress>
+	pub fn get_wlan_address<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<MacAddress>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::cat(adb, device, "/sys/class/net/wlan0/address")?;
+		let output = Shell::cat(adb, device, "/sys/class/net/wlan0/address", debug)?;
 		let mac_address_str = Arg::as_str(&output)?.trim_end();
 		let mac_address = MacAddress::try_from(mac_address_str)?;
 		Ok(mac_address)
 	}
 
-	pub fn get_boot_id<'d, D>(adb: &Adb, device: D) -> crate::Result<Uuid>
+	pub fn get_boot_id<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<Uuid>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let output = Shell::cat(adb, device, "/proc/sys/kernel/random/boot_id")?;
+		let output = Shell::cat(adb, device, "/proc/sys/kernel/random/boot_id", debug)?;
 		let output_str = Arg::as_str(&output)?.trim();
 		let boot_id = output_str.try_into()?;
 		Ok(boot_id)
 	}
 
-	pub fn get_verity<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
+	pub fn get_verity<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let d: &dyn AdbDevice = device.into();
-		let _ = Client::check_avbctl(adb, d)?;
+		let _ = Client::check_avbctl(adb, d, debug)?;
 		let output = Shell::exec(
 			adb,
 			d,
@@ -526,17 +559,18 @@ impl Client {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		let string = Arg::as_str(&output.stdout)?;
 		Ok(string.contains("enabled"))
 	}
 
-	pub fn disable_verity<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	pub fn disable_verity<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let d: &dyn AdbDevice = device.into();
-		let _ = Client::check_avbctl(adb, d)?;
+		let _ = Client::check_avbctl(adb, d, debug)?;
 		let output = Shell::exec(
 			adb,
 			d,
@@ -546,6 +580,7 @@ impl Client {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		if !output.success() {
 			let e: simple_cmd::errors::CmdError = output.into();
@@ -555,12 +590,12 @@ impl Client {
 		}
 	}
 
-	pub fn enable_verity<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	pub fn enable_verity<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
 		let d: &dyn AdbDevice = device.into();
-		let _ = Client::check_avbctl(adb, d)?;
+		let _ = Client::check_avbctl(adb, d, debug)?;
 		let output = Shell::exec(
 			adb,
 			d,
@@ -570,6 +605,7 @@ impl Client {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		if !output.success() {
 			let e: simple_cmd::errors::CmdError = output.into();
@@ -579,11 +615,11 @@ impl Client {
 		}
 	}
 
-	fn check_avbctl<'d, D>(adb: &Adb, device: D) -> crate::Result<()>
+	fn check_avbctl<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::get_command_path(adb, device, "avbctl")
+		Shell::get_command_path(adb, device, "avbctl", debug)
 			.map(|_| ())
 			.ok_or(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
 	}
@@ -594,26 +630,31 @@ impl AdbClient {
 		AdbClient {
 			adb: Adb::copy(&other.adb),
 			device: Device::copy(&other.device),
+			debug: other.debug,
 		}
 	}
 
-	pub fn try_from_device(device: Device) -> result::Result<AdbClient, AdbError> {
+	pub fn try_from_device(device: Device) -> Result<AdbClient, AdbError> {
 		match Adb::new() {
-			Ok(adb) => Ok(AdbClient { adb, device }),
+			Ok(adb) => Ok(AdbClient {
+				adb,
+				device,
+				debug: true,
+			}),
 			Err(err) => Err(err),
 		}
 	}
 
 	pub fn is_connected(&self) -> bool {
-		Client::is_connected(&self.adb, &self.device)
+		Client::is_connected(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn is_awake(&self) -> crate::Result<bool> {
-		Ok(Client::get_wakefulness(&self.adb, &self.device)? != Wakefulness::Asleep)
+		Ok(Client::get_wakefulness(&self.adb, &self.device, self.debug)? != Wakefulness::Asleep)
 	}
 
 	pub fn get_wakefulness(&self) -> crate::Result<Wakefulness> {
-		Client::get_wakefulness(&self.adb, &self.device)
+		Client::get_wakefulness(&self.adb, &self.device, self.debug)
 	}
 
 	/// Try to connect to the inner device.
@@ -621,6 +662,7 @@ impl AdbClient {
 	/// # Arguments
 	///
 	/// * `timeout`: optional timeout for connecting
+	/// * `debug`: verbose output
 	///
 	/// returns: Result<(), Error>
 	///
@@ -633,11 +675,11 @@ impl AdbClient {
 	/// pub fn connect() {
 	///  let device: Device = "192.168.1.24:5555".parse().unwrap();
 	///  let client: AdbClient = device.try_into().unwrap();
-	///  client.connect(None).unwrap();
+	///  client.connect(None ).unwrap();
 	/// }
 	/// ```
 	pub fn connect(&self, timeout: Option<Duration>) -> Result<(), AdbError> {
-		Client::connect(&self.adb, &self.device, timeout)
+		Client::connect(&self.adb, &self.device, timeout, self.debug)
 	}
 
 	pub fn disconnect(&self) -> crate::Result<bool> {
@@ -649,44 +691,44 @@ impl AdbClient {
 	}
 
 	pub fn root(&self) -> crate::Result<bool> {
-		Client::root(&self.adb, &self.device)
+		Client::root(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn unroot(&self) -> crate::Result<bool> {
-		Client::unroot(&self.adb, &self.device)
+		Client::unroot(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn is_root(&self) -> crate::Result<bool> {
-		Client::is_root(&self.adb, &self.device)
+		Client::is_root(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn remount(&self) -> crate::Result<()> {
-		Client::remount(&self.adb, &self.device)
+		Client::remount(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn mount<T: Arg>(&self, dir: T) -> crate::Result<()> {
-		Client::mount(&self.adb, &self.device, dir)
+		Client::mount(&self.adb, &self.device, dir, self.debug)
 	}
 
 	pub fn unmount<T: Arg>(&self, dir: T) -> crate::Result<()> {
-		Client::unmount(&self.adb, &self.device, dir)
+		Client::unmount(&self.adb, &self.device, dir, self.debug)
 	}
 
 	pub fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::Result<Output> {
-		Client::bug_report(&self.adb, &self.device, output)
+		Client::bug_report(&self.adb, &self.device, output, self.debug)
 	}
 
 	///
 	/// Root is required
 	///
 	pub fn get_mac_address(&self) -> crate::Result<MacAddress> {
-		Client::get_mac_address(&self.adb, &self.device)
+		Client::get_mac_address(&self.adb, &self.device, self.debug)
 	}
 
 	///
 	/// Root is required
 	pub fn get_wlan_address(&self) -> crate::Result<MacAddress> {
-		Client::get_wlan_address(&self.adb, &self.device)
+		Client::get_wlan_address(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn pull<'s, S, D>(&self, src: S, dst: D) -> crate::Result<Output>
@@ -694,7 +736,7 @@ impl AdbClient {
 		S: Arg,
 		D: Arg,
 	{
-		Client::pull(&self.adb, &self.device, src, dst)
+		Client::pull(&self.adb, &self.device, src, dst, self.debug)
 	}
 
 	pub fn push<'d, S, D>(&self, src: S, dst: D) -> crate::Result<Output>
@@ -702,67 +744,68 @@ impl AdbClient {
 		D: Arg,
 		S: Arg,
 	{
-		Client::push(&self.adb, &self.device, src, dst)
+		Client::push(&self.adb, &self.device, src, dst, self.debug)
 	}
 
 	pub fn clear_logcat(&self) -> crate::Result<()> {
-		Client::clear_logcat(&self.adb, &self.device)
+		Client::clear_logcat(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> crate::Result<Output> {
-		Client::logcat(&self.adb, &self.device, options, cancel)
+		Client::logcat(&self.adb, &self.device, options, cancel, self.debug)
 	}
 
 	pub fn api_level(&self) -> crate::Result<String> {
-		Client::api_level(&self.adb, &self.device).map_err(|e| e.into())
+		Client::api_level(&self.adb, &self.device, self.debug).map_err(|e| e.into())
 	}
 
 	pub fn version(&self) -> crate::Result<u8> {
-		Client::version(&self.adb, &self.device)
+		Client::version(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn name(&self) -> crate::Result<Option<String>> {
-		Ok(Client::name(&self.adb, &self.device).ok())
+		Ok(Client::name(&self.adb, &self.device, self.debug).ok())
 	}
 
 	pub fn save_screencap(&self, output: File) -> crate::Result<()> {
-		Client::save_screencap(&self.adb, &self.device, output)
+		Client::save_screencap(&self.adb, &self.device, output, self.debug)
 	}
 
 	pub fn copy_screencap(&self) -> crate::Result<()> {
-		Client::copy_screencap(&self.adb, &self.device)
+		Client::copy_screencap(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn get_boot_id(&self) -> crate::Result<Uuid> {
-		Client::get_boot_id(&self.adb, &self.device)
+		Client::get_boot_id(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn reboot(&self, reboot_type: Option<RebootType>) -> crate::Result<()> {
-		Client::reboot(&self.adb, &self.device, reboot_type)
+		Client::reboot(&self.adb, &self.device, reboot_type, self.debug)
 	}
 
+	/// Wait for device to connect, with an optional timeout
 	pub fn wait_for_device(&self, timeout: Option<Duration>) -> crate::Result<()> {
-		Client::wait_for_device(&self.adb, &self.device, timeout)
+		Client::wait_for_device(&self.adb, &self.device, timeout, self.debug)
 	}
 
 	pub fn get_verity(&self) -> crate::Result<bool> {
-		Client::get_verity(&self.adb, &self.device)
+		Client::get_verity(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn disable_verity(&self) -> crate::Result<()> {
-		Client::disable_verity(&self.adb, &self.device)
+		Client::disable_verity(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn enable_verity(&self) -> crate::Result<()> {
-		Client::enable_verity(&self.adb, &self.device)
+		Client::enable_verity(&self.adb, &self.device, self.debug)
 	}
 
 	pub fn install<T: Arg>(&self, path: T, install_options: Option<AdbInstallOptions>) -> crate::Result<Output> {
-		Client::install(&self.adb, &self.device, path, install_options)
+		Client::install(&self.adb, &self.device, path, install_options, self.debug)
 	}
 
 	pub fn uninstall(&self, package_name: &str, keep_data: Option<bool>) -> crate::Result<Output> {
-		Client::uninstall(&self.adb, &self.device, package_name, keep_data)
+		Client::uninstall(&self.adb, &self.device, package_name, keep_data, self.debug)
 	}
 
 	pub fn shell(&self) -> AdbShell {

@@ -33,12 +33,17 @@ impl Shell {
 		args: Vec<T>,
 		cancel: Option<Receiver<()>>,
 		timeout: Option<Duration>,
+		debug: bool,
 	) -> crate::Result<Output>
 	where
 		T: Into<String> + AsRef<OsStr>,
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let builder = CommandBuilder::shell(adb, device).args(args).signal(cancel).timeout(timeout);
+		let builder = CommandBuilder::shell(adb, device)
+			.args(args)
+			.signal(cancel)
+			.timeout(timeout)
+			.with_debug(debug);
 		Ok(builder.build().output()?)
 	}
 
@@ -48,16 +53,21 @@ impl Shell {
 		args: Vec<T>,
 		cancel: Option<Receiver<()>>,
 		timeout: Option<Duration>,
+		debug: bool,
 	) -> crate::Result<Option<ExitStatus>>
 	where
 		T: Into<String> + AsRef<OsStr>,
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let builder = CommandBuilder::shell(adb, device).args(args).signal(cancel).timeout(timeout);
+		let builder = CommandBuilder::shell(adb, device)
+			.args(args)
+			.signal(cancel)
+			.timeout(timeout)
+			.with_debug(debug);
 		Ok(builder.build().run()?)
 	}
 
-	pub fn list_settings<'a, D>(adb: &Adb, device: D, settings_type: SettingsType) -> crate::Result<Vec<Property>>
+	pub fn list_settings<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, debug: bool) -> crate::Result<Vec<Property>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -71,6 +81,7 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 
 		let reader = BufReader::new(output.stdout.as_slice());
@@ -79,7 +90,13 @@ impl Shell {
 		Ok(result)
 	}
 
-	pub fn get_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str) -> crate::Result<Option<String>>
+	pub fn get_setting<'a, D>(
+		adb: &Adb,
+		device: D,
+		settings_type: SettingsType,
+		key: &str,
+		debug: bool,
+	) -> crate::Result<Option<String>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -95,6 +112,7 @@ impl Shell {
 				],
 				None,
 				None,
+				debug,
 			)?
 			.stdout,
 		)
@@ -102,7 +120,14 @@ impl Shell {
 		.ok_or(Unknown("unexpected error".to_string()))
 	}
 
-	pub fn put_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str, value: &str) -> crate::Result<()>
+	pub fn put_setting<'a, D>(
+		adb: &Adb,
+		device: D,
+		settings_type: SettingsType,
+		key: &str,
+		value: &str,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -118,11 +143,12 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn delete_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str) -> crate::Result<()>
+	pub fn delete_setting<'a, D>(adb: &Adb, device: D, settings_type: SettingsType, key: &str, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -137,11 +163,12 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn ls<'d, 't, D, T>(adb: &Adb, device: D, path: T, options: Option<&str>) -> crate::Result<Vec<String>>
+	pub fn ls<'d, 't, D, T>(adb: &Adb, device: D, path: T, options: Option<&str>, debug: bool) -> crate::Result<Vec<String>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
@@ -152,7 +179,7 @@ impl Shell {
 		}
 		args.push(path.into());
 
-		let stdout = Shell::exec(adb, device, args, None, None)?.stdout;
+		let stdout = Shell::exec(adb, device, args, None, None, debug)?.stdout;
 		let lines = stdout.lines().filter_map(|s| s.ok()).collect();
 		Ok(lines)
 	}
@@ -162,6 +189,7 @@ impl Shell {
 		device: D,
 		proto_only: bool,
 		priority: Option<DumpsysPriority>,
+		debug: bool,
 	) -> crate::Result<Vec<String>>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -178,7 +206,7 @@ impl Shell {
 			args.push(priority.into());
 		}
 
-		let output: Vec<String> = Shell::exec(adb, device, args, None, None)?
+		let output: Vec<String> = Shell::exec(adb, device, args, None, None, debug)?
 			.stdout
 			.lines()
 			.filter_map(|f| match f {
@@ -223,6 +251,7 @@ impl Shell {
 		thread: bool,
 		proto: bool,
 		skip: Option<Vec<String>>,
+		debug: bool,
 	) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
@@ -255,7 +284,7 @@ impl Shell {
 			}
 		}
 
-		Shell::exec(adb, device, args, None, None)
+		Shell::exec(adb, device, args, None, None, debug)
 	}
 
 	pub fn screen_record<'d, D>(
@@ -359,7 +388,7 @@ impl Shell {
 		*/
 	}
 
-	pub fn save_screencap<'d, 't, D, T>(adb: &Adb, device: D, path: T) -> crate::Result<Output>
+	pub fn save_screencap<'d, 't, D, T>(adb: &Adb, device: D, path: T, debug: bool) -> crate::Result<Output>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
@@ -374,10 +403,11 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 	}
 
-	pub fn is_screen_on<'a, D>(adb: &Adb, device: D) -> crate::Result<bool>
+	pub fn is_screen_on<'a, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -387,6 +417,7 @@ impl Shell {
 			vec!["dumpsys input_method | egrep 'mInteractive=(true|false)'"],
 			None,
 			None,
+			debug,
 		)?;
 		let result = simple_cmd::Vec8ToString::as_str(&process_result.stdout)
 			.map(|f| f.contains("mInteractive=true"))
@@ -401,6 +432,7 @@ impl Shell {
 		to_pos: (i32, i32),
 		duration: Option<Duration>,
 		source: Option<InputSource>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -423,11 +455,17 @@ impl Shell {
 			args.push(duration_str.as_str());
 		}
 
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn send_tap<'a, D>(adb: &Adb, device: D, position: (i32, i32), source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_tap<'a, D>(
+		adb: &Adb,
+		device: D,
+		position: (i32, i32),
+		source: Option<InputSource>,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -444,11 +482,11 @@ impl Shell {
 		args.push(pos0.as_str());
 		args.push(pos1.as_str());
 
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn send_char<'a, D>(adb: &Adb, device: D, text: &char, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_char<'a, D>(adb: &Adb, device: D, text: &char, source: Option<InputSource>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -461,11 +499,11 @@ impl Shell {
 
 		args.push("text");
 		args.push(formatted.as_str());
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn try_send_char<'a, D>(adb: &Adb, device: D, text: &char, source: Option<InputSource>) -> crate::Result<()>
+	pub fn try_send_char<'a, D>(adb: &Adb, device: D, text: &char, source: Option<InputSource>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -477,11 +515,11 @@ impl Shell {
 		let formatted = format!("{:}", text);
 		args.push("text");
 		args.push(formatted.as_str());
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -494,11 +532,11 @@ impl Shell {
 		let formatted = format!("{:?}", text);
 		args.push(formatted.as_str());
 
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn try_send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>) -> crate::Result<()>
+	pub fn try_send_text<'a, D>(adb: &Adb, device: D, text: &str, source: Option<InputSource>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -511,11 +549,19 @@ impl Shell {
 		let formatted = format!("{:?}", text);
 		args.push(formatted.as_str());
 
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn send_event<'a, D>(adb: &Adb, device: D, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()>
+	pub fn send_event<'a, D>(
+		adb: &Adb,
+		device: D,
+		event: &str,
+		code_type: i32,
+		code: i32,
+		value: i32,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -531,11 +577,20 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn try_send_event<'a, D>(adb: &Adb, device: D, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()>
+	pub fn try_send_event<'a, D>(
+		adb: &Adb,
+		device: D,
+		event: &str,
+		code_type: i32,
+		code: i32,
+		value: i32,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -551,6 +606,7 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
@@ -561,6 +617,7 @@ impl Shell {
 		source: Option<InputSource>,
 		motion: MotionEvent,
 		pos: (i32, i32),
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -577,7 +634,7 @@ impl Shell {
 
 		args.push(pos0.as_str());
 		args.push(pos1.as_str());
-		Shell::exec(adb, device, args, None, None).map(|_| ())
+		Shell::exec(adb, device, args, None, None, debug).map(|_| ())
 	}
 
 	pub fn send_draganddrop<'a, D>(
@@ -587,6 +644,7 @@ impl Shell {
 		duration: Option<Duration>,
 		from_pos: (i32, i32),
 		to_pos: (i32, i32),
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -613,10 +671,10 @@ impl Shell {
 			args.push(duration_str);
 		}
 
-		Shell::exec(adb, device, args, None, None).map(|_| ())
+		Shell::exec(adb, device, args, None, None, debug).map(|_| ())
 	}
 
-	pub fn send_press<'a, D>(adb: &Adb, device: D, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_press<'a, D>(adb: &Adb, device: D, source: Option<InputSource>, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -625,7 +683,7 @@ impl Shell {
 			args.push(source.into());
 		}
 		args.push("press");
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -635,6 +693,7 @@ impl Shell {
 		keycode: KeyCode,
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -652,7 +711,7 @@ impl Shell {
 		}
 
 		args.push(keycode.into());
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -662,6 +721,7 @@ impl Shell {
 		keycode: u32,
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -681,7 +741,7 @@ impl Shell {
 		let keycode_str = keycode.to_string();
 
 		args.push(keycode_str.as_str());
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -691,6 +751,7 @@ impl Shell {
 		keycode: KeyCode,
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -708,7 +769,7 @@ impl Shell {
 		}
 
 		args.push(keycode.into());
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -718,6 +779,7 @@ impl Shell {
 		keycode: u32,
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -736,11 +798,17 @@ impl Shell {
 
 		let keycode_str = keycode.to_string();
 		args.push(keycode_str.as_str());
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_keyevents<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycodes: Vec<KeyCode>,
+		source: Option<InputSource>,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -753,11 +821,17 @@ impl Shell {
 		args.push("keyevent");
 		args.extend(keycodes.iter().map(|k| k.into()).collect::<Vec<&str>>());
 
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn send_keycodes<'a, D>(adb: &Adb, device: D, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn send_keycodes<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycodes: Vec<u32>,
+		source: Option<InputSource>,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -771,11 +845,17 @@ impl Shell {
 		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
 		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
 
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn try_send_keyevents<'a, D>(adb: &Adb, device: D, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn try_send_keyevents<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycodes: Vec<KeyCode>,
+		source: Option<InputSource>,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -788,11 +868,17 @@ impl Shell {
 		args.push("keyevent");
 		args.extend(keycodes.iter().map(|k| k.into()).collect::<Vec<&str>>());
 
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn try_send_keycodes<'a, D>(adb: &Adb, device: D, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()>
+	pub fn try_send_keycodes<'a, D>(
+		adb: &Adb,
+		device: D,
+		keycodes: Vec<u32>,
+		source: Option<InputSource>,
+		debug: bool,
+	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -806,7 +892,7 @@ impl Shell {
 		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
 		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
 
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -815,6 +901,7 @@ impl Shell {
 		device: D,
 		source: Option<InputSource>,
 		keycodes: Vec<KeyCode>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -827,7 +914,7 @@ impl Shell {
 
 		args.push("keycombination");
 		args.extend(keycodes);
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -836,6 +923,7 @@ impl Shell {
 		device: D,
 		source: Option<InputSource>,
 		keycodes: Vec<u32>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -849,7 +937,7 @@ impl Shell {
 		args.push("keycombination");
 		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
 		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
-		Shell::exec(adb, device, args, None, None)?;
+		Shell::exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -858,6 +946,7 @@ impl Shell {
 		device: D,
 		source: Option<InputSource>,
 		keycodes: Vec<KeyCode>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -870,7 +959,7 @@ impl Shell {
 
 		args.push("keycombination");
 		args.extend(keycodes);
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
@@ -879,6 +968,7 @@ impl Shell {
 		device: D,
 		source: Option<InputSource>,
 		keycodes: Vec<u32>,
+		debug: bool,
 	) -> crate::Result<()>
 	where
 		D: Into<&'a dyn AdbDevice>,
@@ -892,11 +982,11 @@ impl Shell {
 		args.push("keycombination");
 		let keycodes_string = keycodes.iter().map(|k| k.to_string()).collect::<Vec<_>>();
 		args.extend(keycodes_string.iter().map(|k| k.as_str()).collect::<Vec<&str>>());
-		Shell::try_exec(adb, device, args, None, None)?;
+		Shell::try_exec(adb, device, args, None, None, debug)?;
 		Ok(())
 	}
 
-	pub fn get_events<'a, D>(adb: &Adb, device: D) -> crate::Result<Vec<(String, String)>>
+	pub fn get_events<'a, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<Vec<(String, String)>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -908,6 +998,7 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?
 		.stdout;
 
@@ -940,7 +1031,7 @@ impl Shell {
 		Ok(v)
 	}
 
-	pub fn file_mode<'d, D, T>(adb: &Adb, device: D, path: T) -> crate::Result<file_mode::Mode>
+	pub fn file_mode<'d, D, T>(adb: &Adb, device: D, path: T, debug: bool) -> crate::Result<file_mode::Mode>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Arg,
@@ -958,6 +1049,7 @@ impl Shell {
 				],
 				None,
 				None,
+				debug,
 			)?
 			.stdout,
 		)?
@@ -968,7 +1060,7 @@ impl Shell {
 		Ok(mode)
 	}
 
-	fn test_file<'d, D, T: Arg>(adb: &Adb, device: D, path: T, mode: &str) -> crate::Result<bool>
+	fn test_file<'d, D, T: Arg>(adb: &Adb, device: D, path: T, mode: &str, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -978,6 +1070,7 @@ impl Shell {
 			vec![format!("test -{:} {:?} && echo 1 || echo 0", mode, path.as_str()?).as_str()],
 			None,
 			None,
+			debug,
 		);
 
 		match simple_cmd::Vec8ToString::as_str(&output?.stdout) {
@@ -986,7 +1079,7 @@ impl Shell {
 		}
 	}
 
-	pub fn get_command_path<'d, D, T: Arg>(adb: &Adb, device: D, command: T) -> Option<String>
+	pub fn get_command_path<'d, D, T: Arg>(adb: &Adb, device: D, command: T, debug: bool) -> Option<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -1004,6 +1097,7 @@ impl Shell {
 						vec![format!("command -v {}", command_string).as_str()],
 						None,
 						None,
+						debug,
 					)
 					.and_then(|result| {
 						Arg::as_str(&result.stdout)
@@ -1025,14 +1119,14 @@ impl Shell {
 		}
 	}
 
-	pub fn exists<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> crate::Result<bool>
+	pub fn exists<'d, D, T: Arg>(adb: &Adb, device: D, path: T, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::test_file(adb, device, path, "e")
+		Shell::test_file(adb, device, path, "e", debug)
 	}
 
-	pub fn rm<'d, 't, D, T>(adb: &Adb, device: D, path: T, options: Option<Vec<&str>>) -> crate::Result<bool>
+	pub fn rm<'d, 't, D, T>(adb: &Adb, device: D, path: T, options: Option<Vec<&str>>, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 		T: Arg,
@@ -1043,31 +1137,31 @@ impl Shell {
 		}
 		args.push(path.as_str()?);
 
-		Shell::exec(adb, device, args, None, None).map(|_| true)
+		Shell::exec(adb, device, args, None, None, debug).map(|_| true)
 	}
 
-	pub fn is_file<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> crate::Result<bool>
+	pub fn is_file<'d, D, T: Arg>(adb: &Adb, device: D, path: T, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::test_file(adb, device, path, "f")
+		Shell::test_file(adb, device, path, "f", debug)
 	}
 
-	pub fn is_dir<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> crate::Result<bool>
+	pub fn is_dir<'d, D, T: Arg>(adb: &Adb, device: D, path: T, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::test_file(adb, device, path, "d")
+		Shell::test_file(adb, device, path, "d", debug)
 	}
 
-	pub fn is_symlink<'d, D, T: Arg>(adb: &Adb, device: D, path: T) -> crate::Result<bool>
+	pub fn is_symlink<'d, D, T: Arg>(adb: &Adb, device: D, path: T, debug: bool) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::test_file(adb, device, path, "h")
+		Shell::test_file(adb, device, path, "h", debug)
 	}
 
-	pub fn getprop<'d, D>(adb: &Adb, device: D, key: &str) -> crate::Result<String>
+	pub fn getprop<'d, D>(adb: &Adb, device: D, key: &str, debug: bool) -> crate::Result<String>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -1079,12 +1173,13 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 		.map(|s| s.stdout)?;
 		Ok(Arg::as_str(&result).map(|f| f.trim_end())?.to_string())
 	}
 
-	pub fn setprop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str, value: T) -> crate::Result<()>
+	pub fn setprop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str, value: T, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -1101,18 +1196,19 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 		.map(|_| ())
 	}
 
-	pub fn clear_prop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str) -> crate::Result<()>
+	pub fn clear_prop<'d, D, T: Arg>(adb: &Adb, device: D, key: &str, debug: bool) -> crate::Result<()>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		Shell::setprop(adb, device, key, "")
+		Shell::setprop(adb, device, key, "", debug)
 	}
 
-	pub fn getprop_type<'d, D>(adb: &Adb, device: D, key: &str) -> crate::Result<Vec<u8>>
+	pub fn getprop_type<'d, D>(adb: &Adb, device: D, key: &str, debug: bool) -> crate::Result<Vec<u8>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -1124,11 +1220,12 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 		.map(|s| s.stdout)
 	}
 
-	pub fn getprop_types<'d, D>(adb: &Adb, device: D) -> crate::Result<HashMap<String, PropType>>
+	pub fn getprop_types<'d, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<HashMap<String, PropType>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -1140,6 +1237,7 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 		.map(|s| s.stdout)?;
 		let hash_map = output
@@ -1165,11 +1263,11 @@ impl Shell {
 		Ok(hash_map)
 	}
 
-	pub fn getprops<'a, D>(adb: &Adb, device: D) -> crate::Result<Vec<Property>>
+	pub fn getprops<'a, D>(adb: &Adb, device: D, debug: bool) -> crate::Result<Vec<Property>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
-		let output = Shell::exec(adb, device, vec!["getprop"], None, None);
+		let output = Shell::exec(adb, device, vec!["getprop"], None, None, debug);
 
 		let mut result: Vec<Property> = Vec::new();
 
@@ -1189,7 +1287,7 @@ impl Shell {
 		Ok(result)
 	}
 
-	pub fn cat<'d, D, P: Arg>(adb: &Adb, device: D, path: P) -> crate::Result<Vec<u8>>
+	pub fn cat<'d, D, P: Arg>(adb: &Adb, device: D, path: P, debug: bool) -> crate::Result<Vec<u8>>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
@@ -1202,11 +1300,12 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 		.map(|s| s.stdout)
 	}
 
-	pub fn which<'a, D>(adb: &Adb, device: D, command: &str) -> crate::Result<Option<String>>
+	pub fn which<'a, D>(adb: &Adb, device: D, command: &str, debug: bool) -> crate::Result<Option<String>>
 	where
 		D: Into<&'a dyn AdbDevice>,
 	{
@@ -1218,6 +1317,7 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		);
 		output.map(|s| simple_cmd::Vec8ToString::as_str(&s.stdout).map(|ss| String::from(ss.trim_end())))
 	}
@@ -1239,30 +1339,30 @@ impl Shell {
 	///
 	/// async fn get_user() {
 	///     let client: AdbClient = "192.168.1.24:5555".parse::<Device>().unwrap().try_into().unwrap();
-	///     client.connect(None).await.unwrap();
+	///     client.connect(None ).await.unwrap();
 	///     let output = client.shell().whoami().unwrap();
 	/// }
 	/// ```
-	pub fn whoami<'a, T>(adb: &Adb, device: T) -> crate::Result<Option<String>>
+	pub fn whoami<'a, T>(adb: &Adb, device: T, debug: bool) -> crate::Result<Option<String>>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let result = Shell::exec(adb, device, vec!["whoami"], None, None)?;
+		let result = Shell::exec(adb, device, vec!["whoami"], None, None, debug)?;
 		Ok(simple_cmd::Vec8ToString::as_str(&result.stdout).map(|s| s.trim().to_string()))
 	}
 
-	pub fn is_root<'a, T>(adb: &Adb, device: T) -> crate::Result<bool>
+	pub fn is_root<'a, T>(adb: &Adb, device: T, debug: bool) -> crate::Result<bool>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let whoami = Shell::whoami(adb, device)?;
+		let whoami = Shell::whoami(adb, device, debug)?;
 		match whoami {
 			Some(s) => Ok(s == "root"),
 			None => Ok(false),
 		}
 	}
 
-	pub fn broadcast<'a, T>(adb: &Adb, device: T, intent: &Intent) -> crate::Result<()>
+	pub fn broadcast<'a, T>(adb: &Adb, device: T, intent: &Intent, debug: bool) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -1276,11 +1376,12 @@ impl Shell {
 			],
 			None,
 			Some(Duration::from_secs(1)),
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn start<'a, T>(adb: &Adb, device: T, intent: &Intent) -> crate::Result<()>
+	pub fn start<'a, T>(adb: &Adb, device: T, intent: &Intent, debug: bool) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -1294,11 +1395,12 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn start_service<'a, T>(adb: &Adb, device: T, intent: &Intent) -> crate::Result<()>
+	pub fn start_service<'a, T>(adb: &Adb, device: T, intent: &Intent, debug: bool) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -1312,11 +1414,12 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn force_stop<'a, T>(adb: &Adb, device: T, package_name: &str) -> crate::Result<()>
+	pub fn force_stop<'a, T>(adb: &Adb, device: T, package_name: &str, debug: bool) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -1330,20 +1433,21 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)?;
 		Ok(())
 	}
 
-	pub fn get_enforce<'a, T>(adb: &Adb, device: T) -> crate::Result<SELinuxType>
+	pub fn get_enforce<'a, T>(adb: &Adb, device: T, debug: bool) -> crate::Result<SELinuxType>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
-		let result = Shell::exec(adb, device, vec!["getenforce"], None, None)?.stdout;
+		let result = Shell::exec(adb, device, vec!["getenforce"], None, None, debug)?.stdout;
 		let enforce: SELinuxType = SELinuxType::try_from(result)?;
 		Ok(enforce)
 	}
 
-	pub fn set_enforce<'a, T>(adb: &Adb, device: T, enforce: SELinuxType) -> crate::Result<()>
+	pub fn set_enforce<'a, T>(adb: &Adb, device: T, enforce: SELinuxType, debug: bool) -> crate::Result<()>
 	where
 		T: Into<&'a dyn AdbDevice>,
 	{
@@ -1361,14 +1465,17 @@ impl Shell {
 			],
 			None,
 			None,
+			debug,
 		)
 		.map(|_| ())
 	}
 }
 
 impl<'a> AdbShell<'a> {
-	pub fn to_command(&self) -> std::process::Command {
-		CommandBuilder::shell(&self.parent.adb, &self.parent.device).into()
+	pub fn to_command(&self) -> Command {
+		CommandBuilder::shell(&self.parent.adb, &self.parent.device)
+			.with_debug(self.parent.debug)
+			.into()
 	}
 
 	pub fn pm(&self) -> PackageManager {
@@ -1376,45 +1483,45 @@ impl<'a> AdbShell<'a> {
 	}
 
 	pub fn whoami(&self) -> crate::Result<Option<String>> {
-		Shell::whoami(&self.parent.adb, &self.parent.device)
+		Shell::whoami(&self.parent.adb, &self.parent.device, self.parent.debug)
 	}
 
 	pub fn which(&self, command: &str) -> crate::Result<Option<String>> {
-		Shell::which(&self.parent.adb, &self.parent.device, command)
+		Shell::which(&self.parent.adb, &self.parent.device, command, self.parent.debug)
 	}
 
 	pub fn getprop(&self, key: &str) -> crate::Result<String> {
-		let value = Shell::getprop(&self.parent.adb, &self.parent.device, key)?;
+		let value = Shell::getprop(&self.parent.adb, &self.parent.device, key, self.parent.debug)?;
 		Arg::as_str(&value).map(|f| f.to_string()).map_err(|e| AdbError::Errno(e))
 	}
 
 	pub fn setprop<T: Arg>(&self, key: &str, value: T) -> crate::Result<()> {
-		Shell::setprop(&self.parent.adb, &self.parent.device, key, value)
+		Shell::setprop(&self.parent.adb, &self.parent.device, key, value, self.parent.debug)
 	}
 
 	pub fn getprop_type(&self, key: &str) -> crate::Result<String> {
-		let result = Shell::getprop_type(&self.parent.adb, &self.parent.device, key)?;
+		let result = Shell::getprop_type(&self.parent.adb, &self.parent.device, key, self.parent.debug)?;
 		Ok(Arg::as_str(&result)?.to_string())
 	}
 
 	pub fn cat<T: Arg>(&self, path: T) -> crate::Result<Vec<u8>> {
-		Shell::cat(&self.parent.adb, &self.parent.device, path)
+		Shell::cat(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 
 	pub fn getprops(&self) -> crate::Result<Vec<Property>> {
-		Shell::getprops(&self.parent.adb, &self.parent.device)
+		Shell::getprops(&self.parent.adb, &self.parent.device, self.parent.debug)
 	}
 
 	pub fn getprop_types(&self) -> crate::Result<HashMap<String, PropType>> {
-		Shell::getprop_types(&self.parent.adb, &self.parent.device)
+		Shell::getprop_types(&self.parent.adb, &self.parent.device, self.parent.debug)
 	}
 
 	pub fn exists<T: Arg>(&self, path: T) -> crate::Result<bool> {
-		Shell::exists(&self.parent.adb, &self.parent.device, path)
+		Shell::exists(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 
 	pub fn get_command_path<T: Arg>(&self, command: T) -> crate::Result<String> {
-		Shell::get_command_path(&self.parent.adb, &self.parent.device, command)
+		Shell::get_command_path(&self.parent.adb, &self.parent.device, command, self.parent.debug)
 			.ok_or(AdbError::IoError(std::io::Error::from(ErrorKind::NotFound)))
 	}
 
@@ -1423,19 +1530,19 @@ impl<'a> AdbShell<'a> {
 	}
 
 	pub fn rm<'s, S: Arg>(&self, path: S, options: Option<Vec<&str>>) -> crate::Result<bool> {
-		Shell::rm(&self.parent.adb, &self.parent.device, path, options)
+		Shell::rm(&self.parent.adb, &self.parent.device, path, options, self.parent.debug)
 	}
 
 	pub fn is_file<T: Arg>(&self, path: T) -> crate::Result<bool> {
-		Shell::is_file(&self.parent.adb, &self.parent.device, path)
+		Shell::is_file(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 
 	pub fn is_dir<T: Arg>(&self, path: T) -> crate::Result<bool> {
-		Shell::is_dir(&self.parent.adb, &self.parent.device, path)
+		Shell::is_dir(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 
 	pub fn is_symlink<T: Arg>(&self, path: T) -> crate::Result<bool> {
-		Shell::is_symlink(&self.parent.adb, &self.parent.device, path)
+		Shell::is_symlink(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 
 	///
@@ -1444,36 +1551,43 @@ impl<'a> AdbShell<'a> {
 	where
 		T: Into<&'t str> + AsRef<OsStr> + Arg,
 	{
-		Shell::ls(&self.parent.adb, &self.parent.device, path, options)
+		Shell::ls(&self.parent.adb, &self.parent.device, path, options, self.parent.debug)
 	}
 
 	pub fn save_screencap<'t, T: Into<&'t str> + AsRef<OsStr> + Arg>(&self, path: T) -> crate::Result<Output> {
-		Shell::save_screencap(&self.parent.adb, &self.parent.device, path)
+		Shell::save_screencap(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 
 	///
 	/// Root is required
 	///
 	pub fn list_settings(&self, settings_type: SettingsType) -> crate::Result<Vec<Property>> {
-		Shell::list_settings(&self.parent.adb, &self.parent.device, settings_type)
+		Shell::list_settings(&self.parent.adb, &self.parent.device, settings_type, self.parent.debug)
 	}
 
 	///
 	/// Root is required
 	pub fn get_setting(&self, settings_type: SettingsType, key: &str) -> crate::Result<Option<String>> {
-		Shell::get_setting(&self.parent.adb, &self.parent.device, settings_type, key)
+		Shell::get_setting(&self.parent.adb, &self.parent.device, settings_type, key, self.parent.debug)
 	}
 
 	pub fn put_setting(&self, settings_type: SettingsType, key: &str, value: &str) -> crate::Result<()> {
-		Shell::put_setting(&self.parent.adb, &self.parent.device, settings_type, key, value)
+		Shell::put_setting(
+			&self.parent.adb,
+			&self.parent.device,
+			settings_type,
+			key,
+			value,
+			self.parent.debug,
+		)
 	}
 
 	pub fn delete_setting(&self, settings_type: SettingsType, key: &str) -> crate::Result<()> {
-		Shell::delete_setting(&self.parent.adb, &self.parent.device, settings_type, key)
+		Shell::delete_setting(&self.parent.adb, &self.parent.device, settings_type, key, self.parent.debug)
 	}
 
 	pub fn dumpsys_list(&self, proto_only: bool, priority: Option<DumpsysPriority>) -> crate::Result<Vec<String>> {
-		Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority)
+		Shell::dumpsys_list(&self.parent.adb, &self.parent.device, proto_only, priority, self.parent.debug)
 	}
 
 	pub fn dumpsys(
@@ -1496,11 +1610,12 @@ impl<'a> AdbShell<'a> {
 			thread,
 			proto,
 			skip,
+			self.parent.debug,
 		)
 	}
 
 	pub fn is_screen_on(&self) -> crate::Result<bool> {
-		Shell::is_screen_on(&self.parent.adb, &self.parent.device)
+		Shell::is_screen_on(&self.parent.adb, &self.parent.device, self.parent.debug)
 	}
 
 	pub fn screen_record(
@@ -1522,21 +1637,37 @@ impl<'a> AdbShell<'a> {
 	}
 
 	pub fn get_events(&self) -> crate::Result<Vec<(String, String)>> {
-		Shell::get_events(&self.parent.adb, &self.parent.device)
+		Shell::get_events(&self.parent.adb, &self.parent.device, self.parent.debug)
 	}
 
 	///
 	/// Root may be required
 	pub fn send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()> {
-		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value)
+		Shell::send_event(
+			&self.parent.adb,
+			&self.parent.device,
+			event,
+			code_type,
+			code,
+			value,
+			self.parent.debug,
+		)
 	}
 
 	pub fn try_send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> crate::Result<()> {
-		Shell::send_event(&self.parent.adb, &self.parent.device, event, code_type, code, value)
+		Shell::send_event(
+			&self.parent.adb,
+			&self.parent.device,
+			event,
+			code_type,
+			code,
+			value,
+			self.parent.debug,
+		)
 	}
 
 	pub fn send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> crate::Result<()> {
-		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos)
+		Shell::send_motion(&self.parent.adb, &self.parent.device, source, motion, pos, self.parent.debug)
 	}
 
 	pub fn send_draganddrop(
@@ -1546,50 +1677,65 @@ impl<'a> AdbShell<'a> {
 		from_pos: (i32, i32),
 		to_pos: (i32, i32),
 	) -> crate::Result<()> {
-		Shell::send_draganddrop(&self.parent.adb, &self.parent.device, source, duration, from_pos, to_pos)
+		Shell::send_draganddrop(
+			&self.parent.adb,
+			&self.parent.device,
+			source,
+			duration,
+			from_pos,
+			to_pos,
+			self.parent.debug,
+		)
 	}
 
 	pub fn send_press(&self, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::send_press(&self.parent.adb, &self.parent.device, source)
+		Shell::send_press(&self.parent.adb, &self.parent.device, source, self.parent.debug)
 	}
 
 	pub fn send_keyevent_combination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
-		Shell::send_keyevent_combination(&self.parent.adb, &self.parent.device, source, keycodes)
+		Shell::send_keyevent_combination(&self.parent.adb, &self.parent.device, source, keycodes, self.parent.debug)
 	}
 
 	pub fn send_keycode_combination(&self, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()> {
-		Shell::send_keycode_combination(&self.parent.adb, &self.parent.device, source, keycodes)
+		Shell::send_keycode_combination(&self.parent.adb, &self.parent.device, source, keycodes, self.parent.debug)
 	}
 
 	pub fn try_send_keyevent_combination(&self, source: Option<InputSource>, keycodes: Vec<KeyCode>) -> crate::Result<()> {
-		Shell::try_send_keyevent_combination(&self.parent.adb, &self.parent.device, source, keycodes)
+		Shell::try_send_keyevent_combination(&self.parent.adb, &self.parent.device, source, keycodes, self.parent.debug)
 	}
 
 	pub fn try_send_keycode_combination(&self, source: Option<InputSource>, keycodes: Vec<u32>) -> crate::Result<()> {
-		Shell::try_send_keycode_combination(&self.parent.adb, &self.parent.device, source, keycodes)
+		Shell::try_send_keycode_combination(&self.parent.adb, &self.parent.device, source, keycodes, self.parent.debug)
 	}
 
 	pub fn send_char(&self, text: &char, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::send_char(&self.parent.adb, &self.parent.device, text, source)
+		Shell::send_char(&self.parent.adb, &self.parent.device, text, source, self.parent.debug)
 	}
 
 	pub fn try_send_char(&self, text: &char, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::try_send_char(&self.parent.adb, &self.parent.device, text, source)
+		Shell::try_send_char(&self.parent.adb, &self.parent.device, text, source, self.parent.debug)
 	}
 
 	pub fn send_text(&self, text: &str, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::send_text(&self.parent.adb, &self.parent.device, text, source)
+		Shell::send_text(&self.parent.adb, &self.parent.device, text, source, self.parent.debug)
 	}
 
 	pub fn try_send_text(&self, text: &str, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::try_send_text(&self.parent.adb, &self.parent.device, text, source)
+		Shell::try_send_text(&self.parent.adb, &self.parent.device, text, source, self.parent.debug)
 	}
 
 	pub fn exec<T>(&self, args: Vec<T>, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> crate::Result<Output>
 	where
 		T: Into<String> + AsRef<OsStr>,
 	{
-		Shell::exec(&self.parent.adb, &self.parent.device, args, cancel, timeout)
+		Shell::exec(
+			&self.parent.adb,
+			&self.parent.device,
+			args,
+			cancel,
+			timeout,
+			self.parent.debug,
+		)
 	}
 
 	pub fn try_exec<T>(
@@ -1601,31 +1747,38 @@ impl<'a> AdbShell<'a> {
 	where
 		T: Into<String> + AsRef<OsStr>,
 	{
-		Shell::try_exec(&self.parent.adb, &self.parent.device, args, cancel, timeout)
+		Shell::try_exec(
+			&self.parent.adb,
+			&self.parent.device,
+			args,
+			cancel,
+			timeout,
+			self.parent.debug,
+		)
 	}
 
 	pub fn broadcast(&self, intent: &Intent) -> crate::Result<()> {
-		Shell::broadcast(&self.parent.adb, &self.parent.device, intent)
+		Shell::broadcast(&self.parent.adb, &self.parent.device, intent, self.parent.debug)
 	}
 
 	pub fn start(&self, intent: &Intent) -> crate::Result<()> {
-		Shell::start(&self.parent.adb, &self.parent.device, intent)
+		Shell::start(&self.parent.adb, &self.parent.device, intent, self.parent.debug)
 	}
 
 	pub fn start_service(&self, intent: &Intent) -> crate::Result<()> {
-		Shell::start_service(&self.parent.adb, &self.parent.device, intent)
+		Shell::start_service(&self.parent.adb, &self.parent.device, intent, self.parent.debug)
 	}
 
 	pub fn force_stop(&self, package_name: &str) -> crate::Result<()> {
-		Shell::force_stop(&self.parent.adb, &self.parent.device, package_name)
+		Shell::force_stop(&self.parent.adb, &self.parent.device, package_name, self.parent.debug)
 	}
 
 	pub fn get_enforce(&self) -> crate::Result<SELinuxType> {
-		Shell::get_enforce(&self.parent.adb, &self.parent.device)
+		Shell::get_enforce(&self.parent.adb, &self.parent.device, self.parent.debug)
 	}
 
 	pub fn set_enforce(&self, enforce: SELinuxType) -> crate::Result<()> {
-		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce)
+		Shell::set_enforce(&self.parent.adb, &self.parent.device, enforce, self.parent.debug)
 	}
 
 	pub fn send_keyevent(
@@ -1634,11 +1787,25 @@ impl<'a> AdbShell<'a> {
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
 	) -> crate::Result<()> {
-		Shell::send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+		Shell::send_keyevent(
+			&self.parent.adb,
+			&self.parent.device,
+			keycode,
+			event_type,
+			source,
+			self.parent.debug,
+		)
 	}
 
 	pub fn send_keycode(&self, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::send_keycode(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+		Shell::send_keycode(
+			&self.parent.adb,
+			&self.parent.device,
+			keycode,
+			event_type,
+			source,
+			self.parent.debug,
+		)
 	}
 
 	pub fn try_send_keyevent(
@@ -1647,7 +1814,14 @@ impl<'a> AdbShell<'a> {
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
 	) -> crate::Result<()> {
-		Shell::try_send_keyevent(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+		Shell::try_send_keyevent(
+			&self.parent.adb,
+			&self.parent.device,
+			keycode,
+			event_type,
+			source,
+			self.parent.debug,
+		)
 	}
 
 	pub fn try_send_keycode(
@@ -1656,26 +1830,33 @@ impl<'a> AdbShell<'a> {
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
 	) -> crate::Result<()> {
-		Shell::try_send_keycode(&self.parent.adb, &self.parent.device, keycode, event_type, source)
+		Shell::try_send_keycode(
+			&self.parent.adb,
+			&self.parent.device,
+			keycode,
+			event_type,
+			source,
+			self.parent.debug,
+		)
 	}
 
 	pub fn send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source)
+		Shell::send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source, self.parent.debug)
 	}
 
 	pub fn send_keycodes(&self, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source)
+		Shell::send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source, self.parent.debug)
 	}
 
 	pub fn try_send_keyevents(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::try_send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source)
+		Shell::try_send_keyevents(&self.parent.adb, &self.parent.device, keycodes, source, self.parent.debug)
 	}
 
 	pub fn try_send_keycodes(&self, keycodes: Vec<u32>, source: Option<InputSource>) -> crate::Result<()> {
-		Shell::try_send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source)
+		Shell::try_send_keycodes(&self.parent.adb, &self.parent.device, keycodes, source, self.parent.debug)
 	}
 
 	pub fn file_mode<T: Arg>(&self, path: T) -> crate::Result<file_mode::Mode> {
-		Shell::file_mode(&self.parent.adb, &self.parent.device, path)
+		Shell::file_mode(&self.parent.adb, &self.parent.device, path, self.parent.debug)
 	}
 }
