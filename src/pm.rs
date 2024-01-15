@@ -1,20 +1,27 @@
-use lazy_static::lazy_static;
-use regex::{Regex, RegexBuilder};
-use rustix::path::Arg;
 use std::fmt::{Display, Formatter};
+use std::process::Output;
+use std::time::Duration;
 
-use crate::dump_util::{extract_runtime_permissions, SimplePackageReader};
+use lazy_static::lazy_static;
+use regex::Regex;
+use rustix::path::Arg;
+use simple_cmd::Error::CommandError;
+
+use crate::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
 use crate::errors::AdbError;
-
-use crate::process::ProcessResult;
-use crate::types::{InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, RuntimePermission, UninstallOptions};
+use crate::types::{
+	InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, PackageFlags, RuntimePermission,
+	UninstallOptions,
+};
 use crate::PackageManager;
+
+static DUMP_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
 
 #[macro_export]
 macro_rules! build_pm_operation {
 	($name:tt, $operation_name:tt, $typ:ty, $typ2:ty) => {
-		pub async fn $name(&self, package_name: $typ, user: $typ2) -> crate::process::Result<()> {
-			self.op($operation_name, package_name, user).await
+		pub fn $name(&self, package_name: $typ, user: $typ2) -> crate::Result<()> {
+			self.op($operation_name, package_name, user)
 		}
 	};
 }
@@ -48,36 +55,36 @@ impl Display for Package {
 }
 
 impl<'a> PackageManager<'a> {
-	pub async fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> crate::process::Result<ProcessResult> {
+	pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> crate::Result<Output> {
 		let mut args = vec!["cmd package uninstall".to_string()];
 		match options {
 			None => {}
 			Some(options) => args.extend::<Vec<String>>((&options).into()),
 		}
 		args.push(package_name.to_string());
-		self.parent.exec(args, None).await
+		self.parent.exec(args, None, None)
 	}
 
-	pub async fn install<T: Arg>(&self, src: T, options: Option<InstallOptions>) -> crate::process::Result<ProcessResult> {
+	pub fn install<T: Arg>(&self, src: T, options: Option<InstallOptions>) -> crate::Result<Output> {
 		let mut args = vec!["cmd package install".to_string()];
 		match options {
 			None => {}
 			Some(options) => args.extend(options),
 		}
 		args.push(src.as_str()?.into());
-		self.parent.exec(args, None).await
+		self.parent.exec(args, None, None)
 	}
 
-	pub async fn is_installed(&self, package_name: &str, user: Option<&str>) -> crate::process::Result<bool> {
-		let r = self.path(package_name, user).await.map(|f| f.len() > 0);
+	pub fn is_installed(&self, package_name: &str, user: Option<&str>) -> crate::Result<bool> {
+		let r = self.path(package_name, user).map(|f| f.len() > 0);
 		match r {
 			Ok(r) => Ok(r),
 			Err(err) => match err {
-				AdbError::CmdError(err) => {
+				AdbError::CmdError(CommandError(err)) => {
 					if err.stderr.is_empty() && err.stdout.is_empty() {
 						Ok(false)
 					} else {
-						Err(AdbError::CmdError(err))
+						Err(AdbError::CmdError(CommandError(err)))
 					}
 				}
 				_ => Err(err),
@@ -85,87 +92,80 @@ impl<'a> PackageManager<'a> {
 		}
 	}
 
-	pub async fn is_system(&self, package_name: &str) -> crate::process::Result<bool> {
-		//let result = self.parent.exec(vec![format!("pm dump {: } | egrep '^ { { 1, } }flags = '  | egrep ' { { 1, } }SYSTEM { { 1, } }'", package_name)], None).await?.stdout();
-		Ok(self.package_flags(package_name).await?.contains(&PackageFlags::System))
+	pub fn is_system(&self, package_name: &str) -> crate::Result<bool> {
+		Ok(self.package_flags(package_name)?.contains(&PackageFlags::System))
 	}
 
-	pub async fn package_flags(&self, package_name: &str) -> crate::process::Result<Vec<PackageFlags>> {
-		let result = self.dump(package_name).await?;
-		lazy_static! {
-			static ref RE: Regex = RegexBuilder::new("^\\s*pkgFlags=\\[\\s(.*)\\s]").multi_line(true).build().unwrap();
-		}
-
-		if let Some(captures) = RE.captures(result.as_str()) {
-			if captures.len() == 2 {
-				let flags = captures.get(1).unwrap().as_str().split(" ").collect::<Vec<_>>();
-				let package_flags = flags
-					.iter()
-					.filter_map(|line| if let Ok(flag) = (*line).try_into() { Some(flag) } else { None })
-					.collect::<Vec<PackageFlags>>();
-				Ok(package_flags)
-			} else {
-				Err(AdbError::ParseInputError())
-			}
-		} else {
-			Err(AdbError::ParseInputError())
-		}
+	pub fn package_flags(&self, package_name: &str) -> crate::Result<Vec<PackageFlags>> {
+		let result = self.dump(package_name, DUMP_TIMEOUT)?;
+		package_flags(result.as_str())
 	}
 
-	pub async fn requested_permissions(&self, package_name: &str) -> crate::process::Result<Vec<String>> {
-		let dump = self.dump(package_name).await?;
+	pub fn requested_permissions(&self, package_name: &str) -> crate::Result<Vec<String>> {
+		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
 		let pr = SimplePackageReader::new(dump.as_str())?;
-		pr.requested_permissions().await
+		pr.requested_permissions()
+			.ok_or(AdbError::NameNotFoundError("requested_permissions".to_string()))
 	}
 
-	pub async fn install_permissions(&self, package_name: &str) -> crate::process::Result<Vec<InstallPermission>> {
-		let dump = self.dump(package_name).await?;
+	pub fn install_permissions(&self, package_name: &str) -> crate::Result<Vec<InstallPermission>> {
+		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
 		let pr = SimplePackageReader::new(dump.as_str())?;
-		pr.install_permissions().await
+		pr.install_permissions()
+			.ok_or(AdbError::NameNotFoundError("install_permissions".to_string()))
 	}
 
-	pub async fn dump_runtime_permissions(&self, package_name: &str) -> crate::process::Result<Vec<RuntimePermission>> {
-		let dump = self.dump(package_name).await?;
-		extract_runtime_permissions(dump.as_str()).await
+	pub fn dump_runtime_permissions(&self, package_name: &str) -> crate::Result<Vec<RuntimePermission>> {
+		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
+		runtime_permissions(dump.as_str())
 	}
 
-	pub async fn dump(&self, package_name: &str) -> crate::process::Result<String> {
-		let args = vec!["pm", "dump", package_name];
-		let result = self.parent.exec(args, None).await?.stdout();
+	pub fn dump(&self, package_name: &str, timeout: Option<Duration>) -> crate::Result<String> {
+		let args = vec![format!("pm dump {:}", package_name)];
+		let result = self.parent.exec(args, None, timeout)?.stdout;
 		Ok(Arg::as_str(&result)?.to_string())
 	}
 
-	pub async fn path(&self, package_name: &str, user: Option<&str>) -> Result<String, AdbError> {
-		let mut args = vec!["pm", "path"];
+	pub fn path(&self, package_name: &str, user: Option<&str>) -> Result<String, AdbError> {
+		let mut args = vec![
+			"pm", "path",
+		];
 		if let Some(u) = user {
 			args.push("--user");
 			args.push(u);
 		}
 		args.push(package_name);
-		let result = self.parent.exec(args, None).await?.stdout();
+		let result = self.parent.exec(args, None, None)?.stdout;
 		let output = Arg::as_str(&result)?.trim_end();
-		let split = output.split_once("package:").map(|s| s.1.to_string()).ok_or(AdbError::NameNotFoundError(package_name.to_string()));
+		let split = output
+			.split_once("package:")
+			.map(|s| s.1.to_string())
+			.ok_or(AdbError::PackageNotFoundError(package_name.to_string()));
 		split
 	}
 
-	pub async fn grant(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::process::Result<()> {
+	pub fn grant(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::Result<()> {
 		let mut args = vec!["pm grant"];
 		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
+			args.extend(vec![
+				"--user", u,
+			]);
 		}
 		args.push(package_name);
 		args.push(permission);
-		self.parent.exec(args, None).await.map(|_f| ())
+		self.parent.exec(args, None, None).map(|_f| ())
 	}
 
-	pub async fn revoke(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::process::Result<()> {
+	pub fn revoke(&self, package_name: &str, user: Option<&str>, permission: &str) -> crate::Result<()> {
 		let mut args = vec!["pm revoke"];
 		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
+			args.extend(vec![
+				"--user", u,
+			]);
 		}
 		args.push(package_name);
 		args.push(permission);
-		self.parent.exec(args, None).await.map(|_f| ())
+		self.parent.exec(args, None, None).map(|_f| ())
 	}
 
 	build_pm_operation!(clear, "clear", &str, Option<&str>);
@@ -179,12 +179,30 @@ impl<'a> PackageManager<'a> {
 	build_pm_operation!(disable, "disable", &str, Option<&str>);
 	build_pm_operation!(enable, "enable", &str, Option<&str>);
 
-	pub async fn reset_permissions(&self) -> crate::process::Result<()> {
-		self.parent.exec(vec!["pm", "reset-permissions"], None).await.map(|_f| ())
+	pub fn reset_permissions(&self) -> crate::Result<()> {
+		self.parent
+			.exec(
+				vec![
+					"pm",
+					"reset-permissions",
+				],
+				None,
+				None,
+			)
+			.map(|_f| ())
 	}
 
-	pub async fn list_packages(&self, filters: Option<ListPackageFilter>, display: Option<ListPackageDisplayOptions>, name_filter: Option<&str>) -> Result<Vec<Package>, AdbError> {
-		let mut args = vec!["pm".into(), "list".into(), "packages".into()];
+	pub fn list_packages(
+		&self,
+		filters: Option<ListPackageFilter>,
+		display: Option<ListPackageDisplayOptions>,
+		name_filter: Option<&str>,
+	) -> Result<Vec<Package>, AdbError> {
+		let mut args = vec![
+			"pm".into(),
+			"list".into(),
+			"packages".into(),
+		];
 
 		match filters {
 			Some(filters) => args.extend(filters),
@@ -202,11 +220,14 @@ impl<'a> PackageManager<'a> {
 			args.push(name.to_string());
 		}
 
-		let output = self.parent.exec(args, None).await?.stdout();
+		let output = self.parent.exec(args, None, None)?.stdout;
 		let string = Arg::as_str(&output)?;
 
 		lazy_static! {
-			static ref RE: Regex = Regex::new("package:((?P<file>.*\\.apk)=)?(?P<name>\\S+)(\\s(versionCode|uid):(\\d+))?(\\s(versionCode|uid):(\\d+))?").unwrap();
+			static ref RE: Regex = Regex::new(
+				"package:((?P<file>.*\\.apk)=)?(?P<name>\\S+)(\\s(versionCode|uid):(\\d+))?(\\s(versionCode|uid):(\\d+))?"
+			)
+			.unwrap();
 		}
 
 		let captures = RE.captures_iter(string);
@@ -224,9 +245,17 @@ impl<'a> PackageManager<'a> {
 						_ => (None, None),
 					};
 
-					let version_code = if let Some(vcode) = version_code_str { Some(vcode.parse::<i32>().ok()?) } else { None };
+					let version_code = if let Some(vcode) = version_code_str {
+						Some(vcode.parse::<i32>().ok()?)
+					} else {
+						None
+					};
 
-					let uid = if let Some(uid) = uid_str { Some(uid.parse::<i32>().ok()?) } else { None };
+					let uid = if let Some(uid) = uid_str {
+						Some(uid.parse::<i32>().ok()?)
+					} else {
+						None
+					};
 
 					Some(Package {
 						package_name: name.to_string(),
@@ -244,12 +273,16 @@ impl<'a> PackageManager<'a> {
 
 	// private methods
 
-	async fn op(&self, operation: &str, package_or_component: &str, user: Option<&str>) -> crate::process::Result<()> {
-		let mut args = vec!["pm", operation];
+	fn op(&self, operation: &str, package_or_component: &str, user: Option<&str>) -> crate::Result<()> {
+		let mut args = vec![
+			"pm", operation,
+		];
 		if let Some(u) = user {
-			args.extend(vec!["--user", u]);
+			args.extend(vec![
+				"--user", u,
+			]);
 		}
 		args.push(package_or_component);
-		self.parent.exec(args, None).await.map(|_f| ())
+		self.parent.exec(args, None, None).map(|_f| ())
 	}
 }

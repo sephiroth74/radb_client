@@ -3,27 +3,30 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::net::{AddrParseError, SocketAddr};
+use std::process::Command;
 use std::str::FromStr;
 use std::time::Duration;
 
-use async_trait::async_trait;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
-use tokio::process::Command;
 
-use crate::errors::AdbError::InvalidDeviceError;
+use crate::errors::AdbError::{InvalidDeviceError, ParseError};
 use crate::errors::{AdbError, ParseSELinuxTypeError};
-use crate::traits::Vec8ToString;
 use crate::traits::{AdbDevice, AsArgs};
-use crate::types::AddressType::Sock;
 use crate::types::PackageFlags::{AllowBackup, AllowClearUserData, HasCode, System, UpdatedSystemApp};
 use crate::types::{
-	AddressType, DeviceAddress, Extra, InstallLocationOption, InstallOptions, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags,
-	RebootType, SELinuxType, ScreenRecordOptions, UninstallOptions,
+	AdbInstallOptions, AddressType, DeviceAddress, Extra, FFPlayOptions, InstallLocationOption, InstallOptions, Intent, KeyCode,
+	KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, PropType, RebootType,
+	SELinuxType, ScreenRecordOptions, UninstallOptions, Wakefulness,
 };
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
+
+lazy_static! {
+	static ref RE_PROP_TYPE_ENUM: Regex = Regex::new("^enum\\s((?:[\\w_]+\\s?)+)$").unwrap();
+}
 
 // region Adb
 
@@ -47,9 +50,27 @@ impl<'a> From<&'a Adb> for &'a OsStr {
 
 // endregion Adb
 
+// region AddressType
+
+impl AddressType {
+	pub fn copy(other: &AddressType) -> AddressType {
+		match other {
+			AddressType::Sock(sock) => AddressType::Sock(sock.clone()),
+			AddressType::Name(name) => AddressType::Name(String::from(name)),
+			AddressType::Transport(t) => AddressType::Transport(t.clone()),
+		}
+	}
+}
+
+// endregion AddressType
+
 // region DeviceAddress
 
 impl DeviceAddress {
+	pub fn copy(other: &DeviceAddress) -> DeviceAddress {
+		DeviceAddress(AddressType::copy(other.address_type()))
+	}
+
 	pub fn address_type(&self) -> &AddressType {
 		&self.0
 	}
@@ -86,6 +107,25 @@ impl DeviceAddress {
 	}
 }
 
+impl AsArgs<String> for DeviceAddress {
+	fn as_args(&self) -> Vec<String> {
+		match &self.0 {
+			AddressType::Sock(addr) => vec![
+				"-s".to_string(),
+				addr.to_string(),
+			],
+			AddressType::Name(name) => vec![
+				"-s".to_string(),
+				name.as_str().to_string(),
+			],
+			AddressType::Transport(id) => vec![
+				"-t".to_string(),
+				id.to_string(),
+			],
+		}
+	}
+}
+
 impl Display for DeviceAddress {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
 		match &self.0 {
@@ -110,6 +150,10 @@ impl Debug for DeviceAddress {
 
 // region Device
 impl Device {
+	pub fn copy(other: &Device) -> Device {
+		Device(DeviceAddress::copy(other.addr()))
+	}
+
 	pub fn try_from_address(value: &DeviceAddress) -> Result<Device, AddrParseError> {
 		match value.address_type() {
 			AddressType::Sock(addr) => Device::try_from_sock_addr(addr),
@@ -147,8 +191,13 @@ impl Device {
 		}
 
 		if let Some(cap) = RE.captures(input) {
-			let ip = cap.name("ip").ok_or(InvalidDeviceError("Device serial not found".to_string()))?.as_str();
-			DeviceAddress::from_ip(ip).map(|address| Device(address)).map_err(|e| AdbError::from(e))
+			let ip = cap
+				.name("ip")
+				.ok_or(InvalidDeviceError("Device serial not found".to_string()))?
+				.as_str();
+			DeviceAddress::from_ip(ip)
+				.map(|address| Device(address))
+				.map_err(|e| AdbError::from(e))
 		} else {
 			Err(AdbError::InvalidDeviceAddressError(input.to_string()))
 		}
@@ -156,9 +205,18 @@ impl Device {
 
 	pub fn args(&self) -> Vec<String> {
 		match &self.0 .0 {
-			AddressType::Sock(addr) => vec!["-s".to_string(), addr.to_string()],
-			AddressType::Name(name) => vec!["-s".to_string(), name.to_string()],
-			AddressType::Transport(id) => vec!["-t".to_string(), id.to_string()],
+			AddressType::Sock(addr) => vec![
+				"-s".to_string(),
+				addr.to_string(),
+			],
+			AddressType::Name(name) => vec![
+				"-s".to_string(),
+				name.to_string(),
+			],
+			AddressType::Transport(id) => vec![
+				"-t".to_string(),
+				id.to_string(),
+			],
 		}
 	}
 }
@@ -175,7 +233,7 @@ impl FromStr for Device {
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let addr: Result<SocketAddr, AddrParseError> = s.parse();
 		match addr {
-			Ok(a) => Ok(Self(DeviceAddress(Sock(a)))),
+			Ok(a) => Ok(Self(DeviceAddress(AddressType::Sock(a)))),
 			Err(e) => Device::try_from_ip(s).or(Device::try_from_serial(s)).or(Err(e)),
 		}
 	}
@@ -195,7 +253,6 @@ impl TryFrom<&dyn AdbDevice> for Device {
 	}
 }
 
-#[async_trait]
 impl AdbDevice for Device {
 	fn addr(&self) -> &DeviceAddress {
 		&self.0
@@ -406,13 +463,63 @@ impl IntoIterator for InstallOptions {
 }
 
 impl Display for InstallOptions {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let args = self.clone().into_iter().collect::<Vec<_>>();
 		write!(f, "{:}", args.join(" "))
 	}
 }
 
 // endregion InstallOptions
+
+// region AdbInstallOptions
+
+impl IntoIterator for AdbInstallOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+
+		if self.allow_version_downgrade {
+			args.push("-d".to_string());
+		}
+
+		if self.allow_test_package {
+			args.push("-t".to_string());
+		}
+
+		if self.replace {
+			args.push("-r".to_string());
+		}
+
+		if self.forward_lock {
+			args.push("-l".to_string());
+		}
+
+		if self.install_external {
+			args.push("-s".to_string());
+		}
+
+		if self.grant_permissions {
+			args.push("-g".to_string());
+		}
+
+		if self.instant {
+			args.push("--instant".to_string());
+		}
+
+		args.into_iter()
+	}
+}
+
+impl Display for AdbInstallOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let args = self.clone().into_iter().collect::<Vec<_>>();
+		write!(f, "{:}", args.join(" "))
+	}
+}
+
+// endregion AdbInstallOptions
 
 // region ListPackageDisplayOptions
 impl IntoIterator for ListPackageDisplayOptions {
@@ -564,6 +671,38 @@ impl Default for ScreenRecordOptions {
 	}
 }
 
+impl Display for ScreenRecordOptions {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		let string = self.into_iter().join(" ");
+		write!(f, "{}", string)
+	}
+}
+
+impl IntoIterator for FFPlayOptions {
+	type Item = String;
+	type IntoIter = std::vec::IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+		if let Some(framerate) = self.framerate {
+			args.push("-framerate".to_string());
+			args.push(framerate.to_string());
+		}
+
+		if let Some(probesize) = self.probesize {
+			args.push("-probesize".to_string());
+			args.push(probesize.to_string());
+		}
+
+		if let Some(size) = self.size {
+			args.push("-vf".to_string());
+			args.push(format!("scale={:}:{:}", size.0, size.1));
+		}
+
+		args.into_iter()
+	}
+}
+
 impl IntoIterator for ScreenRecordOptions {
 	type Item = String;
 	type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -603,12 +742,22 @@ impl IntoIterator for ScreenRecordOptions {
 impl ScreenRecordOptions {
 	pub fn new() -> Self {
 		ScreenRecordOptions {
-			bitrate: Some(20000000),
+			bitrate: Some(4_000_000),
 			timelimit: Some(Duration::from_secs(10)),
 			rotate: None,
 			bug_report: None,
 			size: None,
 			verbose: false,
+		}
+	}
+}
+
+impl Default for FFPlayOptions {
+	fn default() -> Self {
+		FFPlayOptions {
+			framerate: Some(30),
+			size: Some((1440, 800)),
+			probesize: Some(300),
 		}
 	}
 }
@@ -753,19 +902,31 @@ impl Display for Extra {
 
 		if !self.eia.is_empty() {
 			self.eia.iter().for_each(|entry| {
-				output.push(format!("--eia {:} {:}", entry.0, entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")));
+				output.push(format!(
+					"--eia {:} {:}",
+					entry.0,
+					entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+				));
 			});
 		}
 
 		if !self.ela.is_empty() {
 			self.ela.iter().for_each(|entry| {
-				output.push(format!("--ela {:} {:}", entry.0, entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")));
+				output.push(format!(
+					"--ela {:} {:}",
+					entry.0,
+					entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+				));
 			});
 		}
 
 		if !self.efa.is_empty() {
 			self.efa.iter().for_each(|entry| {
-				output.push(format!("--efa {:} {:}", entry.0, entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")));
+				output.push(format!(
+					"--efa {:} {:}",
+					entry.0,
+					entry.1.iter().map(|f| f.to_string()).collect::<Vec<_>>().join(",")
+				));
 			});
 		}
 
@@ -827,17 +988,63 @@ impl From<KeyEventType> for &str {
 
 // endregion KeyEventType
 
-impl Vec8ToString for Vec<u8> {
-	fn as_str(&self) -> Option<&str> {
-		match std::str::from_utf8(self) {
-			Ok(s) => Some(s),
-			Err(_) => None,
-		}
-	}
-}
-
 impl<'a> AsArgs<&'a str> for Vec<&'a str> {
 	fn as_args(&self) -> Vec<&'a str> {
 		self.clone()
 	}
 }
+
+// region PropType
+
+impl From<&str> for PropType {
+	fn from(value: &str) -> Self {
+		return match value {
+			"string" => PropType::String,
+			"bool" => PropType::Bool,
+			"int" => PropType::Int,
+			_ => {
+				if let Some(captures) = RE_PROP_TYPE_ENUM.captures(value) {
+					return if captures.len() == 2 {
+						let strings = captures.get(1).unwrap().as_str();
+						let s = strings.split(' ').map(|s| s.to_string()).collect::<Vec<String>>();
+						PropType::Enum(s)
+					} else {
+						PropType::Unknown(value.to_string())
+					};
+				}
+				return PropType::Unknown(value.to_string());
+			}
+		};
+	}
+}
+
+impl ToString for PropType {
+	fn to_string(&self) -> String {
+		match self {
+			PropType::String => "String".to_string(),
+			PropType::Bool => "Bool".to_string(),
+			PropType::Int => "Int".to_string(),
+			PropType::Enum(_) => "Enum".to_string(),
+			PropType::Unknown(_) => "Unknown".to_string(),
+		}
+	}
+}
+
+// endregion PropType
+
+// region Wakefulness
+
+impl TryFrom<&str> for Wakefulness {
+	type Error = AdbError;
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value.to_lowercase().as_str() {
+			"awake" => Ok(Wakefulness::Awake),
+			"asleep" => Ok(Wakefulness::Asleep),
+			"dreaming" => Ok(Wakefulness::Dreaming),
+			_ => Err(ParseError(value.to_string())),
+		}
+	}
+}
+
+// endregion Wakefulness

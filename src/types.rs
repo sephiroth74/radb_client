@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
+
 use strum_macros::{Display, IntoStaticStr};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -20,6 +21,7 @@ pub enum SELinuxType {
 	Permissive,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RebootType {
 	Bootloader,
 	Recovery,
@@ -28,7 +30,7 @@ pub enum RebootType {
 }
 
 pub struct LogcatOptions {
-	/// -e    Only prints lines where the log message matches <expr>, where <expr> is a regular expression.
+	/// -e    Only prints lines where the log message matches expr, where expr is a regular expression.
 	pub expr: Option<String>,
 
 	/// -d    Dumps the log to the screen and exits.
@@ -109,6 +111,13 @@ pub enum DumpsysPriority {
 }
 
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct FFPlayOptions {
+	pub framerate: Option<u16>,
+	pub size: Option<(u16, u16)>,
+	pub probesize: Option<u16>,
+}
+
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct ScreenRecordOptions {
 	/// --bit-rate 4000000
 	/// Set the video bit rate, in bits per second. Value may be specified as bits or megabits, e.g. '4000000' is equivalent to '4M'.
@@ -137,7 +146,7 @@ pub struct ScreenRecordOptions {
 	pub verbose: bool,
 }
 
-#[derive(IntoStaticStr)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, IntoStaticStr)]
 #[allow(non_camel_case_types)]
 pub enum SettingsType {
 	global,
@@ -216,7 +225,25 @@ pub struct InstallOptions {
 	pub allow_version_downgrade: bool,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct AdbInstallOptions {
+	// -d: allow version code downgrade
+	pub allow_version_downgrade: bool,
+	// -t: allow test packages
+	pub allow_test_package: bool,
+	// -r: replace existing application
+	pub replace: bool,
+	// -l: forward lock the app
+	pub forward_lock: bool,
+	// -s: Install on SD card instead of internal storage
+	pub install_external: bool,
+	// -g: grant all runtime permissions
+	pub grant_permissions: bool,
+	// --instant: Cause the app to be installed as an ephemeral install app
+	pub instant: bool,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy, IntoStaticStr)]
 pub enum PackageFlags {
 	System,
 	HasCode,
@@ -262,7 +289,7 @@ pub enum InputSource {
 	trackball,
 }
 
-#[derive(IntoStaticStr, Display, Debug, Copy, Clone)]
+#[derive(IntoStaticStr, Display, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
 pub enum KeyCode {
 	KEYCODE_0,
@@ -411,6 +438,7 @@ pub enum KeyCode {
 	KEYCODE_MEDIA_PREVIOUS,
 	KEYCODE_MEDIA_RECORD,
 	KEYCODE_MEDIA_REWIND,
+	KEYCODE_FAST_FORWARD,
 	KEYCODE_MEDIA_SKIP_BACKWARD,
 	KEYCODE_MEDIA_SKIP_FORWARD,
 	KEYCODE_MEDIA_STEP_BACKWARD,
@@ -559,4 +587,26 @@ pub enum KeyCode {
 pub enum KeyEventType {
 	LongPress,
 	DoubleTap,
+}
+
+#[derive(Debug, IntoStaticStr)]
+pub enum PropType {
+	String,
+	Bool,
+	Int,
+	Enum(Vec<String>),
+	Unknown(String),
+}
+
+#[derive(Debug, Display, Eq, PartialEq, Hash)]
+pub enum Wakefulness {
+	Awake,
+	Asleep,
+	Dreaming,
+}
+
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
+pub struct Property {
+	pub key: String,
+	pub value: String,
 }

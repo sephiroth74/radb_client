@@ -1,18 +1,22 @@
+use crossbeam_channel::Receiver;
 use std::ffi::OsStr;
 use std::io::BufRead;
 use std::path::Path;
+use std::process::Output;
+use std::time::Duration;
 
+use crate::cmd_ext::CommandBuilderExt;
 use lazy_static::lazy_static;
 use regex::Regex;
+use simple_cmd::{Cmd, CommandBuilder};
 use which::which;
 
 use crate::errors::AdbError;
 use crate::errors::AdbError::WhichError;
-use crate::process::CommandBuilder;
 use crate::traits::AdbDevice;
 
-use super::Adb;
 use super::Device;
+use super::{Adb, AdbClient};
 
 impl Adb {
 	pub fn new() -> Result<Adb, AdbError> {
@@ -20,12 +24,47 @@ impl Adb {
 		Ok(Adb(adb))
 	}
 
-	pub async fn root(&self) -> Result<(), AdbError> {
-		CommandBuilder::new(self.0.as_path()).args(["root"]).output().await.map(|_| ())
+	pub fn copy(other: &Adb) -> Adb {
+		Adb(other.0.to_path_buf())
 	}
 
-	pub async fn unroot(&self) -> Result<(), AdbError> {
-		CommandBuilder::new(self.0.as_path()).args(["unroot"]).output().await.map(|_| ())
+	pub async fn root(&self) -> Result<(), AdbError> {
+		Cmd::builder(self.0.as_path())
+			.args(["root"])
+			.build()
+			.output()
+			.map_err(|e| e.into())
+			.map(|_| ())
+	}
+
+	pub fn unroot(&self) -> Result<(), AdbError> {
+		Cmd::builder(self.0.as_path())
+			.args(["unroot"])
+			.build()
+			.output()
+			.map_err(|e| e.into())
+			.map(|_| ())
+	}
+
+	pub fn exec<'a, D, T>(
+		&self,
+		device: D,
+		args: Vec<T>,
+		cancel: Option<Receiver<()>>,
+		timeout: Option<Duration>,
+		debug: bool,
+	) -> crate::Result<Output>
+	where
+		T: Into<String> + AsRef<OsStr>,
+		D: Into<&'a dyn AdbDevice>,
+	{
+		let builder = CommandBuilder::adb(self)
+			.device(device)
+			.args(args)
+			.signal(cancel)
+			.with_debug(debug)
+			.timeout(timeout);
+		Ok(builder.build().output()?)
 	}
 
 	pub fn from(path: &Path) -> Result<Adb, AdbError> {
@@ -40,8 +79,13 @@ impl Adb {
 	}
 
 	/// List connected devices
-	pub async fn devices(&self) -> Result<Vec<Box<dyn AdbDevice>>, AdbError> {
-		let output = CommandBuilder::new(self.0.as_path()).args(["devices", "-l"]).output().await?;
+	pub fn devices(&self) -> Result<Vec<Box<dyn AdbDevice>>, AdbError> {
+		let output = Cmd::builder(self.0.as_path())
+			.args([
+				"devices", "-l",
+			])
+			.build()
+			.output()?;
 
 		lazy_static! {
 			static ref RE: Regex = Regex::new(
@@ -51,8 +95,7 @@ impl Adb {
 		}
 
 		let mut devices: Vec<Box<dyn AdbDevice>> = vec![];
-		let stdout = output.stdout();
-		for line in stdout.lines() {
+		for line in output.stdout.lines() {
 			let line_str = line?;
 
 			if RE.is_match(line_str.as_str()) {
@@ -62,7 +105,8 @@ impl Adb {
 					Some(c) => {
 						let ip = c.name("ip").unwrap().as_str();
 						let tr = c.name("transport_id").unwrap().as_str().parse::<u8>().unwrap();
-						let device = Device::try_from_ip(ip).or(Device::try_from_transport_id(tr).or(Device::try_from_serial(line_str.as_str())));
+						let device = Device::try_from_ip(ip)
+							.or(Device::try_from_transport_id(tr).or(Device::try_from_serial(line_str.as_str())));
 						if let Ok(d) = device {
 							devices.push(Box::new(d))
 						}
@@ -76,5 +120,10 @@ impl Adb {
 	pub fn device(&self, input: &str) -> Result<Box<dyn AdbDevice>, AdbError> {
 		let d = Device::try_from_serial(input)?;
 		Ok(Box::new(d))
+	}
+
+	pub fn client(&self, input: &str) -> Result<AdbClient, AdbError> {
+		let d = Device::try_from_serial(input)?;
+		Ok(AdbClient::try_from_device(d)?)
 	}
 }

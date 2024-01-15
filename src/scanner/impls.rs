@@ -1,21 +1,33 @@
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use futures::future::join_all;
+use crossbeam_channel::Sender;
 
 use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
-use crate::{Adb, AdbClient, Client, Device};
+use crate::{Adb, AdbClient, Device};
 
-#[cfg(feature = "scanner")]
+static TCP_TIMEOUT_MS: u64 = 200;
+static ADB_TIMEOUT_MS: u64 = 100;
+
 impl Display for ClientResult {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		//192.168.1.29:5555      device product:SwisscomBox23 model:IP2300 device:IP2300 transport_id:5
 		let mut strings = vec![];
 
-		if let Some(n) = self.name.as_ref() {
-			strings.push(format!("name:{}", n));
+		if let Some(n) = self.product.as_ref() {
+			strings.push(format!("product:{}", n));
+		}
+
+		if let Some(n) = self.model.as_ref() {
+			strings.push(format!("model:{}", n));
+		}
+
+		if let Some(n) = self.device.as_ref() {
+			strings.push(format!("device:{}", n));
 		}
 
 		if let Some(n) = self.mac.as_ref() {
@@ -26,41 +38,63 @@ impl Display for ClientResult {
 			strings.push(format!("version:{}", n));
 		}
 
-		write!(f, "{:}	{:}", self.addr, strings.join(" "))
+		write!(f, "{:}    device {:}", self.addr, strings.join(" "))
+	}
+}
+
+impl Default for Scanner {
+	fn default() -> Self {
+		Scanner::new(
+			Duration::from_millis(TCP_TIMEOUT_MS),
+			Duration::from_millis(ADB_TIMEOUT_MS),
+			true,
+		)
 	}
 }
 
 #[allow(dead_code)]
-#[cfg(feature = "scanner")]
 impl Scanner {
-	pub fn new() -> Scanner {
-		Scanner {}
+	pub fn new(tcp_timeout: Duration, adb_timeout: Duration, debug: bool) -> Scanner {
+		Scanner {
+			tcp_timeout,
+			adb_timeout,
+			debug,
+		}
 	}
 
-	pub async fn scan(&self) -> Result<Vec<ClientResult>, AdbError> {
-		let adb = Arc::new(Adb::new()?);
-		let pool = crate::future::ThreadPool::default();
-		let mut tasks = vec![];
+	pub fn scan(&self, adb: &Adb, tx: Sender<Option<ClientResult>>) {
+		let adb = Arc::new(adb.clone());
+		let cpus = std::thread::available_parallelism()
+			.map(|s| s.get())
+			.unwrap_or(num_cpus::get());
+		let tp = threadpool::ThreadPool::new(cpus);
+
+		let tcp_timeout = self.tcp_timeout.clone();
+		let adb_timeout = self.adb_timeout.clone();
+		let debug = self.debug;
 
 		for i in 0..256 {
 			let adb = Arc::clone(&adb);
-			let task = pool.spawn(connect(adb, format!("192.168.1.{:}:5555", i)));
-			tasks.push(task);
-		}
+			let tx = tx.clone();
 
-		let result = join_all(tasks).await.iter().filter_map(|f| f.to_owned()).collect::<Vec<_>>();
-		Ok(result)
+			tp.execute(move || {
+				let addr = format!("192.168.1.{:}:5555", i);
+				let _ = tx.send(connect(adb, addr.as_str(), tcp_timeout, adb_timeout, debug));
+				drop(tx);
+			});
+		}
 	}
 }
 
-#[cfg(feature = "scanner")]
 impl ClientResult {
 	pub fn new(addr: SocketAddr) -> ClientResult {
 		ClientResult {
 			addr,
-			name: None,
+			product: None,
+			model: None,
 			mac: None,
 			version: None,
+			device: None,
 		}
 	}
 }
@@ -87,29 +121,42 @@ impl TryFrom<&ClientResult> for AdbClient {
 	}
 }
 
-#[cfg(feature = "scanner")]
-async fn connect(adb: Arc<Adb>, host: String) -> Option<ClientResult> {
-	if let Ok(response) = tokio::time::timeout(Duration::from_millis(200), tokio::net::TcpStream::connect(host.as_str())).await {
-		if let Ok(stream) = response {
-			if let Ok(addr) = stream.peer_addr() {
-				let device = adb.device(host.as_str()).unwrap();
-				if Client::connect(&adb, device.as_ref(), Some(Duration::from_millis(400))).await.is_ok() {
-					let client_name = Client::name(&adb, device.as_ref()).await;
-					let client_mac = Client::get_mac_address(&adb, device.as_ref()).await;
-					let version = Client::api_level(&adb, device.as_ref()).await;
-					let _ = Client::disconnect(&adb, device.as_ref()).await;
+fn connect(adb: Arc<Adb>, host: &str, tcp_timeout: Duration, adb_timeout: Duration, debug: bool) -> Option<ClientResult> {
+	let sock_addr = SocketAddr::from_str(host).ok();
+	if sock_addr.is_none() {
+		return None;
+	}
 
-					Some(ClientResult {
-						addr,
-						name: client_name.ok(),
-						mac: client_mac.map_or(None, |m| Some(m)),
-						version: version.map_or(None, |m| Some(m)),
-					})
-				} else {
-					Some(ClientResult::new(addr))
-				}
+	if let Ok(response) = std::net::TcpStream::connect_timeout(sock_addr.as_ref().unwrap(), tcp_timeout) {
+		if let Ok(addr) = response.peer_addr() {
+			//let device = adb.device(host.as_str()).unwrap();
+			let mut client = adb.client(host).unwrap();
+			client.debug = debug;
+
+			if client.connect(Some(adb_timeout)).is_ok() {
+				let shell = client.shell();
+				let root = client.root().unwrap_or(false);
+
+				//let product_name = shell.getprop("ro.product.name").await;
+				let sdk_version = shell.getprop("ro.build.version.sdk");
+				let model_name = shell.getprop("ro.product.model");
+				let device_name = shell.getprop("ro.product.device");
+				let stb_name = shell.getprop("persist.sys.stb.name");
+				let client_mac = if root { client.get_mac_address().ok() } else { None };
+				let _ = client.try_disconnect();
+
+				//192.168.1.29:5555      device product:SwisscomBox23 model:IP2300 device:IP2300 transport_id:5
+
+				Some(ClientResult {
+					addr,
+					product: stb_name.ok(),
+					model: model_name.ok(),
+					device: device_name.ok(),
+					mac: client_mac,
+					version: sdk_version.ok(),
+				})
 			} else {
-				None
+				Some(ClientResult::new(addr))
 			}
 		} else {
 			None
