@@ -11,7 +11,7 @@ use crossbeam::channel::Receiver;
 use mac_address::MacAddress;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
-use simple_cmd::output_ext::OutputExt;
+use simple_cmd::prelude::OutputExt;
 use simple_cmd::Error::CommandError;
 use simple_cmd::{Cmd, CommandBuilder};
 use uuid::Uuid;
@@ -105,8 +105,6 @@ impl Client {
 	///
 	/// * `adb`: the adb path
 	/// * `device`: the target device
-	///
-	/// returns: Result<Option<String>, Error>
 	///
 	/// # Examples
 	///

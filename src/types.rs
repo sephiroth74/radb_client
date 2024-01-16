@@ -36,20 +36,20 @@ pub struct LogcatOptions {
 	/// -d    Dumps the log to the screen and exits.
 	pub dump: bool,
 
-	/// -f <filename>    Writes log message output to <filename>. The default is stdout.
+	/// -f filename    Writes log message output to `filename`. The default is stdout.
 	pub filename: Option<String>,
 
 	/// -s    Equivalent to the filter expression '*:S', which sets priority for all tags to silent and is used to precede a list of filter expressions that add content.
 	pub tags: Option<Vec<LogcatTag>>,
 
-	/// -v <format>    Sets the output format for log messages. The default is the threadtime format
+	/// -v format    Sets the output format for log messages. The default is the thread time format
 	pub format: Option<String>,
 
-	/// -t '<time>'    Prints the most recent lines since the specified time. This option includes -d functionality.
+	/// -t 'time'    Prints the most recent lines since the specified time. This option includes -d functionality.
 	/// See the -P option for information about quoting parameters with embedded spaces.
 	pub since: Option<chrono::DateTime<chrono::Local>>,
 
-	// --pid=<pid> ...
+	// --pid=pid ...
 	pub pid: Option<i32>,
 
 	pub timeout: Option<Duration>,

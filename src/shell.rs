@@ -1329,8 +1329,6 @@ impl Shell {
 	/// * `adb`: adb path
 	/// * `device`: connected device
 	///
-	/// returns: Result<Option<String>, Error>
-	///
 	/// # Examples
 	///
 	/// ```

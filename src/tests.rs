@@ -22,7 +22,7 @@ mod tests {
 	use signal_hook::consts::SIGINT;
 	use signal_hook::iterator::Signals;
 	use simple_cmd::debug::CommandDebug;
-	use simple_cmd::output_ext::OutputExt;
+	use simple_cmd::prelude::OutputExt;
 	use simple_cmd::{Cmd, CommandBuilder};
 	use tracing::{debug, error, info, subscriber, trace, warn};
 	use tracing_appender::non_blocking::WorkerGuard;
