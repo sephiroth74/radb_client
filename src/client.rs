@@ -373,26 +373,43 @@ impl Client {
 		}
 	}
 
-	pub fn disconnect<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
+	pub fn disconnect<'d, D>(adb: &Adb, device: D) -> bool
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let serial = device.into().addr().serial().expect("Host[:Port] required");
-		CommandBuilder::new(adb.as_os_str())
+		let d = device.into();
+		let serial = d
+			.addr()
+			.serial()
+			.ok_or(InvalidDeviceAddressError("Host[:Port] required".to_string()));
+
+		if let Err(_err) = serial {
+			return false;
+		}
+
+		match CommandBuilder::new(adb.as_os_str())
 			.args([
 				"disconnect",
-				serial.as_str(),
+				serial.unwrap().as_str(),
 			])
 			.build()
-			.output()?;
-		Ok(true)
+			.output()
+		{
+			Ok(output) => output.success(),
+			Err(_err) => false,
+		}
 	}
 
 	pub fn try_disconnect<'d, D>(adb: &Adb, device: D) -> crate::Result<bool>
 	where
 		D: Into<&'d dyn AdbDevice>,
 	{
-		let serial = device.into().addr().serial().expect("Host[:Port] required");
+		let d = device.into();
+		let serial = d
+			.addr()
+			.serial()
+			.ok_or(InvalidDeviceAddressError("Host[:Port] required".to_string()))?;
+
 		match CommandBuilder::new(adb.as_os_str())
 			.args([
 				"disconnect",
@@ -680,12 +697,12 @@ impl AdbClient {
 		Client::connect(&self.adb, &self.device, timeout, self.debug)
 	}
 
-	pub fn disconnect(&self) -> crate::Result<bool> {
+	pub fn disconnect(&self) -> bool {
 		Client::disconnect(&self.adb, &self.device)
 	}
 
 	pub fn try_disconnect(&self) -> crate::Result<bool> {
-		Client::disconnect(&self.adb, &self.device)
+		Client::try_disconnect(&self.adb, &self.device)
 	}
 
 	pub fn root(&self) -> crate::Result<bool> {

@@ -196,7 +196,7 @@ mod tests {
 		init_log!();
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
-		assert!(client.disconnect().expect("disconnect failed"));
+		assert!(client.try_disconnect().expect("disconnect failed"));
 		assert!(!client.is_connected());
 	}
 
