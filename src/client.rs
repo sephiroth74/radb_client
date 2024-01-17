@@ -355,13 +355,13 @@ impl Client {
 			command = command.with_timeout(timeout);
 		}
 
-		let output = command
+		command = command
 			.args([
 				"connect",
 				serial.as_str(),
 			])
-			.build()
-			.output()?;
+			.with_debug(debug);
+		let output = command.build().output()?;
 
 		if output.error() {
 			return Err(AdbError::ConnectToDeviceError());

@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.27"
+version = "0.2.28"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -35,7 +35,7 @@ crossbeam-channel = "0.5.11"
 threadpool = "1.8.1"
 cmd_lib = "1.9.3"
 tracing = "0.1.40"
-simple-cmd = "0.0.16"
+simple-cmd = "0.0.17"
 cached = { version = "0.47.0" }
 serde = { version = "1.0.195", features = ["derive"] }
 

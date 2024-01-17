@@ -41,7 +41,7 @@ mod tests {
 
 	static ADB: Lazy<Adb> = Lazy::new(|| Adb::new().unwrap());
 
-	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.3:5555"));
+	static DEVICE_IP: Lazy<String> = Lazy::new(|| String::from("192.168.1.101:5555"));
 
 	// region MACROS
 
@@ -189,6 +189,21 @@ mod tests {
 		let client: AdbClient = client!();
 		assert_client_connected!(client);
 		assert!(client.is_connected());
+	}
+
+	#[test]
+	fn test_disconnect() {
+		init_log!();
+		let client: AdbClient = client!();
+		assert_client_connected!(client);
+		assert!(client.disconnect().expect("disconnect failed"));
+		assert!(!client.is_connected());
+	}
+
+	#[test]
+	fn test_disconnect_all() {
+		init_log!();
+		assert!(Client::disconnect_all(&ADB).expect("disconnect all failed"));
 	}
 
 	#[test]
@@ -405,21 +420,6 @@ mod tests {
 		assert_eq!(true, f2);
 
 		assert_client_unroot!(client);
-	}
-
-	#[test]
-	fn test_disconnect() {
-		init_log!();
-		let client: AdbClient = client!();
-		assert_client_connected!(client);
-		assert!(client.disconnect().expect("disconnect failed"));
-		assert!(!client.is_connected());
-	}
-
-	#[test]
-	fn test_disconnect_all() {
-		init_log!();
-		assert!(Client::disconnect_all(&ADB).expect("disconnect all failed"));
 	}
 
 	#[test]
