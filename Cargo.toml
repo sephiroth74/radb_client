@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.2.29"
+version = "0.2.30"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -32,12 +32,13 @@ itertools = "0.12.0"
 crossbeam = "0.8.4"
 signal-hook = "0.3.17"
 crossbeam-channel = "0.5.11"
-threadpool = "1.8.1"
+threadpool = { version = "1.8.1", optional = true }
 cmd_lib = "1.9.3"
 tracing = "0.1.40"
 simple-cmd = "0.0.17"
 cached = { version = "0.47.0" }
 serde = { version = "1.0.195", features = ["derive"] }
+cidr-utils = "0.6.1"
 
 
 [dev-dependencies]
@@ -46,12 +47,11 @@ anyhow = "1.0.79"
 ctrlc = "3.4.2"
 tracing-subscriber = { version = "0.3.18", features = ["local-time"] }
 tracing-appender = "0.2.3"
+radb_client = { path = ".", features = ["scanner"] }
 
 [features]
-default = ["scanner"]
-derive = []
-scanner = []
+default = []
+scanner = ["dep:threadpool"]
 
 [workspace]
-#members = ["macros"]
 

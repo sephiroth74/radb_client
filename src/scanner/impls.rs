@@ -1,10 +1,12 @@
 use std::fmt::{Display, Formatter};
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, SocketAddr};
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use cidr_utils::cidr::InetIterator;
 use crossbeam_channel::Sender;
+use itertools::Either;
 
 use crate::errors::AdbError;
 use crate::scanner::{ClientResult, Scanner};
@@ -62,7 +64,25 @@ impl Scanner {
 		}
 	}
 
-	pub fn scan(&self, adb: &Adb, tx: Sender<Option<ClientResult>>) {
+	pub fn with_debug(mut self, debug: bool) -> Self {
+		self.debug = debug;
+		self
+	}
+
+	pub fn with_tcp_timeout(mut self, timeout: Duration) -> Self {
+		self.tcp_timeout = timeout;
+		self
+	}
+
+	pub fn with_adb_timeout(mut self, timeout: Duration) -> Self {
+		self.adb_timeout = timeout;
+		self
+	}
+
+	pub fn scan<I>(&self, adb: &Adb, iterator: I, tx: Sender<Either<String, ClientResult>>)
+	where
+		I: Into<InetIterator<Ipv4Addr>>,
+	{
 		let adb = Arc::new(adb.clone());
 		let cpus = std::thread::available_parallelism()
 			.map(|s| s.get())
@@ -73,13 +93,16 @@ impl Scanner {
 		let adb_timeout = self.adb_timeout.clone();
 		let debug = self.debug;
 
-		for i in 0..256 {
+		for ip in iterator.into() {
 			let adb = Arc::clone(&adb);
 			let tx = tx.clone();
 
 			tp.execute(move || {
-				let addr = format!("192.168.1.{:}:5555", i);
-				let _ = tx.send(connect(adb, addr.as_str(), tcp_timeout, adb_timeout, debug));
+				let addr = format!("{}:5555", ip.address());
+				let _ = tx.send(Either::Left(addr.clone()));
+				if let Some(result) = connect(adb, &addr, tcp_timeout, adb_timeout, debug) {
+					let _ = tx.send(Either::Right(result));
+				}
 				drop(tx);
 			});
 		}

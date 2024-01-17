@@ -47,8 +47,6 @@ pub mod adb;
 
 pub mod client;
 
-pub mod future;
-
 pub mod macros;
 
 pub mod shell;
