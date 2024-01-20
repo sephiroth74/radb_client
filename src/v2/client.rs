@@ -4,7 +4,7 @@ use simple_cmd::prelude::OutputExt;
 use simple_cmd::CommandBuilder;
 
 use crate::v2::prelude::*;
-use crate::v2::types::{Adb, AddressType, Client};
+use crate::v2::types::{Adb, AdbDevice, AddressType, Client};
 
 static GET_STATE_TIMEOUT: u64 = 200u64;
 
@@ -34,6 +34,14 @@ impl TryFrom<AddressType> for Client {
 	fn try_from(value: AddressType) -> Result<Self, Self::Error> {
 		let adb = Adb::new()?;
 		Ok(Client::new(adb, value, false))
+	}
+}
+
+impl TryFrom<AdbDevice> for Client {
+	type Error = crate::v2::error::Error;
+
+	fn try_from(value: AdbDevice) -> Result<Self, Self::Error> {
+		value.addr.try_into()
 	}
 }
 

@@ -19,3 +19,12 @@ pub struct Client {
 	pub addr: AddressType,
 	pub debug: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdbDevice {
+	pub name: String,
+	pub product: String,
+	pub model: String,
+	pub device: String,
+	pub addr: AddressType,
+}

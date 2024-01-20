@@ -100,40 +100,11 @@ impl IntoIterator for AddressType {
 mod test {
 	use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 	use std::str::FromStr;
-	use std::sync::{Arc, Mutex, Once};
 
-	use once_cell::sync::Lazy;
+	use crate::v2::test::test::init_log;
 	use simple_cmd::debug::CommandDebug;
-	use tracing_appender::non_blocking::WorkerGuard;
 
 	use crate::v2::types::AddressType;
-
-	static INIT: Once = Once::new();
-	static GUARDS: Lazy<Arc<Mutex<Vec<WorkerGuard>>>> = Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
-
-	macro_rules! init_log {
-		() => {
-			INIT.call_once(|| {
-				use tracing_subscriber::prelude::*;
-
-				let registry = tracing_subscriber::Registry::default();
-				let (non_blocking, guard) = tracing_appender::non_blocking(std::io::stdout());
-				let layer1 = tracing_subscriber::fmt::layer()
-					.with_thread_names(false)
-					.with_thread_ids(false)
-					.with_line_number(false)
-					.with_file(false)
-					.with_target(false)
-					.with_level(false)
-					.without_time()
-					.with_writer(non_blocking);
-
-				let subscriber = registry.with(layer1);
-				tracing::subscriber::set_global_default(subscriber).unwrap();
-				GUARDS.lock().unwrap().push(guard);
-			})
-		};
-	}
 
 	#[test]
 	fn test_parse_address() {
@@ -190,7 +161,7 @@ mod test {
 
 	#[test]
 	fn test_args() {
-		init_log!();
+		init_log();
 		let addr = AddressType::USB;
 		let mut builder = std::process::Command::new("adb");
 		let cmd = builder.args(addr).arg("get-state").debug();

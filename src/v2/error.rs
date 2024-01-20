@@ -9,6 +9,12 @@ pub enum Error {
 
 	#[error(transparent)]
 	WhichError(#[from] which::Error),
+
+	#[error(transparent)]
+	CommandError(#[from] simple_cmd::Error),
+
+	#[error(transparent)]
+	IoError(#[from] std::io::Error),
 }
 
 impl From<AddrParseError> for Error {
