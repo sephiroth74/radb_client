@@ -1,4 +1,6 @@
 use std::net::AddrParseError;
+
+use image::ImageError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -20,11 +22,20 @@ pub enum Error {
 	InvalidConnectionTypeError,
 
 	#[error(transparent)]
-	ParseOutputError(#[from] rustix::io::Errno),
+	ImageError(#[from] ImageError),
+
+	#[error(transparent)]
+	ClipboardError(#[from] arboard::Error),
 }
 
 impl From<AddrParseError> for Error {
 	fn from(_value: AddrParseError) -> Self {
 		Error::AddressParseError
+	}
+}
+
+impl From<rustix::io::Errno> for Error {
+	fn from(value: rustix::io::Errno) -> Self {
+		Error::IoError(std::io::Error::from(value))
 	}
 }

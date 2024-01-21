@@ -120,6 +120,55 @@ impl Adb {
 		}
 	}
 
+	/// kill the server if it is running
+	pub fn kill_server(&self, debug: bool) -> crate::v2::result::Result<bool> {
+		let output = Cmd::builder(self.0.as_path())
+			.with_debug(debug)
+			.arg("kill-server")
+			.build()
+			.output()?;
+		Ok(output.success())
+	}
+
+	/// ensure that there is a server running
+	pub fn start_server(&self, debug: bool) -> crate::v2::result::Result<bool> {
+		let output = Cmd::builder(self.0.as_path())
+			.with_debug(debug)
+			.arg("start-server")
+			.build()
+			.output()?;
+		Ok(output.success())
+	}
+
+	/// adb version
+	pub fn version(&self, debug: bool) -> crate::v2::result::Result<String> {
+		lazy_static! {
+			static ref RE: Regex = Regex::new(r#"^Version\s+(?P<version>[\d+\.-]+)$"#).unwrap();
+		}
+
+		let output = CommandBuilder::adb(&self)
+			.with_debug(debug)
+			.arg("--version")
+			.build()
+			.output()?;
+		let result = rustix::path::Arg::as_str(&output.stdout)?.trim();
+
+		let r: Vec<_> = result
+			.lines()
+			.filter_map(|line| {
+				if let Some(capture) = RE.captures(line) {
+					Some(capture.name("version").unwrap().as_str())
+				} else {
+					None
+				}
+			})
+			.collect();
+
+		Ok(r.get(0)
+			.map(|s| s.to_string())
+			.ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))?)
+	}
+
 	pub fn as_os_str(&self) -> &OsStr {
 		self.as_ref()
 	}
@@ -221,5 +270,21 @@ mod test {
 		let adb = Adb::new().expect("failed to find adb");
 		let disconnected = adb.disconnect_all(true).expect("failed to disconnect al devices");
 		println!("disconnected: {disconnected}");
+	}
+
+	#[test]
+	fn test_restart_server() {
+		init_log();
+		let adb = Adb::new().expect("adb not found");
+		adb.kill_server(true).expect("failed to kill-server");
+		adb.start_server(true).expect("failed to start-server");
+	}
+
+	#[test]
+	fn test_get_version() {
+		init_log();
+		let adb = Adb::new().expect("adb not found");
+		let version = adb.version(true).expect("failed to get adb version");
+		println!("version: {version}");
 	}
 }

@@ -66,7 +66,8 @@ mod test {
 		let whoami = client.shell().whoami().expect("failed to get user");
 		println!("whoami: {whoami}");
 
-		let is_root = client.shell().is_root().expect("failed to get root status");
+		let result: crate::v2::result::Result<bool> = client.shell().is_root();
+		let is_root = result.expect("failed to get root status");
 		if whoami.eq_ignore_ascii_case("root") {
 			assert!(is_root);
 		} else {

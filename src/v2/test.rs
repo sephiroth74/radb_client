@@ -68,12 +68,15 @@ pub(crate) mod test {
 	#[inline]
 	pub(crate) fn connect_emulator() -> Client {
 		lazy_static! {
-			static ref RE: Regex = Regex::new(r#"^emulator-[\d]+"#).unwrap();
+			static ref RE: Regex = Regex::new(r#"^emulator-*.+$"#).unwrap();
 		}
 		let devices = new_adb().list_devices(true).expect("failed to list devices");
 		let device = devices
 			.iter()
-			.find(|device| RE.is_match(&device.name))
+			.find(|device| {
+				println!("Checking {device}...");
+				RE.is_match(&device.name)
+			})
 			.expect("no emulator found");
 		Client::try_from(device)
 			.expect("failed to create client from device")
@@ -90,5 +93,10 @@ pub(crate) mod test {
 		}
 		.expect("failed to connect to client");
 		client
+	}
+
+	#[inline]
+	pub(crate) fn connect_tcp_ip_client() -> Client {
+		connect_client(connection_from_tcpip())
 	}
 }

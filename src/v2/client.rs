@@ -1,16 +1,28 @@
+use std::borrow::Cow;
+use std::env::temp_dir;
 use std::fmt::{Display, Formatter};
+use std::fs::File;
 use std::process::Stdio;
+use std::thread::sleep;
 use std::time::Duration;
 
+use arboard::ImageData;
 use rustix::path::Arg;
+use simple_cmd::debug::CommandDebug;
+use simple_cmd::errors::CmdError;
 use simple_cmd::prelude::OutputExt;
 use simple_cmd::{Cmd, CommandBuilder};
+use uuid::Uuid;
 
+use crate::types::RebootType;
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
-use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType, Shell, Wakefulness};
+use crate::v2::result::Result;
+use crate::v2::traits::AsArgs;
+use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType, Reconnect, Shell, Wakefulness};
 
-static GET_STATE_TIMEOUT: u64 = 200u64;
+static GET_STATE_TIMEOUT: u64 = 200;
+static SLEEP_AFTER_ROOT: u64 = 1_000;
 
 impl Client {
 	pub fn new(adb: Adb, addr: ConnectionType, debug: bool) -> Self {
@@ -20,7 +32,7 @@ impl Client {
 	/// Attempt to connect to a tcp/ip client, optionally waiting until the given
 	/// timeout expires.
 	/// If debug is set to true, the executed command will be logged out.
-	pub fn connect(&self, timeout: Option<Duration>) -> crate::v2::result::Result<()> {
+	pub fn connect(&self, timeout: Option<Duration>) -> Result<()> {
 		if self.is_connected() {
 			return Ok(());
 		}
@@ -48,7 +60,7 @@ impl Client {
 	/// Disconnect a device.
 	/// Note that if the connection type is not tcp/ip, all devices
 	/// will be disconnected
-	pub fn disconnect(&self) -> crate::v2::result::Result<bool> {
+	pub fn disconnect(&self) -> Result<bool> {
 		let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
 		command = command.arg("disconnect");
 		command = match self.addr {
@@ -73,7 +85,7 @@ impl Client {
 	}
 
 	/// Wait for device to be available with an optional timeout
-	pub fn wait_for_device(&self, timeout: Option<Duration>) -> crate::v2::result::Result<()> {
+	pub fn wait_for_device(&self, timeout: Option<Duration>) -> Result<()> {
 		CommandBuilder::from(self)
 			.args([
 				"wait-for-device",
@@ -87,7 +99,7 @@ impl Client {
 	}
 
 	/// Get the current awake status
-	pub fn get_wakefulness(&self) -> crate::v2::result::Result<Wakefulness> {
+	pub fn get_wakefulness(&self) -> Result<Wakefulness> {
 		let command1 = CommandBuilder::from(self)
 			.args(vec![
 				"shell", "dumpsys", "power",
@@ -106,8 +118,131 @@ impl Client {
 	}
 
 	/// return the adb root status for the current connection
-	pub fn is_root(&self) -> crate::v2::result::Result<bool> {
+	pub fn is_root(&self) -> Result<bool> {
 		self.shell().is_root()
+	}
+
+	/// Attempt to run adb as root
+	pub fn root(&self) -> Result<bool> {
+		if self.shell().is_root()? {
+			return Ok(true);
+		}
+
+		let output = CommandBuilder::from(self).arg("root").build().output()?;
+		if output.success() {
+			let string = Arg::as_str(&output.stdout)?;
+			if !string.is_empty() {
+				return Err(Error::CommandError(CmdError::from_str(string).into()));
+			}
+		}
+
+		sleep(Duration::from_millis(SLEEP_AFTER_ROOT));
+		Ok(true)
+	}
+
+	pub fn unroot(&self) -> Result<()> {
+		CommandBuilder::from(self).arg("unroot").build().output()?;
+		Ok(())
+	}
+
+	/// Save screencap to local file
+	pub fn save_screencap(&self, output: File) -> Result<()> {
+		let args = vec![
+			"exec-out",
+			"screencap",
+			"-p",
+		];
+		let pipe_out = Stdio::from(output);
+		let mut cmd = std::process::Command::new(self.adb.as_os_str());
+
+		cmd.args(self.addr.as_args())
+			.args(args)
+			.stdout(pipe_out)
+			.stderr(Stdio::piped());
+
+		if self.debug {
+			cmd.debug();
+		}
+
+		cmd.output()?;
+
+		Ok(())
+	}
+
+	/// copy screencap to clipboard
+	pub fn copy_screencap(&self) -> Result<()> {
+		let mut dir = temp_dir();
+		let file_name = format!("{}.png", Uuid::new_v4());
+		dir.push(file_name);
+
+		let path = dir.as_path().to_owned();
+		let file = File::create(path.as_path())?;
+		self.save_screencap(file)?;
+
+		let img = image::open(path.as_path())?;
+		let width = img.width();
+		let height = img.height();
+
+		let image_data = ImageData {
+			width: width as usize,
+			height: height as usize,
+			bytes: Cow::from(img.as_bytes()),
+		};
+
+		let mut clipboard = arboard::Clipboard::new()?;
+		clipboard.set_image(image_data)?;
+		Ok(())
+	}
+
+	/// reboot the device; defaults to booting system image but
+	/// supports bootloader and recovery too. sideload reboots
+	/// into recovery and automatically starts sideload mode,
+	/// sideload-auto-reboot is the same but reboots after sideloading.
+	pub fn reboot(&self, reboot_type: Option<RebootType>) -> Result<()> {
+		let mut args = vec!["reboot".to_string()];
+
+		if let Some(reboot_type) = reboot_type {
+			let s = format!("{}", reboot_type);
+			args.push(s.to_owned());
+		}
+
+		CommandBuilder::from(self).args(args).build().output()?;
+		Ok(())
+	}
+
+	/// remount partitions read-write. if a reboot is required, `reboot_if_required` will
+	/// will automatically reboot the device.
+	pub fn remount(&self, reboot_if_required: bool) -> Result<()> {
+		let mut cmd = CommandBuilder::from(self).arg("remount");
+		if reboot_if_required {
+			cmd = cmd.arg("-R");
+		}
+
+		let result = cmd.build().output()?;
+
+		if result.success() {
+			Ok(())
+		} else {
+			Err(simple_cmd::Error::CommandError(simple_cmd::errors::CmdError::from(result)).into())
+		}
+	}
+
+	/// print <serial-number>
+	pub fn get_seriano(&self) -> Result<String> {
+		let output = CommandBuilder::from(self).arg("get-serialno").build().output()?;
+		Ok(Arg::as_str(&output.stdout)?.trim().to_string())
+	}
+
+	/// reconnect                kick connection from host side to force reconnect
+	/// reconnect device         kick connection from device side to force reconnect
+	/// reconnect offline        reset offline/unauthorized devices to force reconnect
+	pub fn reconnect(&self, r#type: Option<Reconnect>) -> Result<String> {
+		let mut cmd = CommandBuilder::from(self).arg("reconnect".to_string());
+		if let Some(reconnect_type) = r#type {
+			cmd = cmd.arg(reconnect_type.to_string());
+		}
+		let output = cmd.build().output()?;
+		Ok(Arg::as_str(&output.stdout)?.trim().to_owned())
 	}
 
 	/// return the client shell interface
@@ -125,7 +260,7 @@ impl Client {
 impl TryFrom<ConnectionType> for Client {
 	type Error = crate::v2::error::Error;
 
-	fn try_from(value: ConnectionType) -> Result<Self, Self::Error> {
+	fn try_from(value: ConnectionType) -> std::result::Result<Self, Self::Error> {
 		let adb = Adb::new()?;
 		Ok(Client::new(adb, value, false))
 	}
@@ -134,7 +269,7 @@ impl TryFrom<ConnectionType> for Client {
 impl TryFrom<AdbDevice> for Client {
 	type Error = crate::v2::error::Error;
 
-	fn try_from(value: AdbDevice) -> Result<Self, Self::Error> {
+	fn try_from(value: AdbDevice) -> std::result::Result<Self, Self::Error> {
 		value.addr.try_into()
 	}
 }
@@ -142,7 +277,7 @@ impl TryFrom<AdbDevice> for Client {
 impl TryFrom<&AdbDevice> for Client {
 	type Error = crate::v2::error::Error;
 
-	fn try_from(value: &AdbDevice) -> Result<Self, Self::Error> {
+	fn try_from(value: &AdbDevice) -> std::result::Result<Self, Self::Error> {
 		value.addr.try_into()
 	}
 }
@@ -161,12 +296,16 @@ impl Display for Client {
 
 #[cfg(test)]
 mod test {
+	use std::fs::{remove_file, File};
+	use std::net::SocketAddr;
 	use std::time::Duration;
 
+	use crate::v2::error::Error;
 	use crate::v2::test::test::{
-		client_from, connect_client, connect_emulator, connection_from_tcpip, connection_from_transport_id, init_log,
+		client_from, connect_client, connect_emulator, connect_tcp_ip_client, connection_from_tcpip, connection_from_transport_id,
+		init_log,
 	};
-	use crate::v2::types::ConnectionType;
+	use crate::v2::types::{Client, ConnectionType, Reconnect};
 
 	#[test]
 	fn test_new_client() {
@@ -227,5 +366,106 @@ mod test {
 		let client = connect_emulator();
 		let is_root = client.is_root().expect("failed to get root status");
 		println!("client {client} is root: {is_root}");
+	}
+
+	#[test]
+	fn test_root() {
+		init_log();
+		let client = connect_client(connection_from_tcpip());
+		let success = client.root().expect("failed to root client");
+		assert!(success);
+		let is_root = client.is_root().expect("failed to get user status");
+		assert!(is_root);
+
+		client.unroot().expect("failed to unroot");
+		let is_root = client.is_root().expect("failed to get user status");
+		assert!(!is_root);
+
+		let client = connect_emulator();
+		let success = client.root();
+
+		if let Err(Error::CommandError(simple_cmd::Error::CommandError(err))) = success {
+			println!("expected error: {}", err);
+			return;
+		} else {
+			assert!(false, "incorrect error received");
+		}
+	}
+
+	#[test]
+	fn test_save_screencap_locally() {
+		init_log();
+		let client = connect_client(connection_from_tcpip());
+
+		let output = dirs::desktop_dir().unwrap().join("screencap.png");
+		let output_path = output.as_path();
+
+		println!("target local file: {:?}", output_path.to_str());
+
+		if output.exists() {
+			remove_file(output_path).expect("Error deleting file");
+		}
+
+		let file = File::create(output_path).expect("failed to create file");
+		let _result = client.save_screencap(file).expect("failed to save screencap");
+		println!("ok. done => {:?}", output);
+
+		remove_file(output_path).unwrap();
+	}
+
+	#[test]
+	pub fn test_copy_screencap() {
+		init_log();
+		let client = connect_emulator();
+		let _result = client.copy_screencap().expect("failed to copy screencap");
+	}
+
+	#[test]
+	pub fn test_reboot() {
+		init_log();
+		let client = connect_emulator();
+		let _result = client.reboot(None);
+	}
+
+	#[test]
+	fn test_remount() {
+		init_log();
+		let client = connect_emulator();
+		client.remount(true).expect_err("remount should have returned an error");
+
+		let client = connect_tcp_ip_client();
+		client.root().expect("failed to root client");
+		client.remount(true).expect("failed to remount");
+	}
+
+	#[test]
+	fn test_get_serialno() {
+		init_log();
+		let client = connect_emulator();
+		let serial_no = client.get_seriano().expect("failed to get serial number");
+		assert!(serial_no.starts_with("emulator-"));
+		println!("serial: {serial_no}");
+
+		let client = connect_tcp_ip_client();
+		let serial_no = client.get_seriano().expect("failed to get serial number");
+		let ip_addr = serial_no.parse::<SocketAddr>().expect("failed to parse serial no");
+		println!("serial: {ip_addr}");
+	}
+
+	#[test]
+	fn test_reconnect() {
+		init_log();
+		let client = connect_emulator();
+		client.reconnect(None).expect("failed to reconnect");
+		client.reconnect(Some(Reconnect::Device)).expect("failed to reconnect device");
+		client
+			.reconnect(Some(Reconnect::Offline))
+			.expect("failed to reconnect offline");
+
+		let client = Client::try_from(ConnectionType::try_from_ip("192.168.1.99:5555").expect("failed to parse ip address"))
+			.expect("failed to create client");
+		client.reconnect(None).expect("failed to reconnect");
+		client.reconnect(Some(Reconnect::Device)).expect("failed to reconnect");
+		client.reconnect(Some(Reconnect::Offline)).expect("failed to reconnect");
 	}
 }

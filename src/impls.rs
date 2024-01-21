@@ -290,6 +290,17 @@ impl RebootType {
 	}
 }
 
+impl Display for RebootType {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		match self {
+			RebootType::Bootloader => write!(f, "bootloader"),
+			RebootType::Recovery => write!(f, "recovery"),
+			RebootType::Sideload => write!(f, "sideload"),
+			RebootType::SideloadAutoReboot => write!(f, "sideload-auto-reboot"),
+		}
+	}
+}
+
 // endregion RebootType
 
 // region SELinuxType

@@ -41,3 +41,9 @@ pub enum Wakefulness {
 	Asleep,
 	Dreaming,
 }
+
+#[derive(Debug, Eq, PartialEq, Hash)]
+pub enum Reconnect {
+	Device,
+	Offline,
+}
