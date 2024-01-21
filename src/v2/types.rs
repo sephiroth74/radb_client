@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use strum_macros::Display;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -21,10 +22,22 @@ pub struct Client {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Shell<'a> {
+	pub(crate) parent: &'a Client,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AdbDevice {
 	pub name: String,
 	pub product: String,
 	pub model: String,
 	pub device: String,
 	pub addr: ConnectionType,
+}
+
+#[derive(Debug, Display, Eq, PartialEq, Hash)]
+pub enum Wakefulness {
+	Awake,
+	Asleep,
+	Dreaming,
 }

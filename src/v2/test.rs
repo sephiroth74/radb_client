@@ -2,10 +2,12 @@
 pub(crate) mod test {
 	use std::sync::{Arc, Mutex, Once};
 
+	use lazy_static::lazy_static;
 	use once_cell::sync::Lazy;
+	use regex::Regex;
 	use tracing_appender::non_blocking::WorkerGuard;
 
-	use crate::v2::types::{Client, ConnectionType};
+	use crate::v2::types::{Adb, Client, ConnectionType};
 
 	pub(crate) static DEVICE_IP: &'static str = "192.168.1.42:5555";
 	pub(crate) static TRANSPORT_ID: u8 = 4;
@@ -36,6 +38,11 @@ pub(crate) mod test {
 	}
 
 	#[inline]
+	pub(crate) fn new_adb() -> Adb {
+		Adb::new().expect("failed to find adb in PATH")
+	}
+
+	#[inline]
 	pub(crate) fn connection_from_tcpip() -> ConnectionType {
 		ConnectionType::try_from_ip(DEVICE_IP).expect("failed to parse ip address")
 	}
@@ -56,5 +63,32 @@ pub(crate) mod test {
 		Client::try_from(connection_type)
 			.expect("Failed to create Client")
 			.with_debug(true)
+	}
+
+	#[inline]
+	pub(crate) fn connect_emulator() -> Client {
+		lazy_static! {
+			static ref RE: Regex = Regex::new(r#"^emulator-[\d]+"#).unwrap();
+		}
+		let devices = new_adb().list_devices(true).expect("failed to list devices");
+		let device = devices
+			.iter()
+			.find(|device| RE.is_match(&device.name))
+			.expect("no emulator found");
+		Client::try_from(device)
+			.expect("failed to create client from device")
+			.with_debug(true)
+	}
+
+	#[inline]
+	pub(crate) fn connect_client(connection_type: ConnectionType) -> Client {
+		let client = client_from(connection_type);
+		let _result = match connection_type {
+			ConnectionType::TcpIp(_) => client.connect(None),
+			ConnectionType::Transport(_) => Ok(()),
+			ConnectionType::USB => Ok(()),
+		}
+		.expect("failed to connect to client");
+		client
 	}
 }

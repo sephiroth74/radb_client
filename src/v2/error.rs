@@ -18,6 +18,9 @@ pub enum Error {
 
 	#[error("Invalid connection type")]
 	InvalidConnectionTypeError,
+
+	#[error(transparent)]
+	ParseOutputError(#[from] rustix::io::Errno),
 }
 
 impl From<AddrParseError> for Error {

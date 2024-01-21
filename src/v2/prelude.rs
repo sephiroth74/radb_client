@@ -11,9 +11,7 @@ pub(crate) trait CommandBuilderExt {
 	where
 		C: Into<ConnectionType>;
 
-	fn shell<C>(self, client: C) -> Self
-	where
-		C: Into<Client>;
+	fn shell(client: &Client) -> CommandBuilder;
 
 	fn adb(adb: &Adb) -> CommandBuilder;
 }
@@ -33,11 +31,8 @@ impl CommandBuilderExt for CommandBuilder {
 		self.args(addr.into())
 	}
 
-	fn shell<C>(self, client: C) -> Self
-	where
-		C: Into<Client>,
-	{
-		self.client(client).arg("shell")
+	fn shell(client: &Client) -> CommandBuilder {
+		CommandBuilder::from(client).arg("shell")
 	}
 
 	fn adb(adb: &Adb) -> CommandBuilder {

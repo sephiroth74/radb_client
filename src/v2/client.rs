@@ -1,11 +1,14 @@
+use std::fmt::{Display, Formatter};
+use std::process::Stdio;
 use std::time::Duration;
 
+use rustix::path::Arg;
 use simple_cmd::prelude::OutputExt;
-use simple_cmd::CommandBuilder;
+use simple_cmd::{Cmd, CommandBuilder};
 
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
-use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType};
+use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType, Shell, Wakefulness};
 
 static GET_STATE_TIMEOUT: u64 = 200u64;
 
@@ -28,11 +31,7 @@ impl Client {
 		};
 
 		let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
-		command = command.arg("connect").arg(addr.to_string());
-
-		if let Some(timeout) = timeout {
-			command = command.with_timeout(timeout);
-		}
+		command = command.arg("connect").arg(addr.to_string()).timeout(timeout);
 
 		let output = command.build().output()?;
 
@@ -74,7 +73,7 @@ impl Client {
 	}
 
 	/// Wait for device to be available with an optional timeout
-	pub fn wait_for_device<'d, D>(&self, timeout: Option<Duration>) -> crate::v2::result::Result<()> {
+	pub fn wait_for_device(&self, timeout: Option<Duration>) -> crate::v2::result::Result<()> {
 		CommandBuilder::from(self)
 			.args([
 				"wait-for-device",
@@ -85,6 +84,35 @@ impl Client {
 			.build()
 			.output()?;
 		Ok(())
+	}
+
+	/// Get the current awake status
+	pub fn get_wakefulness(&self) -> crate::v2::result::Result<Wakefulness> {
+		let command1 = CommandBuilder::from(self)
+			.args(vec![
+				"shell", "dumpsys", "power",
+			])
+			.build();
+		let command2 = Cmd::builder("sed")
+			.arg("-n")
+			.arg("s/mWakefulness=\\(\\S*\\)/\\1/p")
+			.with_debug(self.debug)
+			.stdout(Some(Stdio::piped()))
+			.build();
+
+		let result = command1.pipe(command2)?;
+		let awake = Arg::as_str(&result.stdout)?.trim();
+		Ok(awake.try_into()?)
+	}
+
+	/// return the adb root status for the current connection
+	pub fn is_root(&self) -> crate::v2::result::Result<bool> {
+		self.shell().is_root()
+	}
+
+	/// return the client shell interface
+	pub fn shell(&self) -> Shell {
+		Shell { parent: self }
 	}
 
 	/// Add debug tracing to connection
@@ -111,9 +139,23 @@ impl TryFrom<AdbDevice> for Client {
 	}
 }
 
+impl TryFrom<&AdbDevice> for Client {
+	type Error = crate::v2::error::Error;
+
+	fn try_from(value: &AdbDevice) -> Result<Self, Self::Error> {
+		value.addr.try_into()
+	}
+}
+
 impl From<&Client> for CommandBuilder {
 	fn from(value: &Client) -> Self {
 		CommandBuilder::adb(&value.adb).addr(value.addr).with_debug(value.debug)
+	}
+}
+
+impl Display for Client {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		self.addr.fmt(f)
 	}
 }
 
@@ -121,7 +163,9 @@ impl From<&Client> for CommandBuilder {
 mod test {
 	use std::time::Duration;
 
-	use crate::v2::test::test::{client_from, connection_from_tcpip, connection_from_transport_id, init_log};
+	use crate::v2::test::test::{
+		client_from, connect_client, connect_emulator, connection_from_tcpip, connection_from_transport_id, init_log,
+	};
 	use crate::v2::types::ConnectionType;
 
 	#[test]
@@ -156,5 +200,32 @@ mod test {
 	#[test]
 	fn test_wait_for_device() {
 		init_log();
+		let client = connect_client(connection_from_tcpip());
+		client
+			.wait_for_device(Some(Duration::from_secs(1)))
+			.expect("failed to wait for device");
+
+		let client = connect_emulator();
+		client.wait_for_device(None).expect("failed to wait for emulator");
+	}
+
+	#[test]
+	fn test_get_wakefulness() {
+		init_log();
+		let client = connect_client(connection_from_tcpip());
+		let awake = client.get_wakefulness().expect("failed to get awake status");
+		println!("awake status: {awake}");
+
+		let client = connect_emulator();
+		let awake = client.get_wakefulness().expect("failed to get awake status");
+		println!("awake status: {awake}");
+	}
+
+	#[test]
+	fn test_is_root() {
+		init_log();
+		let client = connect_emulator();
+		let is_root = client.is_root().expect("failed to get root status");
+		println!("client {client} is root: {is_root}");
 	}
 }

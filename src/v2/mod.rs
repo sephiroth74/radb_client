@@ -6,5 +6,7 @@ pub mod types;
 mod adb;
 mod client;
 mod connection_type;
+mod impls;
 mod prelude;
+mod shell;
 mod test;
