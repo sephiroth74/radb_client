@@ -1,6 +1,6 @@
 use simple_cmd::CommandBuilder;
 
-use crate::v2::types::{Adb, AddressType, Client};
+use crate::v2::types::{Adb, Client, ConnectionType};
 
 pub(crate) trait CommandBuilderExt {
 	fn client<C>(self, client: C) -> Self
@@ -9,7 +9,7 @@ pub(crate) trait CommandBuilderExt {
 
 	fn addr<C>(self, addr: C) -> Self
 	where
-		C: Into<AddressType>;
+		C: Into<ConnectionType>;
 
 	fn shell<C>(self, client: C) -> Self
 	where
@@ -28,7 +28,7 @@ impl CommandBuilderExt for CommandBuilder {
 
 	fn addr<C>(self, addr: C) -> Self
 	where
-		C: Into<AddressType>,
+		C: Into<ConnectionType>,
 	{
 		self.args(addr.into())
 	}

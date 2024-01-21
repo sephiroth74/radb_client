@@ -15,6 +15,9 @@ pub enum Error {
 
 	#[error(transparent)]
 	IoError(#[from] std::io::Error),
+
+	#[error("Invalid connection type")]
+	InvalidConnectionTypeError,
 }
 
 impl From<AddrParseError> for Error {

@@ -7,8 +7,8 @@ pub struct Adb(pub(crate) PathBuf);
 
 #[allow(dead_code)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub enum AddressType {
-	Sock(SocketAddr),
+pub enum ConnectionType {
+	TcpIp(SocketAddr),
 	Transport(u8),
 	USB,
 }
@@ -16,7 +16,7 @@ pub enum AddressType {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Client {
 	pub adb: Adb,
-	pub addr: AddressType,
+	pub addr: ConnectionType,
 	pub debug: bool,
 }
 
@@ -26,5 +26,5 @@ pub struct AdbDevice {
 	pub product: String,
 	pub model: String,
 	pub device: String,
-	pub addr: AddressType,
+	pub addr: ConnectionType,
 }
