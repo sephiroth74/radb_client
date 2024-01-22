@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
+
 use strum_macros::Display;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -27,6 +28,11 @@ pub struct Shell<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ActivityManager<'a> {
+	pub(crate) parent: &'a Shell<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AdbDevice {
 	pub name: String,
 	pub product: String,
@@ -35,15 +41,34 @@ pub struct AdbDevice {
 	pub addr: ConnectionType,
 }
 
-#[derive(Debug, Display, Eq, PartialEq, Hash)]
+#[derive(Debug, Display, Eq, PartialEq, Hash, Clone)]
 pub enum Wakefulness {
 	Awake,
 	Asleep,
 	Dreaming,
 }
 
-#[derive(Debug, Eq, PartialEq, Hash)]
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
 pub enum Reconnect {
 	Device,
 	Offline,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub enum UserOption {
+	UserId(String),
+	All,
+	Current,
+	None,
+}
+
+#[derive(Debug, Eq, PartialEq, Hash, Clone)]
+pub enum MemoryStatus {
+	Hidden,
+	RunningModerate,
+	Background,
+	RunningLow,
+	Moderate,
+	RunningCritical,
+	Complete,
 }

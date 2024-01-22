@@ -1,7 +1,12 @@
+use std::io::ErrorKind;
 use std::net::AddrParseError;
+use std::process::Output;
 
 use image::ImageError;
+use mac_address::MacParseError;
 use thiserror::Error;
+
+use crate::errors::ParseSELinuxTypeError;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -26,6 +31,15 @@ pub enum Error {
 
 	#[error(transparent)]
 	ClipboardError(#[from] arboard::Error),
+
+	#[error(transparent)]
+	MacParseError(#[from] MacParseError),
+
+	#[error(transparent)]
+	UuidParseError(#[from] uuid::Error),
+
+	#[error(transparent)]
+	ParseSELinuxTypeError(#[from] ParseSELinuxTypeError),
 }
 
 impl From<AddrParseError> for Error {
@@ -36,6 +50,18 @@ impl From<AddrParseError> for Error {
 
 impl From<rustix::io::Errno> for Error {
 	fn from(value: rustix::io::Errno) -> Self {
+		Error::IoError(std::io::Error::from(value))
+	}
+}
+
+impl From<Output> for Error {
+	fn from(value: Output) -> Self {
+		Error::CommandError(simple_cmd::Error::from(value))
+	}
+}
+
+impl From<std::io::ErrorKind> for Error {
+	fn from(value: ErrorKind) -> Self {
 		Error::IoError(std::io::Error::from(value))
 	}
 }

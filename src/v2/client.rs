@@ -2,14 +2,14 @@ use std::borrow::Cow;
 use std::env::temp_dir;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::process::Stdio;
+use std::process::{Output, Stdio};
 use std::thread::sleep;
 use std::time::Duration;
 
 use arboard::ImageData;
+use mac_address::MacAddress;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
-use simple_cmd::errors::CmdError;
 use simple_cmd::prelude::OutputExt;
 use simple_cmd::{Cmd, CommandBuilder};
 use uuid::Uuid;
@@ -129,15 +129,13 @@ impl Client {
 		}
 
 		let output = CommandBuilder::from(self).arg("root").build().output()?;
-		if output.success() {
-			let string = Arg::as_str(&output.stdout)?;
-			if !string.is_empty() {
-				return Err(Error::CommandError(CmdError::from_str(string).into()));
-			}
-		}
 
-		sleep(Duration::from_millis(SLEEP_AFTER_ROOT));
-		Ok(true)
+		if output.success() {
+			sleep(Duration::from_millis(SLEEP_AFTER_ROOT));
+			Ok(self.is_root()?)
+		} else {
+			Err(Error::CommandError(simple_cmd::Error::from(output)))
+		}
 	}
 
 	pub fn unroot(&self) -> Result<()> {
@@ -243,6 +241,83 @@ impl Client {
 		}
 		let output = cmd.build().output()?;
 		Ok(Arg::as_str(&output.stdout)?.trim().to_owned())
+	}
+
+	///  bugreport [PATH]
+	///     write bugreport to given PATH [default=bugreport.zip];
+	///     if PATH is a directory, the bug report is saved in that directory.
+	///     devices that don't support zipped bug reports output to stdout.
+	pub fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::Result<Output> {
+		let args = match output.as_ref() {
+			Some(s) => vec![
+				"bugreport",
+				s.as_str()?,
+			],
+			None => vec!["bugreport"],
+		};
+		CommandBuilder::from(self).args(args).build().output().map_err(|e| e.into())
+	}
+
+	pub fn clear_logcat(&self) -> Result<()> {
+		let output = CommandBuilder::from(self)
+			.args([
+				"logcat", "-b", "all", "-c",
+			])
+			.build()
+			.output()?;
+
+		if output.error() {
+			Err(output.into())
+		} else {
+			Ok(())
+		}
+	}
+
+	/// Returns the device mac-address
+	pub fn get_mac_address(&self) -> Result<MacAddress> {
+		let output = self.shell().cat("/sys/class/net/eth0/address")?;
+		let mac_address_str = Arg::as_str(&output)?.trim_end();
+		let mac_address = MacAddress::try_from(mac_address_str)?;
+		Ok(mac_address)
+	}
+
+	/// Returns the wlan mac-address
+	pub fn get_wlan_address(&self) -> Result<MacAddress> {
+		let output = self.shell().cat("/sys/class/net/wlan0/address")?;
+		let mac_address_str = Arg::as_str(&output)?.trim_end();
+		let mac_address = MacAddress::try_from(mac_address_str)?;
+		Ok(mac_address)
+	}
+
+	/// Returns the boot id
+	pub fn get_boot_id(&self) -> Result<Uuid> {
+		let output = self.shell().cat("/proc/sys/kernel/random/boot_id")?;
+		let output_str = Arg::as_str(&output)?.trim();
+		let boot_id = output_str.try_into()?;
+		Ok(boot_id)
+	}
+
+	/// Disable verity
+	pub fn disable_verity(&self) -> Result<()> {
+		let output = CommandBuilder::from(self).arg("disable-verity").build().output()?;
+
+		if !output.success() {
+			Err(output.into())
+		} else {
+			Ok(())
+		}
+	}
+
+	/// Enable verity
+	pub fn enable_verity(&self) -> Result<()> {
+		let output = CommandBuilder::from(self).arg("enable-verity").build().output()?;
+		println!("output: {output:?}");
+
+		if !output.success() {
+			Err(output.into())
+		} else {
+			Ok(())
+		}
 	}
 
 	/// return the client shell interface
@@ -372,8 +447,17 @@ mod test {
 	fn test_root() {
 		init_log();
 		let client = connect_client(connection_from_tcpip());
+
+		if client.is_root().expect("failed to get user") {
+			client.unroot().expect("failed to unroot");
+		}
+
+		let is_root = client.is_root().expect("failed to get user");
+		assert!(!is_root);
+
 		let success = client.root().expect("failed to root client");
 		assert!(success);
+
 		let is_root = client.is_root().expect("failed to get user status");
 		assert!(is_root);
 
@@ -387,7 +471,10 @@ mod test {
 		if let Err(Error::CommandError(simple_cmd::Error::CommandError(err))) = success {
 			println!("expected error: {}", err);
 			return;
+		} else if let Ok(false) = success {
+			// ok
 		} else {
+			println!("err = {:?}", success);
 			assert!(false, "incorrect error received");
 		}
 	}
@@ -467,5 +554,70 @@ mod test {
 		client.reconnect(None).expect("failed to reconnect");
 		client.reconnect(Some(Reconnect::Device)).expect("failed to reconnect");
 		client.reconnect(Some(Reconnect::Offline)).expect("failed to reconnect");
+	}
+
+	#[test]
+	fn test_bugreport() {
+		let client = connect_emulator();
+		let output = dirs::desktop_dir().unwrap().join("bugreport.zip");
+
+		if output.exists() {
+			remove_file(output.as_path()).expect("failed to delete file");
+		}
+
+		let _ = client.bug_report(Some(output.clone())).expect("failed to generate bugreport");
+		assert!(output.exists());
+
+		remove_file(output.as_path()).expect("failed to delete file");
+	}
+
+	#[test]
+	fn test_clear_logcat() {
+		let client = connect_emulator();
+		let _ = client.clear_logcat().expect("failed to clear logcat");
+	}
+
+	#[test]
+	fn test_get_mac_address() {
+		let client = connect_tcp_ip_client();
+		client.root().expect("failed to root");
+		let mac_address = client.get_mac_address().expect("failed to read mac address");
+		println!("mac address: {}", mac_address);
+	}
+
+	#[test]
+	fn test_get_wlan_address() {
+		let client = connect_tcp_ip_client();
+		client.root().expect("failed to root");
+		match client.get_wlan_address() {
+			Ok(mac_address) => {
+				println!("wlan mac address: {}", mac_address);
+			}
+			Err(err) => {
+				eprintln!("unable to fetch wlan address: {err}");
+			}
+		}
+	}
+
+	#[test]
+	fn test_get_boot_id() {
+		let client = connect_tcp_ip_client();
+		client.root().expect("failed to root");
+		let boot_id = client.get_boot_id().expect("failed to read boot_id");
+		println!("boot_id: {boot_id}");
+	}
+
+	#[test]
+	fn test_disable_verity() {
+		let client = connect_tcp_ip_client();
+		client.root().expect("failed to root");
+		let _ = client.disable_verity().expect("failed to disable verity");
+	}
+
+	#[test]
+	fn test_enable_verity() {
+		let client = connect_tcp_ip_client();
+		client.root().expect("failed to root");
+		let _ = client.enable_verity().expect("failed to enable verity");
 	}
 }

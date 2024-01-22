@@ -4,6 +4,7 @@ pub mod traits;
 pub mod types;
 
 mod adb;
+mod am;
 mod client;
 mod connection_type;
 mod impls;

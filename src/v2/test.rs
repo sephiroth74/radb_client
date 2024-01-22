@@ -1,6 +1,7 @@
 #[cfg(test)]
 pub(crate) mod test {
 	use std::sync::{Arc, Mutex, Once};
+	use std::time::Duration;
 
 	use lazy_static::lazy_static;
 	use once_cell::sync::Lazy;
@@ -98,5 +99,19 @@ pub(crate) mod test {
 	#[inline]
 	pub(crate) fn connect_tcp_ip_client() -> Client {
 		connect_client(connection_from_tcpip())
+	}
+
+	#[inline]
+	pub(crate) fn root_client(client: &Client) {
+		client.root().expect("failed to root client");
+	}
+
+	#[inline]
+	#[allow(dead_code)]
+	pub(crate) fn reboot_and_wait_for_client(client: &Client) {
+		client.reboot(None).expect("failed to send reboot command");
+		client
+			.wait_for_device(Some(Duration::from_secs(180)))
+			.expect("failed to wait for device");
 	}
 }
