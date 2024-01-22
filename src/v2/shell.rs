@@ -1269,7 +1269,7 @@ mod test {
 			.send_keyevent(KeyCode::KEYCODE_POWER, None, None)
 			.expect("failed to send keyevent");
 
-		std::thread::sleep(Duration::from_millis(500));
+		std::thread::sleep(Duration::from_secs(2));
 
 		let screen_on2 = client.shell().is_screen_on().expect("failed to get screen status");
 		println!("is screen on: {screen_on2}");

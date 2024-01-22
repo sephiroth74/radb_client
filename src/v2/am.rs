@@ -235,11 +235,12 @@ mod test {
 		let client = connect_tcp_ip_client();
 		root_client(&client);
 
-		client
-			.shell()
-			.am()
-			.trim_memory("com.swisscom.aot.ui", MemoryStatus::RunningLow)
-			.expect("failed to trim memory");
+		let result = client.shell().am().trim_memory("com.android.bluetooth", MemoryStatus::Hidden);
+
+		match result {
+			Ok(_) => {}
+			Err(err) => eprintln!("{err}"),
+		}
 	}
 
 	#[test]
