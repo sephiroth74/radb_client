@@ -16,7 +16,7 @@ pub(crate) mod test {
 
 	use crate::v2::types::{Adb, Client, ConnectionType};
 
-	pub(crate) static DEVICE_IP: &'static str = "192.168.1.42:5555";
+	pub(crate) static DEVICE_IP: &'static str = "192.168.1.128:5555";
 	pub(crate) static TRANSPORT_ID: u8 = 4;
 
 	pub(crate) static INIT: Once = Once::new();

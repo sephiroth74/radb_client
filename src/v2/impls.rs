@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter};
 
 use cmd_lib::AsOsStr;
 
+use crate::types::{InputSource, KeyCode, KeyEventType, MotionEvent};
 use crate::v2::traits::AsArgs;
 use crate::v2::types::{AdbDevice, MemoryStatus, Reconnect, UserOption, Wakefulness};
 
@@ -85,3 +86,47 @@ impl Display for MemoryStatus {
 }
 
 // endregion MemoryStatus
+
+// region InputSource
+
+impl Into<OsString> for InputSource {
+	fn into(self) -> OsString {
+		let string: &str = self.into();
+		string.into()
+	}
+}
+
+// endregion InputSource
+
+// region MotionEvent
+
+impl Into<OsString> for MotionEvent {
+	fn into(self) -> OsString {
+		let string: &str = self.into();
+		string.into()
+	}
+}
+
+// endregion MotionEvent
+
+// region KeyEventType
+
+impl Into<OsString> for KeyEventType {
+	fn into(self) -> OsString {
+		let string: &str = self.into();
+		string.into()
+	}
+}
+
+// endregion KeyEventType
+
+// region KeyCode
+
+impl Into<OsString> for KeyCode {
+	fn into(self) -> OsString {
+		let string: &str = self.into();
+		string.into()
+	}
+}
+
+// endregion KeyCode

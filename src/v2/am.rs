@@ -7,7 +7,7 @@ use simple_cmd::prelude::OutputExt;
 use crate::types::Intent;
 use crate::v2::result::Result;
 use crate::v2::traits::AsArgs;
-use crate::v2::types::{ActivityManager, MemoryStatus, Shell, UserOption};
+use crate::v2::types::{ActivityManager, MemoryStatus, UserOption};
 
 impl<'a> ActivityManager<'a> {
 	/// Force stop a package
@@ -151,7 +151,7 @@ impl<'a> ActivityManager<'a> {
 
 	#[inline]
 	fn handle_result(result: Output) -> Result<()> {
-		Shell::handle_result(result)
+		crate::v2::shell::handle_result(result)
 	}
 }
 

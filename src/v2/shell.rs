@@ -16,8 +16,8 @@ use simple_cmd::prelude::OutputExt;
 use simple_cmd::CommandBuilder;
 
 use crate::types::{
-	DumpsysPriority, FFPlayOptions, InputSource, KeyCode, KeyEventType, PropType, Property, SELinuxType, ScreenRecordOptions,
-	SettingsType,
+	DumpsysPriority, FFPlayOptions, InputSource, KeyCode, KeyEventType, MotionEvent, PropType, Property, SELinuxType,
+	ScreenRecordOptions, SettingsType,
 };
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
@@ -27,6 +27,229 @@ use crate::v2::types::{ActivityManager, Shell};
 lazy_static! {
 	static ref RE_GET_PROPS: Regex = Regex::new("(?m)^\\[(.*)\\]\\s*:\\s*\\[([^\\]]*)\\]$").unwrap();
 	static ref COMMANDS_CACHE: Mutex<SizedCache<String, Option<String>>> = Mutex::new(SizedCache::with_size(10));
+}
+
+pub(crate) fn handle_result(result: Output) -> Result<()> {
+	if result.error() && !result.kill() && !result.interrupt() {
+		Err(result.into())
+	} else {
+		Ok(())
+	}
+}
+
+fn make_keyevent_combination<I, S>(source: Option<InputSource>, keycodes: I) -> Vec<OsString>
+where
+	I: IntoIterator<Item = S>,
+	S: Into<KeyCode>,
+{
+	let mut args = vec!["input".into()];
+
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("keycombination".into());
+	args.extend(keycodes.into_iter().map(|k| k.into().into()));
+	args
+}
+
+fn make_keycode_combination<I>(source: Option<InputSource>, keycodes: I) -> Vec<OsString>
+where
+	I: IntoIterator<Item = u32>,
+{
+	let mut args = vec!["input".into()];
+
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("keycombination".into());
+	args.extend(keycodes.into_iter().map(|k| k.to_string().into()));
+	args
+}
+
+fn make_draganddrop(
+	source: Option<InputSource>,
+	duration: Option<Duration>,
+	from_pos: (i32, i32),
+	to_pos: (i32, i32),
+) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+	args.push("draganddrop".into());
+
+	let pos0 = from_pos.0.to_string();
+	let pos1 = from_pos.1.to_string();
+	let pos2 = to_pos.0.to_string();
+	let pos3 = to_pos.1.to_string();
+
+	args.push(pos0.into());
+	args.push(pos1.into());
+	args.push(pos2.into());
+	args.push(pos3.into());
+
+	if let Some(duration) = duration {
+		args.push(duration.as_millis().to_string().into());
+	}
+	args
+}
+
+fn make_press(source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+	args.push("press".into());
+	args
+}
+
+fn make_swipe(from_pos: (i32, i32), to_pos: (i32, i32), duration: Option<Duration>, source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("swipe".into());
+
+	let pos_string = format!("{:?} {:?} {:?} {:?}", from_pos.0, from_pos.1, to_pos.0, to_pos.1);
+	args.push(pos_string.into());
+
+	if let Some(duration) = duration {
+		args.push(duration.as_millis().to_string().into());
+	}
+	args
+}
+
+fn make_keyevent(keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("keyevent".into());
+
+	if let Some(event_type) = event_type {
+		args.push(event_type.into());
+	}
+
+	args.push(keycode.to_string().into());
+	args
+}
+
+fn make_keycode(keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("keyevent".into());
+
+	if let Some(event_type) = event_type {
+		args.push(event_type.into());
+	}
+
+	args.push(keycode.to_string().into());
+	args
+}
+
+fn make_tap(position: (i32, i32), source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("tap".into());
+
+	let pos0 = format!("{:?}", position.0);
+	let pos1 = format!("{:?}", position.1);
+
+	args.push(pos0.into());
+	args.push(pos1.into());
+	args
+}
+
+fn make_char(chr: char, source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("text".into());
+	args.push(format!("{:}", chr).into());
+	args
+}
+
+fn make_text(text: &str, source: Option<InputSource>) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("text".into());
+	args.push(format!("{:?}", text).into());
+	args
+}
+
+fn make_event(event: &str, code_type: i32, code: i32, value: i32) -> Vec<OsString> {
+	vec![
+		"sendevent".into(),
+		event.into(),
+		format!("{}", code_type).into(),
+		format!("{}", code).into(),
+		format!("{}", value).into(),
+	]
+}
+
+fn make_motion(source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> Vec<OsString> {
+	let mut args = vec!["input".into()];
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+	args.push("motionevent".into());
+	args.push(motion.into());
+
+	let pos0 = pos.0.to_string();
+	let pos1 = pos.1.to_string();
+
+	args.push(pos0.into());
+	args.push(pos1.into());
+	args
+}
+
+fn make_keyevents<I, S>(keycodes: I, source: Option<InputSource>) -> Vec<OsString>
+where
+	I: IntoIterator<Item = S>,
+	S: Into<KeyCode>,
+{
+	let mut args = vec!["input".into()];
+
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("keyevent".into());
+	args.extend(keycodes.into_iter().map(|k| k.into().into()).collect::<Vec<OsString>>());
+	args
+}
+
+fn make_keycodes<I>(keycodes: I, source: Option<InputSource>) -> Vec<OsString>
+where
+	I: IntoIterator<Item = u32>,
+{
+	let mut args = vec!["input".into()];
+
+	if let Some(source) = source {
+		args.push(source.into());
+	}
+
+	args.push("keyevent".into());
+	let keycodes_string = keycodes.into_iter().map(|k| k.to_string().into()).collect::<Vec<OsString>>();
+	args.extend(keycodes_string);
+	args
 }
 
 impl<'a> Shell<'a> {
@@ -251,12 +474,12 @@ impl<'a> Shell<'a> {
 	}
 
 	pub fn send_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Result<()> {
-		let result = self.exec(self.make_keyevent(keycode, event_type, source), None, None)?;
-		Shell::handle_result(result)
+		let result = self.exec(make_keyevent(keycode, event_type, source), None, None)?;
+		handle_result(result)
 	}
 
 	pub fn send_keycode(&self, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Result<()> {
-		Shell::handle_result(self.exec(self.make_keycode(keycode, event_type, source), None, None)?)
+		handle_result(self.exec(make_keycode(keycode, event_type, source), None, None)?)
 	}
 
 	pub fn send_swipe(
@@ -266,7 +489,137 @@ impl<'a> Shell<'a> {
 		duration: Option<Duration>,
 		source: Option<InputSource>,
 	) -> Result<()> {
-		Shell::handle_result(self.exec(self.make_swipe(from_pos, to_pos, duration, source), None, None)?)
+		handle_result(self.exec(make_swipe(from_pos, to_pos, duration, source), None, None)?)
+	}
+
+	pub fn send_tap(&self, position: (i32, i32), source: Option<InputSource>) -> Result<()> {
+		let result = self.exec(make_tap(position, source), None, None)?;
+		handle_result(result)
+	}
+
+	pub fn send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> Result<()> {
+		handle_result(self.exec(make_event(event, code_type, code, value), None, None)?)
+	}
+
+	pub fn send_char(&self, chr: char, source: Option<InputSource>) -> Result<()> {
+		let result = self.exec(make_char(chr, source), None, None)?;
+		handle_result(result)
+	}
+
+	pub fn send_text(&self, text: &str, source: Option<InputSource>) -> Result<()> {
+		handle_result(self.exec(make_text(text, source), None, None)?)
+	}
+
+	pub fn send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> Result<()> {
+		handle_result(self.exec(make_motion(source, motion, pos), None, None)?)
+	}
+
+	pub fn send_draganddrop(
+		&self,
+		source: Option<InputSource>,
+		duration: Option<Duration>,
+		from_pos: (i32, i32),
+		to_pos: (i32, i32),
+	) -> Result<()> {
+		handle_result(self.exec(make_draganddrop(source, duration, from_pos, to_pos), None, None)?)
+	}
+
+	pub fn send_press(&self, source: Option<InputSource>) -> Result<()> {
+		handle_result(self.exec(make_press(source), None, None)?)
+	}
+
+	pub fn send_keyevents<I, S>(&self, keycodes: I, source: Option<InputSource>) -> Result<()>
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<KeyCode>,
+	{
+		handle_result(self.exec(make_keyevents(keycodes, source), None, None)?)
+	}
+
+	pub fn send_keycodes<I>(&self, keycodes: I, source: Option<InputSource>) -> Result<()>
+	where
+		I: IntoIterator<Item = u32>,
+	{
+		handle_result(self.exec(make_keycodes(keycodes, source), None, None)?)
+	}
+
+	pub fn send_keyevent_combination<I, S>(&self, source: Option<InputSource>, keycodes: I) -> Result<()>
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<KeyCode>,
+	{
+		handle_result(self.exec(make_keyevent_combination(source, keycodes), None, None)?)
+	}
+
+	pub fn send_keycode_combination<I>(&self, source: Option<InputSource>, keycodes: I) -> Result<()>
+	where
+		I: IntoIterator<Item = u32>,
+	{
+		handle_result(self.exec(make_keycode_combination(source, keycodes), None, None)?)
+	}
+
+	pub fn try_send_keyevent_combination<I, S>(&self, source: Option<InputSource>, keycodes: I) -> Result<Option<ExitStatus>>
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<KeyCode>,
+	{
+		self.try_exec(make_keyevent_combination(source, keycodes), None, None)
+	}
+
+	pub fn try_send_keycode_combination<I>(&self, source: Option<InputSource>, keycodes: I) -> Result<Option<ExitStatus>>
+	where
+		I: IntoIterator<Item = u32>,
+	{
+		self.try_exec(make_keycode_combination(source, keycodes), None, None)
+	}
+
+	pub fn try_send_keycodes<I>(&self, keycodes: I, source: Option<InputSource>) -> Result<Option<ExitStatus>>
+	where
+		I: IntoIterator<Item = u32>,
+	{
+		self.try_exec(make_keycodes(keycodes, source), None, None)
+	}
+
+	pub fn try_send_keyevents<I, S>(&self, keycodes: Vec<KeyCode>, source: Option<InputSource>) -> Result<Option<ExitStatus>>
+	where
+		I: IntoIterator<Item = S>,
+		S: Into<KeyCode>,
+	{
+		self.try_exec(make_keyevents(keycodes, source), None, None)
+	}
+
+	pub fn try_send_press(&self, source: Option<InputSource>) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_press(source), None, None)
+	}
+
+	pub fn try_send_draganddrop(
+		&self,
+		source: Option<InputSource>,
+		duration: Option<Duration>,
+		from_pos: (i32, i32),
+		to_pos: (i32, i32),
+	) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_draganddrop(source, duration, from_pos, to_pos), None, None)
+	}
+
+	pub fn try_send_motion(&self, source: Option<InputSource>, motion: MotionEvent, pos: (i32, i32)) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_motion(source, motion, pos), None, None)
+	}
+
+	pub fn try_send_event(&self, event: &str, code_type: i32, code: i32, value: i32) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_event(event, code_type, code, value), None, None)
+	}
+
+	pub fn try_send_text(&self, text: &str, source: Option<InputSource>) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_text(text, source), None, None)
+	}
+
+	pub fn try_send_char(&self, chr: char, source: Option<InputSource>) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_char(chr, source), None, None)
+	}
+
+	pub fn try_send_tap(&self, position: (i32, i32), source: Option<InputSource>) -> Result<Option<ExitStatus>> {
+		self.try_exec(make_tap(position, source), None, None)
 	}
 
 	pub fn try_send_keyevent(
@@ -275,7 +628,7 @@ impl<'a> Shell<'a> {
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
 	) -> Result<Option<ExitStatus>> {
-		self.try_exec(self.make_keyevent(keycode, event_type, source), None, None)
+		self.try_exec(make_keyevent(keycode, event_type, source), None, None)
 	}
 
 	pub fn try_send_keycode(
@@ -284,7 +637,7 @@ impl<'a> Shell<'a> {
 		event_type: Option<KeyEventType>,
 		source: Option<InputSource>,
 	) -> Result<Option<ExitStatus>> {
-		self.try_exec(self.make_keycode(keycode, event_type, source), None, None)
+		self.try_exec(make_keycode(keycode, event_type, source), None, None)
 	}
 
 	pub fn try_send_swipe(
@@ -294,76 +647,7 @@ impl<'a> Shell<'a> {
 		duration: Option<Duration>,
 		source: Option<InputSource>,
 	) -> Result<Option<ExitStatus>> {
-		self.try_exec(self.make_swipe(from_pos, to_pos, duration, source), None, None)
-	}
-
-	fn make_swipe(
-		&self,
-		from_pos: (i32, i32),
-		to_pos: (i32, i32),
-		duration: Option<Duration>,
-		source: Option<InputSource>,
-	) -> Vec<String> {
-		let mut args = vec!["input".to_string()];
-		if let Some(source) = source {
-			let source_str: &str = source.into();
-			args.push(source_str.to_string());
-		}
-
-		args.push("swipe".to_string());
-
-		let pos_string = format!("{:?} {:?} {:?} {:?}", from_pos.0, from_pos.1, to_pos.0, to_pos.1);
-		args.push(pos_string);
-
-		#[allow(unused_assignments)]
-		let mut duration_str: String = String::from("");
-
-		if let Some(duration) = duration {
-			duration_str = duration.as_millis().to_string();
-			args.push(duration_str);
-		}
-
-		args
-	}
-
-	fn make_keyevent(&self, keycode: KeyCode, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Vec<String> {
-		let mut args = vec!["input".into()];
-
-		if let Some(source) = source {
-			let source_str: &str = source.into();
-			args.push(source_str.to_string());
-		}
-
-		args.push("keyevent".into());
-
-		if let Some(event_type) = event_type {
-			let event_type_str: &str = event_type.into();
-			args.push(event_type_str.to_string());
-		}
-
-		args.push(keycode.to_string());
-		args
-	}
-
-	fn make_keycode(&self, keycode: u32, event_type: Option<KeyEventType>, source: Option<InputSource>) -> Vec<String> {
-		let mut args = vec!["input".to_string()];
-
-		if let Some(source) = source {
-			let source_src: &str = source.into();
-			args.push(source_src.to_string());
-		}
-
-		args.push("keyevent".to_string());
-
-		if let Some(event_type) = event_type {
-			let event_tyoe_str: &str = event_type.into();
-			args.push(event_tyoe_str.to_string());
-		}
-
-		let keycode_str = keycode.to_string();
-
-		args.push(keycode_str);
-		args
+		self.try_exec(make_swipe(from_pos, to_pos, duration, source), None, None)
 	}
 
 	pub fn get_events(&self) -> Result<Vec<(String, String)>> {
@@ -484,7 +768,7 @@ impl<'a> Shell<'a> {
 			None,
 			None,
 		)?;
-		Shell::handle_result(result)
+		handle_result(result)
 	}
 
 	pub fn delete_setting(&self, settings_type: SettingsType, key: &str) -> Result<()> {
@@ -498,7 +782,7 @@ impl<'a> Shell<'a> {
 			None,
 			None,
 		)?;
-		Shell::handle_result(result)
+		handle_result(result)
 	}
 
 	pub fn ls<T: Arg>(&self, path: T, command_args: Option<Vec<OsString>>) -> Result<Vec<String>> {
@@ -526,7 +810,7 @@ impl<'a> Shell<'a> {
 		}
 		args.push(path.as_str()?);
 		let result = self.exec(args, None, None)?;
-		Shell::handle_result(result)
+		handle_result(result)
 	}
 
 	pub fn is_file<T: Arg>(&self, path: T) -> Result<bool> {
@@ -810,14 +1094,6 @@ impl<'a> Shell<'a> {
 	pub fn am(&self) -> ActivityManager {
 		ActivityManager { parent: self }
 	}
-
-	pub(crate) fn handle_result(result: Output) -> Result<()> {
-		if result.error() && !result.kill() && !result.interrupt() {
-			Err(result.into())
-		} else {
-			Ok(())
-		}
-	}
 }
 
 #[cfg(test)]
@@ -827,7 +1103,10 @@ mod test {
 	use simple_cmd::prelude::OutputExt;
 	use strum::IntoEnumIterator;
 
-	use crate::types::{DumpsysPriority, KeyCode, PropType, SELinuxType, ScreenRecordOptions, SettingsType};
+	use crate::types::KeyCode::{KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_HOME};
+	use crate::types::{
+		DumpsysPriority, InputSource, KeyCode, MotionEvent, PropType, SELinuxType, ScreenRecordOptions, SettingsType,
+	};
 	use crate::v2::test::test::*;
 
 	#[test]
@@ -1331,5 +1610,206 @@ mod test {
 			.shell()
 			.try_send_keycode(26, None, None)
 			.expect("failed to send keyevent");
+	}
+
+	#[test]
+	fn test_send_tap() {
+		init_log();
+		let client = connect_emulator();
+
+		client.shell().send_tap((100, 100), None).expect("failed to send tap");
+
+		client.shell().try_send_tap((200, 200), None).expect("failed to send tap");
+	}
+
+	#[test]
+	fn test_send_char() {
+		init_log();
+		let client = connect_emulator();
+
+		client.shell().send_char('a', None).expect("failed to send char");
+
+		client.shell().try_send_char('a', None).expect("failed to send tap");
+	}
+
+	#[test]
+	fn test_send_text() {
+		init_log();
+		let client = connect_emulator();
+
+		client.shell().send_text("alessandro", None).expect("failed to send text");
+
+		client.shell().try_send_text("alessandro", None).expect("failed to send text");
+	}
+
+	#[test]
+	fn test_send_event() {
+		init_log();
+		let client = connect_tcp_ip_client();
+		root_client(&client);
+		let events = client.shell().get_events().unwrap();
+		println!("events: {events:#?}");
+
+		let event = "/dev/input/event0";
+
+		// KEYCODE_DPAD_RIGHT (action DOWN)
+		client.shell().send_event(event, 0x0001, 0x006a, 0x00000001).unwrap();
+		client.shell().send_event(event, 0x0000, 0x0000, 0x00000000).unwrap();
+
+		client.shell().try_send_event(event, 0x0001, 0x006a, 0x00000001).unwrap();
+		client.shell().try_send_event(event, 0x0000, 0x0000, 0x00000000).unwrap();
+	}
+
+	#[test]
+	fn test_send_motion_event() {
+		init_log();
+		let client = connect_emulator();
+
+		client
+			.shell()
+			.send_motion(None, MotionEvent::DOWN, (100, 400))
+			.expect("failed to send motion event");
+		client
+			.shell()
+			.try_send_motion(None, MotionEvent::MOVE, (100, 200))
+			.expect("failed to send motion event");
+		client
+			.shell()
+			.try_send_motion(None, MotionEvent::UP, (100, 100))
+			.expect("failed to send motion event");
+	}
+
+	#[test]
+	fn test_send_draganddrop() {
+		init_log();
+		let client = connect_emulator();
+
+		client
+			.shell()
+			.send_draganddrop(None, Some(Duration::from_millis(400)), (200, 400), (100, 20))
+			.expect("failed to send drag and drop");
+		std::thread::sleep(Duration::from_secs(2));
+
+		client
+			.shell()
+			.try_send_draganddrop(None, Some(Duration::from_millis(400)), (200, 300), (100, 60))
+			.expect("failed to send drag and drop");
+	}
+
+	#[test]
+	fn test_send_press() {
+		init_log();
+		let client = connect_emulator();
+		client.shell().send_press(None).expect("failed to send press");
+		std::thread::sleep(Duration::from_secs(1));
+		client
+			.shell()
+			.try_send_press(Some(InputSource::touchscreen))
+			.expect("failed to send press");
+	}
+
+	#[test]
+	fn test_send_keyevents() {
+		init_log();
+		let client = connect_emulator();
+		client
+			.shell()
+			.send_keyevents(
+				[
+					KEYCODE_HOME,
+					KEYCODE_DPAD_DOWN,
+					KEYCODE_DPAD_DOWN,
+					KEYCODE_DPAD_DOWN,
+				],
+				None,
+			)
+			.expect("failed to send key events");
+		std::thread::sleep(Duration::from_secs(1));
+		client
+			.shell()
+			.send_keyevents(
+				[
+					KEYCODE_DPAD_RIGHT,
+					KEYCODE_DPAD_RIGHT,
+				],
+				None,
+			)
+			.expect("failed to send key events");
+	}
+
+	#[test]
+	fn test_send_keycodes() {
+		init_log();
+		let client = connect_emulator();
+		client
+			.shell()
+			.send_keycodes(
+				[
+					83u32, 82u32,
+				],
+				None,
+			)
+			.expect("failed to send key codes");
+		std::thread::sleep(Duration::from_secs(1));
+		client
+			.shell()
+			.send_keycodes(
+				[
+					143, 142,
+				],
+				None,
+			)
+			.expect("failed to send key codes");
+	}
+
+	#[test]
+	fn test_send_keyevent_combination() {
+		init_log();
+		let client = connect_emulator();
+		client
+			.shell()
+			.send_keyevent_combination(
+				None,
+				[
+					KEYCODE_1, KEYCODE_2, KEYCODE_3,
+				],
+			)
+			.expect("failed to send key codes combination");
+		std::thread::sleep(Duration::from_secs(1));
+		client
+			.shell()
+			.try_send_keyevent_combination(
+				None,
+				[
+					KEYCODE_1, KEYCODE_2, KEYCODE_3,
+				],
+			)
+			.expect("failed to send key codes combination");
+	}
+
+	#[test]
+	fn test_send_keycode_combination() {
+		init_log();
+		let client = connect_emulator();
+		client
+			.shell()
+			.send_keycode_combination(
+				None,
+				[
+					83, 84, 85,
+				],
+			)
+			.expect("failed to send key codes combination");
+		std::thread::sleep(Duration::from_secs(1));
+
+		client
+			.shell()
+			.try_send_keycode_combination(
+				None,
+				[
+					83, 84, 85,
+				],
+			)
+			.expect("failed to send key codes combination");
 	}
 }
