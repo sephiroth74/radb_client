@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use strum_macros::{Display, IntoStaticStr};
+use strum_macros::{Display, EnumIter, IntoStaticStr};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum AddressType {
@@ -146,7 +146,7 @@ pub struct ScreenRecordOptions {
 	pub verbose: bool,
 }
 
-#[derive(Debug, Clone, Copy, Hash, PartialEq, IntoStaticStr)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, IntoStaticStr, EnumIter)]
 #[allow(non_camel_case_types)]
 pub enum SettingsType {
 	global,
@@ -589,7 +589,7 @@ pub enum KeyEventType {
 	DoubleTap,
 }
 
-#[derive(Debug, IntoStaticStr)]
+#[derive(Debug, IntoStaticStr, PartialEq)]
 pub enum PropType {
 	String,
 	Bool,

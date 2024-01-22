@@ -1,11 +1,17 @@
 #[cfg(test)]
 pub(crate) mod test {
+	use std::io;
+	use std::path::{Path, PathBuf};
 	use std::sync::{Arc, Mutex, Once};
 	use std::time::Duration;
 
+	use cmd_lib::AsOsStr;
+	use crossbeam_channel::{bounded, Receiver};
 	use lazy_static::lazy_static;
 	use once_cell::sync::Lazy;
 	use regex::Regex;
+	use signal_hook::consts::SIGINT;
+	use signal_hook::iterator::Signals;
 	use tracing_appender::non_blocking::WorkerGuard;
 
 	use crate::v2::types::{Adb, Client, ConnectionType};
@@ -113,5 +119,38 @@ pub(crate) mod test {
 		client
 			.wait_for_device(Some(Duration::from_secs(180)))
 			.expect("failed to wait for device");
+	}
+
+	// Creates a channel that gets a message every time `SIGINT` is signalled.
+	pub(crate) fn sigint_notifier() -> io::Result<Receiver<()>> {
+		let (s, r) = bounded(1);
+		let mut signals = Signals::new(&[SIGINT])?;
+
+		std::thread::spawn(move || {
+			for _ in signals.forever() {
+				if s.send(()).is_err() {
+					break;
+				}
+			}
+		});
+		Ok(r)
+	}
+
+	pub(crate) fn ctrl_channel() -> Result<Receiver<()>, ctrlc::Error> {
+		let (sender, receiver) = bounded(1);
+		ctrlc::set_handler(move || {
+			println!("sending CTRL+C to ctrl_channel");
+			let _ = sender.send(());
+		})?;
+		Ok(receiver)
+	}
+
+	pub(crate) fn temp_dir() -> PathBuf {
+		lazy_static! {
+			static ref TEMP_PATH: String = uuid::Uuid::new_v4().to_string();
+		}
+		let dir = std::env::temp_dir().join(Path::new(&TEMP_PATH.as_os_str()));
+		std::fs::create_dir_all(dir.as_path()).expect("failed to mkdirs");
+		dir
 	}
 }

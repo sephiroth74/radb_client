@@ -39,6 +39,7 @@ simple-cmd = "0.0.18-alpha1"
 cached = { version = "0.47.0" }
 serde = { version = "1.0.195", features = ["derive"] }
 cidr-utils = "0.6.1"
+strum = "0.25.0"
 
 
 [dev-dependencies]

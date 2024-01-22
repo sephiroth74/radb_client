@@ -320,6 +320,16 @@ impl Client {
 		}
 	}
 
+	pub fn pull<S, T>(&self, src: S, dst: T) -> Result<Output>
+	where
+		S: Arg,
+		T: Arg,
+	{
+		let mut command = CommandBuilder::from(self);
+		command = command.arg("pull").arg(src.as_str()?).arg(dst.as_str()?);
+		command.build().output().map_err(|e| e.into())
+	}
+
 	/// return the client shell interface
 	pub fn shell(&self) -> Shell {
 		Shell { parent: self }

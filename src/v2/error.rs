@@ -1,8 +1,10 @@
 use std::io::ErrorKind;
 use std::net::AddrParseError;
+use std::num::ParseIntError;
 use std::process::Output;
 
 use image::ImageError;
+use java_properties::PropertiesError;
 use mac_address::MacParseError;
 use thiserror::Error;
 
@@ -40,6 +42,15 @@ pub enum Error {
 
 	#[error(transparent)]
 	ParseSELinuxTypeError(#[from] ParseSELinuxTypeError),
+
+	#[error("failed to parse input")]
+	ParseInputError(),
+
+	#[error(transparent)]
+	ParseIntError(#[from] ParseIntError),
+
+	#[error(transparent)]
+	PropertiesError(#[from] PropertiesError),
 }
 
 impl From<AddrParseError> for Error {

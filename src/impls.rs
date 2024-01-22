@@ -21,6 +21,7 @@ use crate::types::{
 	KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, PackageFlags, PropType, RebootType,
 	SELinuxType, ScreenRecordOptions, UninstallOptions, Wakefulness,
 };
+use crate::v2::error::Error;
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
 
@@ -1006,6 +1007,14 @@ impl<'a> AsArgs<&'a str> for Vec<&'a str> {
 }
 
 // region PropType
+
+impl TryFrom<Vec<u8>> for PropType {
+	type Error = Error;
+
+	fn try_from(value: Vec<u8>) -> Result<Self, Self::Error> {
+		Ok(PropType::from(Arg::as_str(&value)?.trim()))
+	}
+}
 
 impl From<&str> for PropType {
 	fn from(value: &str) -> Self {
