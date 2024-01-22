@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use strum_macros::Display;
+use strum_macros::{Display, IntoStaticStr};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 #[repr(transparent)]
@@ -29,6 +29,11 @@ pub struct Shell<'a> {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ActivityManager<'a> {
+	pub(crate) parent: &'a Shell<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PackageManager<'a> {
 	pub(crate) parent: &'a Shell<'a>,
 }
 
@@ -71,4 +76,28 @@ pub enum MemoryStatus {
 	Moderate,
 	RunningCritical,
 	Complete,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct Package {
+	pub package_name: String,
+	pub file_name: Option<String>,
+	pub version_code: Option<i32>,
+	pub uid: Option<i32>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct RuntimePermission {
+	pub name: String,
+	pub granted: bool,
+	pub flags: Vec<String>,
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Copy, IntoStaticStr, Display)]
+pub enum PackageFlags {
+	System,
+	HasCode,
+	AllowClearUserData,
+	UpdatedSystemApp,
+	AllowBackup,
 }

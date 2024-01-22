@@ -243,7 +243,7 @@ pub struct AdbInstallOptions {
 	pub instant: bool,
 }
 
-#[derive(Debug, Eq, PartialEq, Clone, Copy, IntoStaticStr)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy, IntoStaticStr, Display)]
 pub enum PackageFlags {
 	System,
 	HasCode,

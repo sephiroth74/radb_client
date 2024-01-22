@@ -51,6 +51,9 @@ pub enum Error {
 
 	#[error(transparent)]
 	PropertiesError(#[from] PropertiesError),
+
+	#[error("package not found {0}")]
+	PackageNotFoundError(String),
 }
 
 impl From<AddrParseError> for Error {

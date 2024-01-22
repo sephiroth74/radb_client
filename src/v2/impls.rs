@@ -5,9 +5,10 @@ use std::fmt::{Display, Formatter};
 
 use cmd_lib::AsOsStr;
 
+use crate::errors::AdbError;
 use crate::types::{InputSource, KeyCode, KeyEventType, MotionEvent};
 use crate::v2::traits::AsArgs;
-use crate::v2::types::{AdbDevice, MemoryStatus, Reconnect, UserOption, Wakefulness};
+use crate::v2::types::{AdbDevice, MemoryStatus, Package, PackageFlags, Reconnect, RuntimePermission, UserOption, Wakefulness};
 
 impl TryFrom<&str> for Wakefulness {
 	type Error = crate::v2::error::Error;
@@ -130,3 +131,56 @@ impl Into<OsString> for KeyCode {
 }
 
 // endregion KeyCode
+
+// region Package
+
+impl Display for Package {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{}", self.package_name).unwrap();
+
+		if let Some(version_code) = self.version_code {
+			write!(f, " version:{}", version_code).unwrap();
+		}
+
+		if let Some(uid) = self.uid {
+			write!(f, " uid:{}", uid).unwrap();
+		}
+
+		if let Some(file_name) = &self.file_name {
+			write!(f, " file_name:{}", file_name).unwrap();
+		}
+
+		Ok(())
+	}
+}
+
+// endregion Package
+
+// region RuntimePermission
+
+impl Display for RuntimePermission {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		write!(f, "{} granted={} flags={}", self.name, self.granted, self.flags.join(","))
+	}
+}
+
+// endregion RuntimePermission
+
+// region PackageFlags
+
+impl TryFrom<&str> for PackageFlags {
+	type Error = AdbError;
+
+	fn try_from(value: &str) -> Result<Self, Self::Error> {
+		match value {
+			"SYSTEM" => Ok(PackageFlags::System),
+			"HAS_CODE" => Ok(PackageFlags::HasCode),
+			"ALLOW_CLEAR_USER_DATA" => Ok(PackageFlags::AllowClearUserData),
+			"UPDATED_SYSTEM_APP" => Ok(PackageFlags::UpdatedSystemApp),
+			"ALLOW_BACKUP" => Ok(PackageFlags::AllowBackup),
+			_ => Err(AdbError::NameNotFoundError(value.to_string())),
+		}
+	}
+}
+
+// endregion PackageFlags

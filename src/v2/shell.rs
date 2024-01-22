@@ -22,7 +22,7 @@ use crate::types::{
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
 use crate::v2::result::Result;
-use crate::v2::types::{ActivityManager, Shell};
+use crate::v2::types::{ActivityManager, PackageManager, Shell};
 
 lazy_static! {
 	static ref RE_GET_PROPS: Regex = Regex::new("(?m)^\\[(.*)\\]\\s*:\\s*\\[([^\\]]*)\\]$").unwrap();
@@ -1093,6 +1093,10 @@ impl<'a> Shell<'a> {
 
 	pub fn am(&self) -> ActivityManager {
 		ActivityManager { parent: self }
+	}
+
+	pub fn pm(&self) -> PackageManager {
+		PackageManager { parent: self }
 	}
 }
 
