@@ -5,14 +5,14 @@ pub mod result;
 pub mod traits;
 pub mod types;
 
-mod adb;
-mod am;
-mod client;
-mod connection_type;
-mod dump_util;
-mod impls;
-mod pm;
-mod prelude;
-mod shell;
+pub(crate) mod adb;
+pub(crate) mod am;
+pub(crate) mod client;
+pub(crate) mod connection_type;
+pub(crate) mod dump_util;
+pub(crate) mod impls;
+pub(crate) mod pm;
+pub(crate) mod prelude;
+pub(crate) mod shell;
 
 pub(crate) mod test;

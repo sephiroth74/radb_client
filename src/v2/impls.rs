@@ -6,14 +6,13 @@ use cmd_lib::AsOsStr;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::errors::AdbError;
 use crate::v2::error::Error;
 use crate::v2::traits::{AsArg, AsArgs};
 use crate::v2::types::{
 	AdbDevice, AdbInstallOptions, Extra, FFPlayOptions, InputSource, InstallLocationOption, InstallOptions, InstallPermission,
-	Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatTag, MemoryStatus, MotionEvent,
-	Package, PackageFlags, PropType, Property, RebootType, Reconnect, RuntimePermission, SELinuxType, ScreenRecordOptions,
-	UninstallOptions, UserOption, Wakefulness,
+	Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatOptions, LogcatTag,
+	MemoryStatus, MotionEvent, Package, PackageFlags, PropType, Property, RebootType, Reconnect, RuntimePermission, SELinuxType,
+	ScreenRecordOptions, UninstallOptions, UserOption, Wakefulness,
 };
 
 lazy_static! {
@@ -240,7 +239,7 @@ impl Display for InstallPermission {
 // region PackageFlags
 
 impl TryFrom<&str> for PackageFlags {
-	type Error = AdbError;
+	type Error = Error;
 
 	fn try_from(value: &str) -> Result<Self, Self::Error> {
 		match value {
@@ -249,7 +248,7 @@ impl TryFrom<&str> for PackageFlags {
 			"ALLOW_CLEAR_USER_DATA" => Ok(PackageFlags::AllowClearUserData),
 			"UPDATED_SYSTEM_APP" => Ok(PackageFlags::UpdatedSystemApp),
 			"ALLOW_BACKUP" => Ok(PackageFlags::AllowBackup),
-			_ => Err(AdbError::NameNotFoundError(value.to_string())),
+			_ => Err(Error::NameNotFoundError(value.to_string())),
 		}
 	}
 }
@@ -442,6 +441,67 @@ impl Display for RebootType {
 }
 
 // endregion RebootType
+
+// region LogcatOptions
+
+impl IntoIterator for LogcatOptions {
+	type Item = OsString;
+	type IntoIter = IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+		if let Some(expr) = self.expr {
+			args.extend([
+				"-e".into(),
+				expr.as_str().into(),
+			]);
+		}
+
+		if self.dump {
+			args.push("-d".into());
+		}
+
+		if let Some(filename) = self.filename {
+			args.extend([
+				"-f".into(),
+				filename.into(),
+			]);
+		}
+
+		if let Some(format) = self.format {
+			args.extend([
+				"-v".into(),
+				format.into(),
+			]);
+		}
+
+		if let Some(pid) = self.pid {
+			args.extend([
+				"--pid".into(),
+				format!("{}", pid).into(),
+			]);
+		}
+
+		if let Some(since) = self.since {
+			args.extend([
+				"-T".into(),
+				since.format("%m-%d %H:%M:%S.%3f").to_string().into(),
+			]);
+		}
+
+		if let Some(tags) = self.tags {
+			if !tags.is_empty() {
+				for tag in tags {
+					args.push(format!("{:}", tag).into());
+				}
+				args.push("*:S".into());
+			}
+		}
+		args.into_iter()
+	}
+}
+
+// endregion LogcatOptions
 
 // region LogcatLevel
 

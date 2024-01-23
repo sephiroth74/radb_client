@@ -273,7 +273,7 @@ impl Client {
 	///     write bugreport to given PATH [default=bugreport.zip];
 	///     if PATH is a directory, the bug report is saved in that directory.
 	///     devices that don't support zipped bug reports output to stdout.
-	pub fn bug_report<T: Arg>(&self, output: Option<T>) -> crate::Result<Output> {
+	pub fn bug_report<T: Arg>(&self, output: Option<T>) -> Result<Output> {
 		let args = match output.as_ref() {
 			Some(s) => vec![
 				"bugreport",

@@ -8,8 +8,6 @@ use java_properties::PropertiesError;
 use mac_address::MacParseError;
 use thiserror::Error;
 
-use crate::errors::ParseSELinuxTypeError;
-
 #[derive(Error, Debug)]
 pub enum Error {
 	// parse device address error
@@ -39,9 +37,6 @@ pub enum Error {
 
 	#[error(transparent)]
 	UuidParseError(#[from] uuid::Error),
-
-	#[error(transparent)]
-	ParseSELinuxTypeError(#[from] ParseSELinuxTypeError),
 
 	#[error("failed to parse input")]
 	ParseInputError,
