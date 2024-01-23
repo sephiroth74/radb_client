@@ -7,6 +7,7 @@ use std::thread::sleep;
 use std::time::Duration;
 
 use arboard::ImageData;
+use crossbeam_channel::Receiver;
 use mac_address::MacAddress;
 use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
@@ -17,8 +18,11 @@ use uuid::Uuid;
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
 use crate::v2::result::Result;
+use crate::v2::shell;
 use crate::v2::traits::AsArgs;
-use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType, RebootType, Reconnect, Shell, Wakefulness};
+use crate::v2::types::{
+	Adb, AdbDevice, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell, Wakefulness,
+};
 
 static GET_STATE_TIMEOUT: u64 = 200;
 static SLEEP_AFTER_ROOT: u64 = 1_000;
@@ -71,6 +75,30 @@ impl Client {
 			Ok(output) => Ok(output.success()),
 			Err(err) => Err(Error::CommandError(err)),
 		}
+	}
+
+	pub fn try_disconnect(&self) -> Result<bool> {
+		let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
+		command = command.arg("disconnect");
+		command = match self.addr {
+			ConnectionType::TcpIp(ip) => command.arg(ip.to_string()),
+			_ => command,
+		};
+		match command.build().run() {
+			Ok(status) => Ok(status.map_or(false, |status| status.success())),
+			Err(err) => Err(Error::CommandError(err)),
+		}
+	}
+
+	/// disconnect all connected devices
+	pub fn disconnect_all(&self) -> Result<()> {
+		super::shell::handle_result(
+			CommandBuilder::adb(&self.adb)
+				.with_debug(self.debug)
+				.arg("disconnect")
+				.build()
+				.output()?,
+		)
 	}
 
 	/// Checks if the client is already connected
@@ -138,8 +166,7 @@ impl Client {
 	}
 
 	pub fn unroot(&self) -> Result<()> {
-		CommandBuilder::from(self).arg("unroot").build().output()?;
-		Ok(())
+		super::shell::handle_result(CommandBuilder::from(self).arg("unroot").build().output()?)
 	}
 
 	/// Save screencap to local file
@@ -272,6 +299,22 @@ impl Client {
 		}
 	}
 
+	pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> Result<Output> {
+		let mut command = CommandBuilder::from(self);
+		let mut args = vec!["logcat".into()];
+		args.extend(options.clone());
+
+		if let Some(timeout) = options.timeout {
+			command = command.with_timeout(timeout);
+		}
+
+		if let Some(signal) = cancel {
+			command = command.with_signal(signal);
+		}
+
+		command.with_args(args).build().output().map_err(|e| e.into())
+	}
+
 	/// Returns the device mac-address
 	pub fn get_mac_address(&self) -> Result<MacAddress> {
 		let output = self.shell().cat("/sys/class/net/eth0/address")?;
@@ -339,6 +382,29 @@ impl Client {
 		command.build().output().map_err(|e| e.into())
 	}
 
+	pub fn install<T>(&self, path: T, install_options: Option<AdbInstallOptions>) -> Result<()>
+	where
+		T: Arg,
+	{
+		let mut args = vec!["install".into()];
+		match install_options {
+			None => {}
+			Some(options) => args.extend(options),
+		}
+		args.push(path.as_str()?.into());
+		shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
+	}
+
+	pub fn uninstall(&self, package_name: &str, keep_data: bool) -> Result<()> {
+		let mut args = vec!["uninstall"];
+		if keep_data {
+			args.push("-k");
+		}
+
+		args.push(package_name);
+		shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
+	}
+
 	/// return the client shell interface
 	pub fn shell(&self) -> Shell {
 		Shell { parent: self }
@@ -391,15 +457,18 @@ impl Display for Client {
 #[cfg(test)]
 mod test {
 	use std::fs::{remove_file, File};
+	use std::io::BufRead;
 	use std::net::SocketAddr;
 	use std::time::Duration;
 
+	use chrono::Local;
+	use simple_cmd::prelude::OutputExt;
+
 	use crate::v2::error::Error;
 	use crate::v2::test::test::{
-		client_from, connect_client, connect_emulator, connect_tcp_ip_client, connection_from_tcpip, connection_from_transport_id,
-		init_log,
+		client_from, connect_client, connect_emulator, connect_tcp_ip_client, connection_from_tcpip, init_log, test_files_dir,
 	};
-	use crate::v2::types::{Client, ConnectionType, Reconnect};
+	use crate::v2::types::{AdbInstallOptions, Client, ConnectionType, LogcatLevel, LogcatOptions, LogcatTag, Reconnect};
 
 	#[test]
 	fn test_new_client() {
@@ -409,7 +478,7 @@ mod test {
 		let connected = client.is_connected();
 		println!("connected: {}", connected);
 
-		let mut client = client_from(connection_from_transport_id());
+		let mut client = connect_emulator();
 		client = client.with_debug(true);
 		let connected = client.is_connected();
 		println!("connected: {}", connected);
@@ -418,15 +487,23 @@ mod test {
 	#[test]
 	fn test_connect() {
 		init_log();
-		let client = client_from(connection_from_tcpip());
+		let client = connect_tcp_ip_client();
 		let _ = client.connect(Some(Duration::from_secs(1))).expect("failed to connect");
 	}
 
 	#[test]
 	fn test_disconnect() {
 		init_log();
-		let client = client_from(connection_from_transport_id());
+		let client = connect_tcp_ip_client();
 		let disconnected = client.disconnect().expect("failed to disconnect");
+		println!("disconnected: {disconnected}");
+	}
+
+	#[test]
+	fn test_try_disconnect() {
+		init_log();
+		let client = connect_emulator();
+		let disconnected = client.try_disconnect().expect("failed to disconnect");
 		println!("disconnected: {disconnected}");
 	}
 
@@ -638,5 +715,98 @@ mod test {
 		let client = connect_tcp_ip_client();
 		client.root().expect("failed to root");
 		let _ = client.enable_verity().expect("failed to enable verity");
+	}
+
+	#[test]
+	fn test_logcat() {
+		init_log();
+		let client = connect_tcp_ip_client();
+
+		let timeout = Some(Duration::from_secs(3));
+		let since = Some(Local::now() - chrono::Duration::seconds(600));
+
+		let options = LogcatOptions {
+			expr: None,
+			dump: false,
+			filename: None,
+			tags: Some(vec![
+				LogcatTag {
+					name: "tl.RestClient".to_string(),
+					level: LogcatLevel::Debug,
+				},
+			]),
+			format: None,
+			since,
+			pid: None,
+			timeout,
+		};
+
+		let output = client.logcat(options, None);
+
+		match output {
+			Ok(o) => {
+				if o.status.success() || o.kill() || o.interrupt() {
+					let mut index = 0;
+					let stdout = o.stdout;
+					let lines = stdout.lines().map(|l| l.unwrap());
+					for line in lines {
+						println!("{}", line);
+						index = index + 1;
+						if index > 10 {
+							break;
+						}
+					}
+				} else if o.error() {
+					panic!("{:?}", o);
+				} else {
+					panic!("{:?}", o);
+				}
+			}
+			Err(err) => {
+				panic!("{}", err);
+			}
+		}
+	}
+
+	#[test]
+	fn test_install() {
+		init_log();
+		let client = connect_emulator();
+		let test_files_dir = test_files_dir();
+		println!("test_files_dir: {:?}", test_files_dir);
+
+		let path = test_files_dir.join("app-debug.apk");
+		let package_name = "it.sephiroth.android.app.app";
+
+		let is_installed = client
+			.shell()
+			.pm()
+			.is_installed(package_name, None)
+			.expect("failed to check if package is installed");
+		if is_installed {
+			client.uninstall(package_name, false).expect("failed to uninstall package");
+			assert!(!client.shell().pm().is_installed(package_name, None).unwrap());
+		}
+
+		client
+			.install(
+				path,
+				Some(AdbInstallOptions {
+					allow_version_downgrade: false,
+					allow_test_package: false,
+					replace: false,
+					forward_lock: false,
+					install_external: false,
+					grant_permissions: false,
+					instant: false,
+				}),
+			)
+			.expect("failed to install apk");
+
+		assert!(client
+			.shell()
+			.pm()
+			.is_installed(package_name, None)
+			.expect("failed to check if package is installed"));
 	}
 }

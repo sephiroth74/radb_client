@@ -729,8 +729,8 @@ mod tests {
 			filename: None,
 			tags: Some(vec![
 				LogcatTag {
-					name: "DATASTORE_INFO".to_string(),
-					level: LogcatLevel::Info,
+					name: "tl.RestClient".to_string(),
+					level: LogcatLevel::Debug,
 				},
 			]),
 			format: None,
@@ -755,13 +755,13 @@ mod tests {
 						}
 					}
 				} else if o.error() {
-					warn!("{:?}", o);
+					panic!("{:?}", o);
 				} else {
 					error!("{:?}", o);
 				}
 			}
 			Err(err) => {
-				warn!("{}", err);
+				panic!("{}", err);
 			}
 		}
 	}

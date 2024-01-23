@@ -14,25 +14,27 @@ use which::which;
 
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
+use crate::v2::result::Result;
 use crate::v2::types::{Adb, AdbDevice, ConnectionType};
 
 impl Adb {
-	pub fn new() -> crate::v2::result::Result<Adb> {
+	pub fn new() -> Result<Adb> {
 		let adb = which("adb")?;
 		Ok(Adb(adb))
 	}
 
-	pub fn exec<'a, C, T>(
+	pub fn exec<'a, C, I, S>(
 		&self,
 		addr: C,
-		args: Vec<T>,
+		args: I,
 		cancel: Option<Receiver<()>>,
 		timeout: Option<Duration>,
 		debug: bool,
-	) -> crate::Result<Output>
+	) -> Result<Output>
 	where
-		T: Into<String> + AsRef<OsStr>,
 		C: Into<ConnectionType>,
+		I: IntoIterator<Item = S>,
+		S: AsRef<OsStr>,
 	{
 		let builder = CommandBuilder::adb(&self)
 			.addr(addr)
@@ -57,7 +59,7 @@ impl Adb {
 	}
 
 	/// List connected devices
-	pub fn list_devices(&self, debug: bool) -> crate::v2::result::Result<Vec<AdbDevice>> {
+	pub fn list_devices(&self, debug: bool) -> Result<Vec<AdbDevice>> {
 		let output = Cmd::builder(self.0.as_path())
 			.args([
 				"devices", "-l",
@@ -108,7 +110,7 @@ impl Adb {
 		Ok(devices)
 	}
 
-	pub fn disconnect_all(&self, debug: bool) -> crate::v2::result::Result<bool> {
+	pub fn disconnect_all(&self, debug: bool) -> Result<bool> {
 		match Cmd::builder(self.0.as_path())
 			.with_debug(debug)
 			.arg("disconnect")
@@ -121,7 +123,7 @@ impl Adb {
 	}
 
 	/// kill the server if it is running
-	pub fn kill_server(&self, debug: bool) -> crate::v2::result::Result<bool> {
+	pub fn kill_server(&self, debug: bool) -> Result<bool> {
 		let output = Cmd::builder(self.0.as_path())
 			.with_debug(debug)
 			.arg("kill-server")
@@ -131,7 +133,7 @@ impl Adb {
 	}
 
 	/// ensure that there is a server running
-	pub fn start_server(&self, debug: bool) -> crate::v2::result::Result<bool> {
+	pub fn start_server(&self, debug: bool) -> Result<bool> {
 		let output = Cmd::builder(self.0.as_path())
 			.with_debug(debug)
 			.arg("start-server")
@@ -141,7 +143,7 @@ impl Adb {
 	}
 
 	/// adb version
-	pub fn version(&self, debug: bool) -> crate::v2::result::Result<String> {
+	pub fn version(&self, debug: bool) -> Result<String> {
 		lazy_static! {
 			static ref RE: Regex = Regex::new(r#"^Version\s+(?P<version>[\d+\.-]+)$"#).unwrap();
 		}

@@ -1,5 +1,6 @@
 #[cfg(test)]
 pub(crate) mod test {
+	use std::env::current_exe;
 	use std::io;
 	use std::path::{Path, PathBuf};
 	use std::sync::{Arc, Mutex, Once};
@@ -55,6 +56,7 @@ pub(crate) mod test {
 	}
 
 	#[inline]
+	#[allow(dead_code)]
 	pub(crate) fn connection_from_transport_id() -> ConnectionType {
 		ConnectionType::Transport(TRANSPORT_ID)
 	}
@@ -152,5 +154,18 @@ pub(crate) mod test {
 		let dir = std::env::temp_dir().join(Path::new(&TEMP_PATH.as_os_str()));
 		std::fs::create_dir_all(dir.as_path()).expect("failed to mkdirs");
 		dir
+	}
+
+	pub(crate) fn test_files_dir() -> PathBuf {
+		let cur_exe = current_exe().unwrap();
+		let cur_dir = cur_exe.parent().unwrap();
+		cur_dir
+			.parent()
+			.unwrap()
+			.parent()
+			.unwrap()
+			.parent()
+			.unwrap()
+			.join("test_files")
 	}
 }

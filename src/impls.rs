@@ -1,11 +1,12 @@
 use fmt::Debug;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::net::{AddrParseError, SocketAddr};
 use std::process::Command;
 use std::str::FromStr;
 use std::time::Duration;
+use std::vec::IntoIter;
 
 use itertools::Itertools;
 use lazy_static::lazy_static;
@@ -22,6 +23,7 @@ use crate::types::{
 	SELinuxType, ScreenRecordOptions, UninstallOptions, Wakefulness,
 };
 use crate::v2::error::Error;
+use crate::v2::types::LogcatOptions;
 use crate::{Adb, Device};
 use crate::{AdbClient, AdbShell};
 
@@ -345,6 +347,67 @@ impl TryFrom<&str> for SELinuxType {
 }
 
 // endregion SELinuxType
+
+// region LogcatOptions
+
+impl IntoIterator for LogcatOptions {
+	type Item = OsString;
+	type IntoIter = IntoIter<Self::Item>;
+
+	fn into_iter(self) -> Self::IntoIter {
+		let mut args = vec![];
+		if let Some(expr) = self.expr {
+			args.extend([
+				"-e".into(),
+				expr.as_str().into(),
+			]);
+		}
+
+		if self.dump {
+			args.push("-d".into());
+		}
+
+		if let Some(filename) = self.filename {
+			args.extend([
+				"-f".into(),
+				filename.into(),
+			]);
+		}
+
+		if let Some(format) = self.format {
+			args.extend([
+				"-v".into(),
+				format.into(),
+			]);
+		}
+
+		if let Some(pid) = self.pid {
+			args.extend([
+				"--pid".into(),
+				format!("{}", pid).into(),
+			]);
+		}
+
+		if let Some(since) = self.since {
+			args.extend([
+				"-T".into(),
+				since.format("%m-%d %H:%M:%S.%3f").to_string().into(),
+			]);
+		}
+
+		if let Some(tags) = self.tags {
+			if !tags.is_empty() {
+				for tag in tags {
+					args.push(format!("{:}", tag).into());
+				}
+				args.push("*:S".into());
+			}
+		}
+		args.into_iter()
+	}
+}
+
+// endregion LogcatOptions
 
 // region LogcatLevel
 

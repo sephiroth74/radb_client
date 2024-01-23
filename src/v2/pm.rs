@@ -276,8 +276,6 @@ impl<'a> PackageManager<'a> {
 
 #[cfg(test)]
 mod test {
-	use std::env::current_exe;
-
 	use itertools::Itertools;
 
 	use crate::v2::test::test::*;
@@ -555,17 +553,7 @@ mod test {
 		init_log();
 		let client = connect_tcp_ip_client();
 		root_client(&client);
-
-		let cur_exe = current_exe().unwrap();
-		let cur_dir = cur_exe.parent().unwrap();
-		let test_files_dir = cur_dir
-			.parent()
-			.unwrap()
-			.parent()
-			.unwrap()
-			.parent()
-			.unwrap()
-			.join("test_files");
+		let test_files_dir = test_files_dir();
 
 		println!("test_files_dir: {:?}", test_files_dir);
 

@@ -4,10 +4,9 @@ use std::process::Output;
 use cmd_lib::AsOsStr;
 use simple_cmd::prelude::OutputExt;
 
-use crate::types::Intent;
 use crate::v2::result::Result;
 use crate::v2::traits::AsArgs;
-use crate::v2::types::{ActivityManager, MemoryStatus, UserOption};
+use crate::v2::types::{ActivityManager, Intent, MemoryStatus, UserOption};
 
 impl<'a> ActivityManager<'a> {
 	/// Force stop a package
@@ -157,9 +156,8 @@ impl<'a> ActivityManager<'a> {
 
 #[cfg(test)]
 mod test {
-	use crate::types::Intent;
 	use crate::v2::test::test::{connect_emulator, connect_tcp_ip_client, init_log, root_client};
-	use crate::v2::types::{MemoryStatus, UserOption};
+	use crate::v2::types::{Intent, MemoryStatus, UserOption};
 
 	#[test]
 	fn test_force_stop() {

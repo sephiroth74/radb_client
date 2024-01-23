@@ -1,7 +1,6 @@
 use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 
-use crate::dump_util::is_system;
 use crate::v2::error::Error;
 use crate::v2::result::Result;
 use crate::v2::types::{InstallPermission, PackageFlags, RuntimePermission};
@@ -148,6 +147,10 @@ impl<'a> SimplePackageReader<'a> {
 		}
 		return Err(Error::ParseInputError);
 	}
+}
+
+pub fn is_system(data: &str) -> Result<bool> {
+	Ok(package_flags(data)?.contains(&PackageFlags::System))
 }
 
 pub(crate) fn runtime_permissions(data: &str) -> Result<Vec<RuntimePermission>> {

@@ -15,14 +15,14 @@ use simple_cmd::debug::CommandDebug;
 use simple_cmd::prelude::OutputExt;
 use simple_cmd::CommandBuilder;
 
-use crate::types::{
-	DumpsysPriority, FFPlayOptions, InputSource, KeyCode, KeyEventType, MotionEvent, PropType, Property, SELinuxType,
-	ScreenRecordOptions, SettingsType,
-};
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
 use crate::v2::result::Result;
-use crate::v2::types::{ActivityManager, PackageManager, Shell};
+use crate::v2::traits::AsArg;
+use crate::v2::types::{
+	ActivityManager, DumpsysPriority, FFPlayOptions, InputSource, KeyCode, KeyEventType, MotionEvent, PackageManager, PropType,
+	Property, SELinuxType, ScreenRecordOptions, SettingsType, Shell,
+};
 
 lazy_static! {
 	static ref RE_GET_PROPS: Regex = Regex::new("(?m)^\\[(.*)\\]\\s*:\\s*\\[([^\\]]*)\\]$").unwrap();
@@ -49,7 +49,7 @@ where
 	}
 
 	args.push("keycombination".into());
-	args.extend(keycodes.into_iter().map(|k| k.into().into()));
+	args.extend(keycodes.into_iter().map(|k| k.into().as_os_str()));
 	args
 }
 
@@ -252,6 +252,14 @@ where
 	args
 }
 
+macro_rules! ro_build_property {
+	($name:tt, $key:tt, $typ:ty) => {
+		pub fn $name(&self) -> Result<$typ> {
+			self.getprop_with_type::<$typ>($key)
+		}
+	};
+}
+
 impl<'a> Shell<'a> {
 	/// executes custom command over the shell interface
 	pub fn exec<I, S>(&self, args: I, cancel: Option<Receiver<()>>, timeout: Option<Duration>) -> Result<Output>
@@ -450,15 +458,10 @@ impl<'a> Shell<'a> {
 
 	/// Change the selinux enforce type. root is required
 	pub fn set_enforce(&self, enforce: SELinuxType) -> Result<()> {
-		let new_value = match enforce {
-			SELinuxType::Permissive => "0",
-			SELinuxType::Enforcing => "1",
-		};
-
 		self.exec(
 			vec![
-				"setenforce",
-				new_value,
+				"setenforce".into(),
+				enforce.as_arg(),
 			],
 			None,
 			None,
@@ -934,13 +937,13 @@ impl<'a> Shell<'a> {
 		output: T,
 		cancel: Option<Receiver<()>>,
 	) -> Result<Output> {
-		let mut args = vec![String::from("screenrecord")];
+		let mut args = vec!["screenrecord".into()];
 
 		if let Some(options) = options {
 			args.extend(options);
 		}
 
-		args.push(output.as_str()?.to_string());
+		args.push(output.as_str()?.into());
 		let command = CommandBuilder::shell(self.parent).args(args).signal(cancel);
 		Ok(command.build().output()?)
 	}
@@ -991,6 +994,33 @@ impl<'a> Shell<'a> {
 			None,
 			None,
 		)
+	}
+
+	ro_build_property!(build_ab_update, "ro.build.ab_update", String);
+	ro_build_property!(build_characteristics, "ro.build.characteristics", String);
+	ro_build_property!(build_date, "ro.build.date", String);
+	ro_build_property!(build_date_utc, "ro.build.date.utc", u64);
+	ro_build_property!(build_description, "ro.build.description", String);
+	ro_build_property!(build_display_id, "ro.build.display.id", String);
+	ro_build_property!(build_fingerprint, "ro.build.fingerprint", String);
+	ro_build_property!(build_flavor, "ro.build.flavor", String);
+	ro_build_property!(build_host, "ro.build.host", String);
+	ro_build_property!(build_id, "ro.build.id", String);
+	ro_build_property!(build_product, "ro.build.product", String);
+	ro_build_property!(build_tags, "ro.build.tags", String);
+	ro_build_property!(build_type, "ro.build.type", String);
+	ro_build_property!(build_user, "ro.build.user", String);
+	ro_build_property!(build_version_codename, "ro.build.version.codename", String);
+	ro_build_property!(build_version_incremental, "ro.build.version.incremental", String);
+	ro_build_property!(build_version_release, "ro.build.version.release", u16);
+	ro_build_property!(build_version_sdk, "ro.build.version.sdk", u16);
+
+	pub fn getprop_with_type<T: std::str::FromStr>(&self, key: &str) -> Result<T> {
+		let prop = self.getprop(key)?;
+		match prop.parse::<T>() {
+			Ok(value) => Ok(value),
+			Err(_err) => Err(Error::ParseInputError),
+		}
 	}
 
 	pub fn getprop(&self, key: &str) -> Result<String> {
@@ -1107,11 +1137,11 @@ mod test {
 	use simple_cmd::prelude::OutputExt;
 	use strum::IntoEnumIterator;
 
-	use crate::types::KeyCode::{KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_HOME};
-	use crate::types::{
+	use crate::v2::test::test::*;
+	use crate::v2::types::KeyCode::{KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_HOME};
+	use crate::v2::types::{
 		DumpsysPriority, InputSource, KeyCode, MotionEvent, PropType, SELinuxType, ScreenRecordOptions, SettingsType,
 	};
-	use crate::v2::test::test::*;
 
 	#[test]
 	fn test_who_am_i() {
@@ -1497,6 +1527,41 @@ mod test {
 		assert!(!prop.is_empty());
 		assert!(prop.starts_with("emulator"));
 		println!("prop: {prop}");
+
+		let client = connect_emulator();
+		let prop = client
+			.shell()
+			.getprop_with_type::<u16>("ro.build.version.sdk")
+			.expect("failed to get prop");
+		println!("prop: {prop}");
+	}
+
+	#[test]
+	fn test_get_build_props() {
+		init_log();
+		let client = connect_tcp_ip_client();
+
+		println!("build_ab_update: {}", client.shell().build_ab_update().unwrap());
+		println!("build_characteristics: {}", client.shell().build_characteristics().unwrap());
+		println!("build_date: {}", client.shell().build_date().unwrap());
+		println!("build_date_utc: {}", client.shell().build_date_utc().unwrap());
+		println!("build_description: {}", client.shell().build_description().unwrap());
+		println!("build_display_id: {}", client.shell().build_display_id().unwrap());
+		println!("build_fingerprint: {}", client.shell().build_fingerprint().unwrap());
+		println!("build_flavor: {}", client.shell().build_flavor().unwrap());
+		println!("build_host: {}", client.shell().build_host().unwrap());
+		println!("build_id: {}", client.shell().build_id().unwrap());
+		println!("build_product: {}", client.shell().build_product().unwrap());
+		println!("build_tags: {}", client.shell().build_tags().unwrap());
+		println!("build_type: {}", client.shell().build_type().unwrap());
+		println!("build_user: {}", client.shell().build_user().unwrap());
+		println!("build_version_codename: {}", client.shell().build_version_codename().unwrap());
+		println!(
+			"build_version_incremental: {}",
+			client.shell().build_version_incremental().unwrap()
+		);
+		println!("build_version_release: {}", client.shell().build_version_release().unwrap());
+		println!("build_version_sdk: {}", client.shell().build_version_sdk().unwrap());
 	}
 
 	#[test]
