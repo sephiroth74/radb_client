@@ -143,6 +143,10 @@ impl Client {
 		Ok(awake.try_into()?)
 	}
 
+	pub fn is_awake(&self) -> Result<bool> {
+		Ok(self.get_wakefulness()? != Wakefulness::Asleep)
+	}
+
 	/// return the adb root status for the current connection
 	pub fn is_root(&self) -> Result<bool> {
 		self.shell().is_root()
