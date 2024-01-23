@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::env::temp_dir;
-use std::fmt::{Display, Formatter};
+
 use std::fs::File;
 use std::process::{Output, Stdio};
 use std::thread::sleep;
@@ -19,9 +19,7 @@ use crate::error::Error;
 use crate::prelude::*;
 use crate::result::Result;
 use crate::traits::AsArgs;
-use crate::types::{
-	Adb, AdbDevice, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell, Wakefulness,
-};
+use crate::types::{Adb, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell, Wakefulness};
 
 static GET_STATE_TIMEOUT: u64 = 200;
 static SLEEP_AFTER_ROOT: u64 = 1_000;
@@ -417,43 +415,6 @@ impl Client {
 	pub fn with_debug(mut self, debug: bool) -> Self {
 		self.debug = debug;
 		self
-	}
-}
-
-impl TryFrom<ConnectionType> for Client {
-	type Error = crate::error::Error;
-
-	fn try_from(value: ConnectionType) -> std::result::Result<Self, Self::Error> {
-		let adb = Adb::new()?;
-		Ok(Client::new(adb, value, false))
-	}
-}
-
-impl TryFrom<AdbDevice> for Client {
-	type Error = crate::error::Error;
-
-	fn try_from(value: AdbDevice) -> std::result::Result<Self, Self::Error> {
-		value.addr.try_into()
-	}
-}
-
-impl TryFrom<&AdbDevice> for Client {
-	type Error = crate::error::Error;
-
-	fn try_from(value: &AdbDevice) -> std::result::Result<Self, Self::Error> {
-		value.addr.try_into()
-	}
-}
-
-impl From<&Client> for CommandBuilder {
-	fn from(value: &Client) -> Self {
-		CommandBuilder::adb(&value.adb).addr(value.addr).with_debug(value.debug)
-	}
-}
-
-impl Display for Client {
-	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		self.addr.fmt(f)
 	}
 }
 

@@ -5,14 +5,16 @@ use std::vec::IntoIter;
 use cmd_lib::AsOsStr;
 use lazy_static::lazy_static;
 use regex::Regex;
+use simple_cmd::CommandBuilder;
 
 use crate::error::Error;
+use crate::prelude::CommandBuilderExt;
 use crate::traits::{AsArg, AsArgs};
 use crate::types::{
-	AdbDevice, AdbInstallOptions, Extra, FFPlayOptions, InputSource, InstallLocationOption, InstallOptions, InstallPermission,
-	Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatOptions, LogcatTag,
-	MemoryStatus, MotionEvent, Package, PackageFlags, PropType, Property, RebootType, Reconnect, RuntimePermission, SELinuxType,
-	ScreenRecordOptions, UninstallOptions, UserOption, Wakefulness,
+	Adb, AdbDevice, AdbInstallOptions, Client, ConnectionType, Extra, FFPlayOptions, InputSource, InstallLocationOption,
+	InstallOptions, InstallPermission, Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel,
+	LogcatOptions, LogcatTag, MemoryStatus, MotionEvent, Package, PackageFlags, PropType, Property, RebootType, Reconnect,
+	RuntimePermission, SELinuxType, ScreenRecordOptions, UninstallOptions, UserOption, Wakefulness,
 };
 
 lazy_static! {
@@ -974,3 +976,44 @@ impl Display for AdbInstallOptions {
 }
 
 // endregion AdbInstallOptions
+
+// region Client
+
+impl TryFrom<ConnectionType> for Client {
+	type Error = crate::error::Error;
+
+	fn try_from(value: ConnectionType) -> std::result::Result<Self, Self::Error> {
+		let adb = Adb::new()?;
+		Ok(Client::new(adb, value, false))
+	}
+}
+
+impl TryFrom<AdbDevice> for Client {
+	type Error = crate::error::Error;
+
+	fn try_from(value: AdbDevice) -> std::result::Result<Self, Self::Error> {
+		value.addr.try_into()
+	}
+}
+
+impl TryFrom<&AdbDevice> for Client {
+	type Error = crate::error::Error;
+
+	fn try_from(value: &AdbDevice) -> std::result::Result<Self, Self::Error> {
+		value.addr.try_into()
+	}
+}
+
+impl From<&Client> for CommandBuilder {
+	fn from(value: &Client) -> Self {
+		CommandBuilder::adb(&value.adb).addr(value.addr).with_debug(value.debug)
+	}
+}
+
+impl Display for Client {
+	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		self.addr.fmt(f)
+	}
+}
+
+// endregion Client
