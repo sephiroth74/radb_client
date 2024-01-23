@@ -44,7 +44,7 @@ pub enum Error {
 	ParseSELinuxTypeError(#[from] ParseSELinuxTypeError),
 
 	#[error("failed to parse input")]
-	ParseInputError(),
+	ParseInputError,
 
 	#[error(transparent)]
 	ParseIntError(#[from] ParseIntError),
@@ -54,6 +54,9 @@ pub enum Error {
 
 	#[error("package not found {0}")]
 	PackageNotFoundError(String),
+
+	#[error("name not found {0}")]
+	NameNotFoundError(String),
 }
 
 impl From<AddrParseError> for Error {

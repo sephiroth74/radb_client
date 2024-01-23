@@ -677,8 +677,8 @@ impl<'a> Shell<'a> {
 
 				if e.is_some() && n.is_some() {
 					v.push((
-						e.ok_or(Error::ParseInputError())?.as_str().to_string(),
-						n.ok_or(Error::ParseInputError())?.as_str().to_string(),
+						e.ok_or(Error::ParseInputError)?.as_str().to_string(),
+						n.ok_or(Error::ParseInputError)?.as_str().to_string(),
 					));
 				}
 
@@ -1017,8 +1017,8 @@ impl<'a> Shell<'a> {
 				let v = cap1.get(2);
 				if k.is_some() && v.is_some() {
 					result.push(Property {
-						key: k.ok_or(Error::ParseInputError())?.as_str().to_string(),
-						value: v.ok_or(Error::ParseInputError())?.as_str().to_string(),
+						key: k.ok_or(Error::ParseInputError)?.as_str().to_string(),
+						value: v.ok_or(Error::ParseInputError)?.as_str().to_string(),
 					});
 				}
 			}

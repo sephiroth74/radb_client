@@ -1,14 +1,18 @@
+use std::ffi::OsString;
 use std::time::Duration;
 
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
 
-use crate::types::{ListPackageDisplayOptions, ListPackageFilter};
-use crate::v2::dump_util::{package_flags, runtime_permissions};
+use crate::v2::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
 use crate::v2::error::Error;
 use crate::v2::result::Result;
-use crate::v2::types::{Package, PackageFlags, PackageManager, RuntimePermission};
+use crate::v2::shell::handle_result;
+use crate::v2::types::{
+	InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, Package, PackageFlags, PackageManager,
+	RuntimePermission, UninstallOptions,
+};
 
 static DUMP_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));
 
@@ -82,6 +86,7 @@ impl<'a> PackageManager<'a> {
 		)?)
 	}
 
+	/// list installed packages
 	pub fn list_packages(
 		&self,
 		filters: ListPackageFilter,
@@ -98,7 +103,7 @@ impl<'a> PackageManager<'a> {
 		args.extend(display);
 
 		if let Some(name) = name_filter {
-			args.push(name.to_string());
+			args.push(name.into());
 		}
 
 		let output = self.parent.exec(args, None, None)?.stdout;
@@ -151,6 +156,7 @@ impl<'a> PackageManager<'a> {
 		Ok(result)
 	}
 
+	/// dump a package
 	pub fn dump(&self, package_name: &str, timeout: Option<Duration>) -> Result<String> {
 		let args = vec![
 			"pm",
@@ -161,9 +167,22 @@ impl<'a> PackageManager<'a> {
 		Ok(Arg::as_str(&result)?.to_string())
 	}
 
-	pub fn dump_runtime_permissions(&self, package_name: &str) -> Result<Vec<RuntimePermission>> {
+	/// get requested runtime permissions for package
+	pub fn runtime_permissions(&self, package_name: &str) -> Result<Vec<RuntimePermission>> {
 		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
 		runtime_permissions(dump.as_str())
+	}
+
+	/// get the install permissions for package
+	pub fn install_permissions(&self, package_name: &str) -> Result<Vec<InstallPermission>> {
+		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
+		SimplePackageReader::new(dump.as_str()).and_then(|pr| Ok(pr.install_permissions().unwrap_or(vec![])))
+	}
+
+	/// get the requested permissions installed for package
+	pub fn requested_permissions(&self, package_name: &str) -> Result<Vec<String>> {
+		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
+		SimplePackageReader::new(dump.as_str()).and_then(|pr| Ok(pr.requested_permissions().unwrap_or(vec![])))
 	}
 
 	pub fn package_flags(&self, package_name: &str) -> Result<Vec<PackageFlags>> {
@@ -177,7 +196,6 @@ impl<'a> PackageManager<'a> {
 
 	pub fn is_installed(&self, package_name: &str, user: Option<&str>) -> Result<bool> {
 		let r = self.path(package_name, user).map(|f| f.len() > 0);
-		println!("r = {r:?}");
 		match r {
 			Ok(r) => Ok(r),
 			Err(err) => match err {
@@ -192,6 +210,34 @@ impl<'a> PackageManager<'a> {
 				_ => Err(err),
 			},
 		}
+	}
+
+	pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> Result<()> {
+		let mut args: Vec<OsString> = vec![
+			"cmd".into(),
+			"package".into(),
+			"uninstall".into(),
+		];
+		match options {
+			None => {}
+			Some(options) => args.extend(options.into_iter()),
+		}
+		args.push(package_name.into());
+		handle_result(self.parent.exec(args, None, None)?)
+	}
+
+	pub fn install<T: Arg>(&self, src: T, options: Option<InstallOptions>) -> Result<()> {
+		let mut args: Vec<OsString> = vec![
+			"cmd".into(),
+			"package".into(),
+			"install".into(),
+		];
+		match options {
+			None => {}
+			Some(options) => args.extend(options),
+		}
+		args.push(src.as_str()?.into());
+		handle_result(self.parent.exec(args, None, None)?)
 	}
 
 	build_pm_operation!(clear, "clear", &str, Option<&str>);
@@ -230,10 +276,12 @@ impl<'a> PackageManager<'a> {
 
 #[cfg(test)]
 mod test {
+	use std::env::current_exe;
+
 	use itertools::Itertools;
 
-	use crate::types::{ListPackageDisplayOptions, ListPackageFilter};
 	use crate::v2::test::test::*;
+	use crate::v2::types::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter};
 
 	#[test]
 	fn test_path() {
@@ -405,8 +453,42 @@ mod test {
 		let permissions = client
 			.shell()
 			.pm()
-			.dump_runtime_permissions("com.swisscom.aot.library.standalone")
+			.runtime_permissions("com.swisscom.aot.library.standalone")
 			.expect("failed to get runtime permissions");
+
+		assert!(!permissions.is_empty());
+
+		for permission in permissions {
+			println!("permission: {permission}");
+		}
+	}
+
+	#[test]
+	fn test_install_permissions() {
+		init_log();
+		let client = connect_tcp_ip_client();
+		let permissions = client
+			.shell()
+			.pm()
+			.install_permissions("com.swisscom.aot.library.standalone")
+			.expect("failed to get install permissions");
+
+		assert!(!permissions.is_empty());
+
+		for permission in permissions {
+			println!("permission: {permission}");
+		}
+	}
+
+	#[test]
+	fn test_requested_permissions() {
+		init_log();
+		let client = connect_tcp_ip_client();
+		let permissions = client
+			.shell()
+			.pm()
+			.requested_permissions("com.swisscom.aot.library.standalone")
+			.expect("failed to get requested permissions");
 
 		assert!(!permissions.is_empty());
 
@@ -466,5 +548,80 @@ mod test {
 			.is_installed("com.android.xxx", None)
 			.expect("failed to call is_installed");
 		assert!(!result);
+	}
+
+	#[test]
+	fn test_install_uninstall() {
+		init_log();
+		let client = connect_tcp_ip_client();
+		root_client(&client);
+
+		let cur_exe = current_exe().unwrap();
+		let cur_dir = cur_exe.parent().unwrap();
+		let test_files_dir = cur_dir
+			.parent()
+			.unwrap()
+			.parent()
+			.unwrap()
+			.parent()
+			.unwrap()
+			.join("test_files");
+
+		println!("test_files_dir: {:?}", test_files_dir);
+
+		let path = test_files_dir.join("app-debug.apk");
+		let target_dir = "/data/local/tmp";
+		let target_file = format!("{target_dir}/app-debug.apk");
+		let package_name = "it.sephiroth.android.app.app";
+
+		let is_installed = client
+			.shell()
+			.pm()
+			.is_installed(package_name, None)
+			.expect("failed to check if package is installed");
+		if is_installed {
+			client
+				.shell()
+				.pm()
+				.uninstall(package_name, None)
+				.expect("failed to uninstall package");
+			assert!(!client.shell().pm().is_installed(package_name, None).unwrap());
+		}
+
+		let is_dir = client.shell().is_dir(target_dir).expect("failed to check for dir");
+		assert!(is_dir);
+
+		let exists = client.shell().exists(&target_file).expect("failed to check for device file");
+		if exists {
+			client.shell().rm(&target_file, None).expect("failed to delete file");
+		}
+
+		let _ = client.push(path, target_dir).expect("failed to push file");
+
+		client
+			.shell()
+			.pm()
+			.install(
+				&target_file,
+				Some(InstallOptions {
+					user: None,
+					dont_kill: false,
+					restrict_permissions: false,
+					package_name: None,
+					install_location: Some(InstallLocationOption::Auto),
+					grant_permissions: false,
+					force: true,
+					replace_existing_application: true,
+					allow_version_downgrade: true,
+				}),
+			)
+			.expect("failed to install package");
+
+		let is_installed = client
+			.shell()
+			.pm()
+			.is_installed(package_name, None)
+			.expect("failed to check if package is installed");
+		assert!(is_installed);
 	}
 }

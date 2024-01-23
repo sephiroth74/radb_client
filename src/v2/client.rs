@@ -14,12 +14,11 @@ use simple_cmd::prelude::OutputExt;
 use simple_cmd::{Cmd, CommandBuilder};
 use uuid::Uuid;
 
-use crate::types::RebootType;
 use crate::v2::error::Error;
 use crate::v2::prelude::*;
 use crate::v2::result::Result;
 use crate::v2::traits::AsArgs;
-use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType, Reconnect, Shell, Wakefulness};
+use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType, RebootType, Reconnect, Shell, Wakefulness};
 
 static GET_STATE_TIMEOUT: u64 = 200;
 static SLEEP_AFTER_ROOT: u64 = 1_000;
@@ -327,6 +326,16 @@ impl Client {
 	{
 		let mut command = CommandBuilder::from(self);
 		command = command.arg("pull").arg(src.as_str()?).arg(dst.as_str()?);
+		command.build().output().map_err(|e| e.into())
+	}
+
+	pub fn push<S, T>(&self, src: S, dst: T) -> Result<Output>
+	where
+		S: Arg,
+		T: Arg,
+	{
+		let mut command = CommandBuilder::from(self);
+		command = command.arg("push").arg(src.as_str()?).arg(dst.as_str()?);
 		command.build().output().map_err(|e| e.into())
 	}
 
