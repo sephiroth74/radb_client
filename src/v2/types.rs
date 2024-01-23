@@ -10,7 +10,7 @@ use strum_macros::{Display, EnumIter, IntoStaticStr};
 pub struct Adb(pub(crate) PathBuf);
 
 #[allow(dead_code)]
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ConnectionType {
 	TcpIp(SocketAddr),
 	Transport(u8),
@@ -45,6 +45,7 @@ pub struct AdbDevice {
 	pub product: String,
 	pub model: String,
 	pub device: String,
+	pub connected: bool,
 	pub addr: ConnectionType,
 }
 

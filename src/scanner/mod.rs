@@ -1,6 +1,6 @@
-use std::net::SocketAddr;
-
 use mac_address::MacAddress;
+
+use crate::v2::types::ConnectionType;
 
 #[cfg(feature = "scanner")]
 mod impls;
@@ -13,10 +13,10 @@ pub struct Scanner {
 	debug: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 #[cfg(feature = "scanner")]
 pub struct ClientResult {
-	pub addr: SocketAddr,
+	pub conn: ConnectionType,
 	pub product: Option<String>,
 	pub model: Option<String>,
 	pub device: Option<String>,

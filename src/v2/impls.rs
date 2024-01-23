@@ -41,9 +41,10 @@ impl TryFrom<&str> for Wakefulness {
 
 impl Display for AdbDevice {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+		let connected = if self.connected { "device" } else { "offline" };
 		write!(
 			f,
-			"{} product:{} model:{}, device:{} addr:{}",
+			"{} {connected} product:{} model:{}, device:{} addr:{}",
 			self.name, self.product, self.model, self.device, self.addr
 		)
 	}

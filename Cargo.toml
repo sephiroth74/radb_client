@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "0.3.0-alpha1"
+version = "0.4.0"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -19,7 +19,7 @@ java-properties = "2.0.0"
 regex = "1.10.3"
 strum_macros = "0.25.3"
 time = { version = "0.3.31", features = ["macros"] }
-which = "5.0.0"
+which = "6.0.0"
 mac_address = "1.1.5"
 uuid = { version = "1.7.0", features = ["v4"] }
 arboard = "3.3.0"
@@ -36,7 +36,7 @@ threadpool = { version = "1.8.1", optional = true }
 cmd_lib = "1.9.3"
 tracing = "0.1.40"
 simple-cmd = "0.0.18"
-cached = { version = "0.47.0" }
+cached = { version = "0.48.1" }
 serde = { version = "1.0.195", features = ["derive"] }
 cidr-utils = "0.6.1"
 strum = "0.25.0"

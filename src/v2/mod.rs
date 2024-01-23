@@ -1,3 +1,5 @@
+#![doc = include_str!("../../README.md")]
+
 pub mod error;
 pub mod result;
 pub mod traits;
@@ -12,4 +14,5 @@ mod impls;
 mod pm;
 mod prelude;
 mod shell;
-mod test;
+
+pub(crate) mod test;
