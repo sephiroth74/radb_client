@@ -12,10 +12,10 @@ use simple_cmd::prelude::OutputExt;
 use simple_cmd::{Cmd, CommandBuilder};
 use which::which;
 
-use crate::v2::error::Error;
-use crate::v2::prelude::*;
-use crate::v2::result::Result;
-use crate::v2::types::{Adb, AdbDevice, ConnectionType};
+use crate::error::Error;
+use crate::prelude::*;
+use crate::result::Result;
+use crate::types::{Adb, AdbDevice, ConnectionType};
 
 impl Adb {
 	pub fn new() -> Result<Adb> {
@@ -92,7 +92,7 @@ impl Adb {
 						let connected = c.name("status").unwrap().as_str() == "device";
 
 						if let Ok(d) = match ConnectionType::try_from_ip(ip) {
-							Ok(addr) => Ok::<ConnectionType, crate::v2::error::Error>(addr),
+							Ok(addr) => Ok::<ConnectionType, crate::error::Error>(addr),
 							Err(_) => Ok(ConnectionType::Transport(tr)),
 						} {
 							let device = AdbDevice {
@@ -203,11 +203,11 @@ impl Into<PathBuf> for Adb {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
 	use std::path::PathBuf;
 
-	use crate::v2::test::test::init_log;
-	use crate::v2::types::{Adb, Client, ConnectionType};
+	use crate::test::test::init_log;
+	use crate::types::{Adb, Client, ConnectionType};
 
 	static DEVICE_IP: &'static str = "192.168.1.34:5555";
 

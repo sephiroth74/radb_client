@@ -8,9 +8,9 @@ use cidr_utils::cidr::InetIterator;
 use crossbeam_channel::Sender;
 use itertools::Either;
 
+use crate::error::Error;
 use crate::scanner::{ClientResult, Scanner};
-use crate::v2::error::Error;
-use crate::v2::types::{Adb, AdbDevice, Client, ConnectionType};
+use crate::types::{Adb, AdbDevice, Client, ConnectionType};
 
 static TCP_TIMEOUT_MS: u64 = 200;
 static ADB_TIMEOUT_MS: u64 = 100;
@@ -220,8 +220,8 @@ pub(crate) mod test {
 	use itertools::Either;
 
 	use crate::scanner::Scanner;
-	use crate::v2::test::test::init_log;
-	use crate::v2::types::Adb;
+	use crate::test::test::init_log;
+	use crate::types::Adb;
 
 	#[test]
 	fn test_scan() {

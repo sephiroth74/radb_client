@@ -15,12 +15,11 @@ use simple_cmd::prelude::OutputExt;
 use simple_cmd::{Cmd, CommandBuilder};
 use uuid::Uuid;
 
-use crate::v2::error::Error;
-use crate::v2::prelude::*;
-use crate::v2::result::Result;
-use crate::v2::shell;
-use crate::v2::traits::AsArgs;
-use crate::v2::types::{
+use crate::error::Error;
+use crate::prelude::*;
+use crate::result::Result;
+use crate::traits::AsArgs;
+use crate::types::{
 	Adb, AdbDevice, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell, Wakefulness,
 };
 
@@ -251,7 +250,7 @@ impl Client {
 		}
 	}
 
-	/// print <serial-number>
+	/// print serial-number
 	pub fn get_seriano(&self) -> Result<String> {
 		let output = CommandBuilder::from(self).arg("get-serialno").build().output()?;
 		Ok(Arg::as_str(&output.stdout)?.trim().to_string())
@@ -269,8 +268,8 @@ impl Client {
 		Ok(Arg::as_str(&output.stdout)?.trim().to_owned())
 	}
 
-	///  bugreport [PATH]
-	///     write bugreport to given PATH [default=bugreport.zip];
+	///  bugreport PATH
+	///     write bugreport to given PATH (default=bugreport.zip);
 	///     if PATH is a directory, the bug report is saved in that directory.
 	///     devices that don't support zipped bug reports output to stdout.
 	pub fn bug_report<T: Arg>(&self, output: Option<T>) -> Result<Output> {
@@ -392,7 +391,7 @@ impl Client {
 			Some(options) => args.extend(options),
 		}
 		args.push(path.as_str()?.into());
-		shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
+		super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
 	}
 
 	pub fn uninstall(&self, package_name: &str, keep_data: bool) -> Result<()> {
@@ -402,7 +401,7 @@ impl Client {
 		}
 
 		args.push(package_name);
-		shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
+		super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
 	}
 
 	/// return the client shell interface
@@ -418,7 +417,7 @@ impl Client {
 }
 
 impl TryFrom<ConnectionType> for Client {
-	type Error = crate::v2::error::Error;
+	type Error = crate::error::Error;
 
 	fn try_from(value: ConnectionType) -> std::result::Result<Self, Self::Error> {
 		let adb = Adb::new()?;
@@ -427,7 +426,7 @@ impl TryFrom<ConnectionType> for Client {
 }
 
 impl TryFrom<AdbDevice> for Client {
-	type Error = crate::v2::error::Error;
+	type Error = crate::error::Error;
 
 	fn try_from(value: AdbDevice) -> std::result::Result<Self, Self::Error> {
 		value.addr.try_into()
@@ -435,7 +434,7 @@ impl TryFrom<AdbDevice> for Client {
 }
 
 impl TryFrom<&AdbDevice> for Client {
-	type Error = crate::v2::error::Error;
+	type Error = crate::error::Error;
 
 	fn try_from(value: &AdbDevice) -> std::result::Result<Self, Self::Error> {
 		value.addr.try_into()
@@ -464,11 +463,11 @@ mod test {
 	use chrono::Local;
 	use simple_cmd::prelude::OutputExt;
 
-	use crate::v2::error::Error;
-	use crate::v2::test::test::{
+	use crate::error::Error;
+	use crate::test::test::{
 		client_from, connect_client, connect_emulator, connect_tcp_ip_client, connection_from_tcpip, init_log, test_files_dir,
 	};
-	use crate::v2::types::{AdbInstallOptions, Client, ConnectionType, LogcatLevel, LogcatOptions, LogcatTag, Reconnect};
+	use crate::types::{AdbInstallOptions, Client, ConnectionType, LogcatLevel, LogcatOptions, LogcatTag, Reconnect};
 
 	#[test]
 	fn test_new_client() {

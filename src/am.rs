@@ -4,9 +4,9 @@ use std::process::Output;
 use cmd_lib::AsOsStr;
 use simple_cmd::prelude::OutputExt;
 
-use crate::v2::result::Result;
-use crate::v2::traits::AsArgs;
-use crate::v2::types::{ActivityManager, Intent, MemoryStatus, UserOption};
+use crate::result::Result;
+use crate::traits::AsArgs;
+use crate::types::{ActivityManager, Intent, MemoryStatus, UserOption};
 
 impl<'a> ActivityManager<'a> {
 	/// Force stop a package
@@ -102,7 +102,7 @@ impl<'a> ActivityManager<'a> {
 		ActivityManager::handle_result(result)
 	}
 
-	/// Send a memory trim event to a <PROCESS>.  May also supply a raw trim int level.
+	/// Send a memory trim event to a PROCESS.  May also supply a raw trim int level.
 	pub fn trim_memory(&self, process_name: &str, status: MemoryStatus) -> Result<()> {
 		let result = self.parent.exec(
 			[
@@ -150,14 +150,14 @@ impl<'a> ActivityManager<'a> {
 
 	#[inline]
 	fn handle_result(result: Output) -> Result<()> {
-		crate::v2::shell::handle_result(result)
+		crate::shell::handle_result(result)
 	}
 }
 
 #[cfg(test)]
 mod test {
-	use crate::v2::test::test::{connect_emulator, connect_tcp_ip_client, init_log, root_client};
-	use crate::v2::types::{Intent, MemoryStatus, UserOption};
+	use crate::test::test::{connect_emulator, connect_tcp_ip_client, init_log, root_client};
+	use crate::types::{Intent, MemoryStatus, UserOption};
 
 	#[test]
 	fn test_force_stop() {

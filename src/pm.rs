@@ -5,11 +5,11 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
 
-use crate::v2::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
-use crate::v2::error::Error;
-use crate::v2::result::Result;
-use crate::v2::shell::handle_result;
-use crate::v2::types::{
+use crate::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
+use crate::error::Error;
+use crate::result::Result;
+use crate::shell::handle_result;
+use crate::types::{
 	InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, Package, PackageFlags, PackageManager,
 	RuntimePermission, UninstallOptions,
 };
@@ -56,7 +56,7 @@ impl<'a> PackageManager<'a> {
 		}
 		args.push(package_name);
 		args.push(permission);
-		super::shell::handle_result(self.parent.exec(args, None, None)?)
+		handle_result(self.parent.exec(args, None, None)?)
 	}
 
 	// Revoke permission to given package
@@ -71,12 +71,12 @@ impl<'a> PackageManager<'a> {
 		}
 		args.push(package_name);
 		args.push(permission);
-		super::shell::handle_result(self.parent.exec(args, None, None)?)
+		handle_result(self.parent.exec(args, None, None)?)
 	}
 
 	/// Revert all runtime permissions to their default state
 	pub fn reset_permissions(&self) -> Result<()> {
-		super::shell::handle_result(self.parent.exec(
+		handle_result(self.parent.exec(
 			vec![
 				"pm",
 				"reset-permissions",
@@ -270,7 +270,7 @@ impl<'a> PackageManager<'a> {
 			]);
 		}
 		args.push(package_or_component);
-		super::shell::handle_result(self.parent.exec(args, None, None)?)
+		handle_result(self.parent.exec(args, None, None)?)
 	}
 }
 
@@ -278,8 +278,8 @@ impl<'a> PackageManager<'a> {
 mod test {
 	use itertools::Itertools;
 
-	use crate::v2::test::test::*;
-	use crate::v2::types::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter};
+	use crate::test::test::*;
+	use crate::types::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter};
 
 	#[test]
 	fn test_path() {

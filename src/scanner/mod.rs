@@ -1,6 +1,6 @@
 use mac_address::MacAddress;
 
-use crate::v2::types::ConnectionType;
+use crate::types::ConnectionType;
 
 #[cfg(feature = "scanner")]
 mod impls;

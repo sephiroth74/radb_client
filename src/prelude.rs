@@ -1,6 +1,6 @@
 use simple_cmd::CommandBuilder;
 
-use crate::v2::types::{Adb, Client, ConnectionType};
+use crate::types::{Adb, Client, ConnectionType};
 
 pub(crate) trait CommandBuilderExt {
 	fn client<C>(self, client: C) -> Self

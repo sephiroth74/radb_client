@@ -1,9 +1,9 @@
 use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 
-use crate::v2::error::Error;
-use crate::v2::result::Result;
-use crate::v2::types::{InstallPermission, PackageFlags, RuntimePermission};
+use crate::error::Error;
+use crate::result::Result;
+use crate::types::{InstallPermission, PackageFlags, RuntimePermission};
 
 lazy_static! {
 	static ref RE_PACKAGES: Regex = Regex::new("(?m)^Packages:\\n").unwrap();

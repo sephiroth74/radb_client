@@ -4,9 +4,9 @@ use std::net::{AddrParseError, SocketAddr};
 use std::str::FromStr;
 use std::vec::IntoIter;
 
-use crate::v2::error::Error;
-use crate::v2::traits::AsArgs;
-use crate::v2::types::ConnectionType;
+use crate::error::Error;
+use crate::traits::AsArgs;
+use crate::types::ConnectionType;
 
 #[allow(dead_code)]
 impl ConnectionType {
@@ -28,7 +28,7 @@ impl ConnectionType {
 		ConnectionType::TcpIp(socket_addr.into())
 	}
 
-	pub fn try_from_ip(value: &str) -> crate::v2::result::Result<ConnectionType> {
+	pub fn try_from_ip(value: &str) -> crate::result::Result<ConnectionType> {
 		Ok(ConnectionType::TcpIp(value.parse()?))
 	}
 }
@@ -101,10 +101,10 @@ mod test {
 	use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
 	use std::str::FromStr;
 
-	use crate::v2::test::test::init_log;
+	use crate::test::test::init_log;
 	use simple_cmd::debug::CommandDebug;
 
-	use crate::v2::types::ConnectionType;
+	use crate::types::ConnectionType;
 
 	#[test]
 	fn test_parse_address() {

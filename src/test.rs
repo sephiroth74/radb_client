@@ -15,7 +15,7 @@ pub(crate) mod test {
 	use signal_hook::iterator::Signals;
 	use tracing_appender::non_blocking::WorkerGuard;
 
-	use crate::v2::types::{Adb, Client, ConnectionType};
+	use crate::types::{Adb, Client, ConnectionType};
 
 	pub(crate) static DEVICE_IP: &'static str = "192.168.1.101:5555";
 	pub(crate) static TRANSPORT_ID: u8 = 4;

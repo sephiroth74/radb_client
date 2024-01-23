@@ -15,11 +15,11 @@ use simple_cmd::debug::CommandDebug;
 use simple_cmd::prelude::OutputExt;
 use simple_cmd::CommandBuilder;
 
-use crate::v2::error::Error;
-use crate::v2::prelude::*;
-use crate::v2::result::Result;
-use crate::v2::traits::AsArg;
-use crate::v2::types::{
+use crate::error::Error;
+use crate::prelude::*;
+use crate::result::Result;
+use crate::traits::AsArg;
+use crate::types::{
 	ActivityManager, DumpsysPriority, FFPlayOptions, InputSource, KeyCode, KeyEventType, MotionEvent, PackageManager, PropType,
 	Property, SELinuxType, ScreenRecordOptions, SettingsType, Shell,
 };
@@ -291,8 +291,8 @@ impl<'a> Shell<'a> {
 	/// # Example
 	///
 	/// ```rust
-	/// use radb_client::v2::types::Client;
-	/// use radb_client::v2::types::ConnectionType;
+	/// use radb_client::types::Client;
+	/// use radb_client::types::ConnectionType;
 	///
 	/// fn get_user() {
 	///     let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
@@ -876,8 +876,8 @@ impl<'a> Shell<'a> {
 	///
 	/// usage: dumpsys
 	///         To dump all services.
-	///or:
-	///       dumpsys [-t TIMEOUT] [--priority LEVEL] [--pid] [--thread] [--help | -l | --skip SERVICES | SERVICE [ARGS]]
+	/// or:
+	///       dumpsys -t TIMEOUT --priority LEVEL --pid --thread \[--help | -l | --skip SERVICES | SERVICE ARGS\]
 	///         --help: shows this help
 	///         -l: only list services, do not dump them
 	///         -t TIMEOUT_SEC: TIMEOUT to use in seconds instead of default 10 seconds
@@ -889,7 +889,7 @@ impl<'a> Shell<'a> {
 	///         --priority LEVEL: filter services based on specified priority
 	///               LEVEL must be one of CRITICAL | HIGH | NORMAL
 	///         --skip SERVICES: dumps all services but SERVICES (comma-separated list)
-	///         SERVICE [ARGS]: dumps only service SERVICE, optionally passing ARGS to it
+	///         SERVICE \[ARGS\]: dumps only service SERVICE, optionally passing ARGS to it
 	pub fn dumpsys(
 		&self,
 		service: Option<&str>,
@@ -1137,9 +1137,9 @@ mod test {
 	use simple_cmd::prelude::OutputExt;
 	use strum::IntoEnumIterator;
 
-	use crate::v2::test::test::*;
-	use crate::v2::types::KeyCode::{KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_HOME};
-	use crate::v2::types::{
+	use crate::test::test::*;
+	use crate::types::KeyCode::{KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_HOME};
+	use crate::types::{
 		DumpsysPriority, InputSource, KeyCode, MotionEvent, PropType, SELinuxType, ScreenRecordOptions, SettingsType,
 	};
 
@@ -1159,7 +1159,7 @@ mod test {
 		let whoami = client.shell().whoami().expect("failed to get user");
 		println!("whoami: {whoami}");
 
-		let result: crate::v2::result::Result<bool> = client.shell().is_root();
+		let result: crate::result::Result<bool> = client.shell().is_root();
 		let is_root = result.expect("failed to get root status");
 		if whoami.eq_ignore_ascii_case("root") {
 			assert!(is_root);

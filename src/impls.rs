@@ -6,9 +6,9 @@ use cmd_lib::AsOsStr;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::v2::error::Error;
-use crate::v2::traits::{AsArg, AsArgs};
-use crate::v2::types::{
+use crate::error::Error;
+use crate::traits::{AsArg, AsArgs};
+use crate::types::{
 	AdbDevice, AdbInstallOptions, Extra, FFPlayOptions, InputSource, InstallLocationOption, InstallOptions, InstallPermission,
 	Intent, KeyCode, KeyEventType, ListPackageDisplayOptions, ListPackageFilter, LogcatLevel, LogcatOptions, LogcatTag,
 	MemoryStatus, MotionEvent, Package, PackageFlags, PropType, Property, RebootType, Reconnect, RuntimePermission, SELinuxType,
@@ -22,7 +22,7 @@ lazy_static! {
 // region Wakefulness
 
 impl TryFrom<&str> for Wakefulness {
-	type Error = crate::v2::error::Error;
+	type Error = crate::error::Error;
 
 	fn try_from(value: &str) -> Result<Self, Self::Error> {
 		match value.to_lowercase().as_str() {
