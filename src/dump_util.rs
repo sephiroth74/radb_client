@@ -3,7 +3,7 @@ use regex::{Regex, RegexBuilder};
 
 use crate::error::Error;
 use crate::result::Result;
-use crate::types::{InstallPermission, PackageFlags, RuntimePermission};
+use crate::types::{InstallPermission, PackageFlags, RuntimePermission, SimplePackageReader};
 
 lazy_static! {
 	static ref RE_PACKAGES: Regex = Regex::new("(?m)^Packages:\\n").unwrap();
@@ -23,10 +23,6 @@ lazy_static! {
 		Regex::new("(?m)^\\s{3,}install permissions:\n(?P<permissions>(\\s{4,}[^\\:]+:\\s+granted=(true|false)\n)+)").unwrap();
 	static ref RE_INSTALL_PERMISSION: Regex =
 		Regex::new("(?m)^\\s{4,}(?P<name>[^\\:]+):\\s+granted=(?P<granted>true|false)$").unwrap();
-}
-
-pub struct SimplePackageReader<'a> {
-	data: &'a str,
 }
 
 #[allow(dead_code)]

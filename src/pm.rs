@@ -5,13 +5,13 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
 
-use crate::dump_util::{package_flags, runtime_permissions, SimplePackageReader};
+use crate::dump_util::{package_flags, runtime_permissions};
 use crate::error::Error;
 use crate::result::Result;
 use crate::shell::handle_result;
 use crate::types::{
 	InstallOptions, InstallPermission, ListPackageDisplayOptions, ListPackageFilter, Package, PackageFlags, PackageManager,
-	RuntimePermission, UninstallOptions,
+	RuntimePermission, SimplePackageReader, UninstallOptions,
 };
 
 static DUMP_TIMEOUT: Option<Duration> = Some(Duration::from_secs(1));

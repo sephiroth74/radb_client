@@ -681,3 +681,7 @@ pub struct AdbInstallOptions {
 	// --instant: Cause the app to be installed as an ephemeral install app
 	pub instant: bool,
 }
+
+pub struct SimplePackageReader<'a> {
+	pub(crate) data: &'a str,
+}
