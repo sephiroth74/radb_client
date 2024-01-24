@@ -1,6 +1,6 @@
 # radb_client
 
-ADB client written for rust.
+Simple Android **adb** client for rust.
 
 [![crates.io](https://img.shields.io/crates/v/radb_client.svg)](https://crates.io/crates/radb_client/)
 
