@@ -551,8 +551,7 @@ mod test {
 	#[test]
 	fn test_install_uninstall() {
 		init_log();
-		let client = connect_tcp_ip_client();
-		root_client(&client);
+		let client = connect_emulator();
 		let test_files_dir = test_files_dir();
 
 		println!("test_files_dir: {:?}", test_files_dir);
@@ -568,10 +567,16 @@ mod test {
 			.is_installed(package_name, None)
 			.expect("failed to check if package is installed");
 		if is_installed {
+			let package_path = client
+				.shell()
+				.pm()
+				.path(package_name, None)
+				.expect("failed to get package path");
 			client
 				.shell()
 				.pm()
 				.uninstall(package_name, None)
+				.and(client.shell().rm(package_path, vec!["-fr"]).or_else(|_| Ok(())))
 				.expect("failed to uninstall package");
 			assert!(!client.shell().pm().is_installed(package_name, None).unwrap());
 		}
@@ -581,7 +586,7 @@ mod test {
 
 		let exists = client.shell().exists(&target_file).expect("failed to check for device file");
 		if exists {
-			client.shell().rm(&target_file, None).expect("failed to delete file");
+			client.shell().rm(&target_file, vec![]).expect("failed to delete file");
 		}
 
 		let _ = client.push(path, target_dir).expect("failed to push file");

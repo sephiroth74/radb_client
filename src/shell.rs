@@ -806,12 +806,12 @@ impl<'a> Shell<'a> {
 		self.test_file(path, "e")
 	}
 
-	pub fn rm<T: Arg>(&self, path: T, options: Option<Vec<&str>>) -> Result<()> {
-		let mut args = vec!["rm"];
-		if let Some(options) = options {
-			args.extend(options);
+	pub fn rm<T: Arg>(&self, path: T, arguments: Vec<&str>) -> Result<()> {
+		let mut args = vec!["rm".as_os_str()];
+		for arg in arguments {
+			args.push(arg.into());
 		}
-		args.push(path.as_str()?);
+		args.push(path.as_str()?.into());
 		let result = self.exec(args, None, None)?;
 		handle_result(result)
 	}
@@ -1499,7 +1499,7 @@ mod test {
 
 		if client.shell().exists("/sdcard/Download/screencap.png").unwrap() {
 			// remove the file
-			client.shell().rm("/sdcard/Download/screencap.png", None).unwrap();
+			client.shell().rm("/sdcard/Download/screencap.png", vec![]).unwrap();
 		}
 
 		client
@@ -1516,7 +1516,7 @@ mod test {
 			.pull("/sdcard/Download/screencap.png", tmp_dir)
 			.expect("failed to pull file");
 
-		client.shell().rm("/sdcard/Download/screencap.png", None).unwrap();
+		client.shell().rm("/sdcard/Download/screencap.png", vec![]).unwrap();
 	}
 
 	#[test]

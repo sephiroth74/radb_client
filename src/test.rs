@@ -13,7 +13,9 @@ pub(crate) mod test {
 	use regex::Regex;
 	use signal_hook::consts::SIGINT;
 	use signal_hook::iterator::Signals;
+	use tracing::level_filters::LevelFilter;
 	use tracing_appender::non_blocking::WorkerGuard;
+	use tracing_subscriber::EnvFilter;
 
 	use crate::types::{Adb, Client, ConnectionType};
 
@@ -34,12 +36,20 @@ pub(crate) mod test {
 				.with_thread_ids(false)
 				.with_line_number(false)
 				.with_file(false)
-				.with_target(false)
+				.with_target(true)
 				.with_level(false)
 				.without_time()
 				.with_writer(non_blocking);
 
-			let subscriber = registry.with(layer1);
+			let filter = EnvFilter::builder()
+				.with_default_directive(LevelFilter::TRACE.into())
+				.from_env()
+				.unwrap()
+				.add_directive("simple_cmd=trace".parse().unwrap())
+				.add_directive("hyper::proto=warn".parse().unwrap())
+				.add_directive("hyper::client=warn".parse().unwrap());
+
+			let subscriber = registry.with(layer1).with(filter);
 			tracing::subscriber::set_global_default(subscriber).unwrap();
 			GUARDS.lock().unwrap().push(guard);
 		})
