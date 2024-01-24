@@ -14,7 +14,8 @@ use radb_client::{*};
 pub fn main() {
     let adb = Adb::new().unwrap();
     let device_ip = String::from("192.168.1.128");
-    let client = ConnectionType::try_from_ip(device_ip).unwrap();
+    let conn = ConnectionType::try_from_ip(device_ip).unwrap();
+    let client = Client::try_from(conn).unwrap();
 
     match client.connect() {
         Ok(()) => println!("Device connected"),
