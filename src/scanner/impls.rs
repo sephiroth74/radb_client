@@ -106,21 +106,6 @@ impl Scanner {
 				drop(tx);
 			});
 		}
-
-		let tx = tx.clone();
-		tp.execute(move || {
-			let connected_devices: Vec<ClientResult> = adb
-				.list_devices(debug)
-				.unwrap_or(vec![])
-				.iter()
-				.filter_map(|device| if device.connected { Some(device.into()) } else { None })
-				.collect::<Vec<_>>();
-
-			for device in connected_devices {
-				let _ = tx.send(Either::Right(device));
-			}
-			drop(tx);
-		});
 	}
 }
 
