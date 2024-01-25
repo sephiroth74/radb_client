@@ -229,7 +229,7 @@ impl Client {
 		Ok(())
 	}
 
-	/// copy screencap to clipboard
+	/// copy the device screenshot to clipboard
 	pub fn copy_screencap(&self) -> Result<()> {
 		let mut dir = temp_dir();
 		let file_name = format!("{}.png", Uuid::new_v4());
