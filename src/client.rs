@@ -31,7 +31,21 @@ impl Client {
 
 	/// Attempt to connect to a tcp/ip client, optionally waiting until the given
 	/// timeout expires.
-	/// If debug is set to true, the executed command will be logged out.
+	/// # Examples:
+	/// ```rust
+	/// use radb_client::types::ConnectionType;
+	/// use radb_client::types::Client;
+	///
+	/// pub fn main() {
+	/// 	use std::time::Duration;
+	/// 	let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+	/// 	let client = Client::try_from(conn).unwrap();
+	/// 	match client.connect(Some(Duration::from_secs(1))) {
+	/// 		Ok(_) => println!("client connected!"),
+	/// 		Err(err) => eprintln!("failed to connect: {err}"),
+	/// 	}
+	/// }
+	/// ```
 	pub fn connect(&self, timeout: Option<Duration>) -> Result<()> {
 		if self.is_connected() {
 			return Ok(());
@@ -141,6 +155,7 @@ impl Client {
 		Ok(awake.try_into()?)
 	}
 
+	/// Return true if the device is awake
 	pub fn is_awake(&self) -> Result<bool> {
 		Ok(self.get_wakefulness()? != Wakefulness::Asleep)
 	}
@@ -166,11 +181,31 @@ impl Client {
 		}
 	}
 
+	/// unroot the adb connection
 	pub fn unroot(&self) -> Result<()> {
 		super::shell::handle_result(CommandBuilder::from(self).arg("unroot").build().output()?)
 	}
 
-	/// Save screencap to local file
+	/// Save screencap to local file.
+	/// # Examples:
+	/// ```rust
+	/// use std::fs::File;
+	/// use radb_client::types::{Client, ConnectionType};
+	/// fn test_save_screencap_locally() {
+	/// 	let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+	/// 	let client = Client::try_from(conn).unwrap();
+	/// 	client.connect(None).unwrap();
+	///
+	///    	let output = dirs::desktop_dir().unwrap().join("screencap.png");
+	///    	let output_path = output.as_path();
+	///    	let file = File::create(output_path).expect("failed to create file");
+	///    	let result = client.save_screencap(file);
+	/// 	match result {
+	/// 		Ok(_) => println!("screenshot saved"),
+	/// 		Err(err) => eprintln!("failed to save screenshot: {err}"),
+	/// 	}
+	///    }
+	/// ```
 	pub fn save_screencap(&self, output: File) -> Result<()> {
 		let args = vec![
 			"exec-out",
