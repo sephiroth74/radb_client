@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "1.0.2"
+version = "1.0.3"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -18,7 +18,7 @@ lazy_static = "1.4.0"
 java-properties = "2.0.0"
 regex = "1.10.3"
 strum_macros = "0.26.1"
-time = { version = "0.3.31", features = ["macros"] }
+time = { version = "0.3.34", features = ["macros"] }
 which = "6.0.0"
 mac_address = "1.1.5"
 uuid = { version = "1.7.0", features = ["v4"] }
@@ -26,9 +26,9 @@ arboard = "3.3.0"
 image = "0.24.8"
 num_cpus = "1.16.0"
 thiserror = "1.0.56"
-rustix = "0.38.30"
+rustix = "0.38.31"
 dirs = "5.0.1"
-itertools = "0.12.0"
+itertools = "0.12.1"
 crossbeam = "0.8.4"
 signal-hook = "0.3.17"
 crossbeam-channel = "0.5.11"
