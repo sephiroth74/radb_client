@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::env::temp_dir;
+use std::ffi::OsString;
 
 use std::fs::File;
 use std::process::{Output, Stdio};
@@ -19,7 +20,9 @@ use crate::error::Error;
 use crate::prelude::*;
 use crate::result::Result;
 use crate::traits::AsArgs;
-use crate::types::{Adb, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell, Wakefulness};
+use crate::types::{
+	Adb, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell, UninstallOptions, Wakefulness,
+};
 
 static GET_STATE_TIMEOUT: u64 = 200;
 static SLEEP_AFTER_ROOT: u64 = 1_000;
@@ -431,13 +434,13 @@ impl Client {
 		super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
 	}
 
-	pub fn uninstall(&self, package_name: &str, keep_data: bool) -> Result<()> {
-		let mut args = vec!["uninstall"];
-		if keep_data {
-			args.push("-k");
+	pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> Result<()> {
+		let mut args: Vec<OsString> = vec!["uninstall".into()];
+		match options {
+			None => {}
+			Some(options) => args.extend(options.into_iter()),
 		}
-
-		args.push(package_name);
+		args.push(package_name.into());
 		super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
 	}
 
@@ -783,7 +786,7 @@ mod test {
 			.is_installed(package_name, None)
 			.expect("failed to check if package is installed");
 		if is_installed {
-			client.uninstall(package_name, false).expect("failed to uninstall package");
+			client.uninstall(package_name, None).expect("failed to uninstall package");
 			assert!(!client.shell().pm().is_installed(package_name, None).unwrap());
 		}
 
