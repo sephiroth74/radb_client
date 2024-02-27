@@ -3,7 +3,7 @@ use regex::{Regex, RegexBuilder};
 
 use crate::error::Error;
 use crate::result::Result;
-use crate::types::{InstallPermission, PackageFlags, RuntimePermission, SimplePackageReader};
+use crate::types::{DexoptState, InstallPermission, PackageFlags, RuntimePermission, SimplePackageReader};
 
 lazy_static! {
 	static ref RE_PACKAGES: Regex = Regex::new("(?m)^Packages:\\n").unwrap();
@@ -23,23 +23,51 @@ lazy_static! {
 		Regex::new("(?m)^\\s{3,}install permissions:\n(?P<permissions>(\\s{4,}[^\\:]+:\\s+granted=(true|false)\n)+)").unwrap();
 	static ref RE_INSTALL_PERMISSION: Regex =
 		Regex::new("(?m)^\\s{4,}(?P<name>[^\\:]+):\\s+granted=(?P<granted>true|false)$").unwrap();
+	static ref RE_DEXOPT_STATE: Regex = Regex::new("(?m)^Dexopt state:\\n").unwrap();
+	static ref RE_PACKAGE_NAME: Regex = Regex::new(r#"^\s+\[[\w.]+]$"#).unwrap();
+	static ref RE_PACKAGE_PATH: Regex = Regex::new(r#"^\s+path:\s*(?<path>[^\n]+)$"#).unwrap();
 }
 
 #[allow(dead_code)]
 impl<'a> SimplePackageReader<'a> {
 	pub fn new(data: &'a str) -> Result<SimplePackageReader<'a>> {
+		let mut packages_data: Option<&str> = None;
+		let mut dexopt_data: Option<&str> = None;
+
 		if let Some(m) = RE_PACKAGES.captures(data) {
 			if m.len() == 1 {
 				let mut new_data = &data[m.get(0).unwrap().end()..];
 				if let Some(m) = RE_NEW_EMPTY_LINE.captures(new_data) {
 					if m.len() == 1 {
 						new_data = &new_data[..m.get(0).unwrap().start()];
-						return Ok(SimplePackageReader { data: new_data });
+						packages_data = Some(new_data);
+						//return Ok(SimplePackageReader { data: new_data });
 					}
 				}
 			}
 		}
-		return Err(Error::ParseInputError);
+
+		if let Some(m) = RE_DEXOPT_STATE.captures(data) {
+			if m.len() == 1 {
+				let mut new_data = &data[m.get(0).unwrap().end()..];
+				if let Some(m) = RE_NEW_EMPTY_LINE.captures(new_data) {
+					if m.len() == 1 {
+						new_data = &new_data[..m.get(0).unwrap().start()];
+						dexopt_data = Some(new_data);
+					}
+				}
+			}
+		}
+
+		return match packages_data {
+			Some(data) => Ok(SimplePackageReader {
+				data,
+				dexopt: DexoptState {
+					data: dexopt_data.take().unwrap_or(""),
+				},
+			}),
+			None => Err(Error::ParseInputError),
+		};
 	}
 
 	pub fn requested_permissions(&self) -> Option<Vec<String>> {
@@ -145,6 +173,30 @@ impl<'a> SimplePackageReader<'a> {
 	}
 }
 
+impl<'a> DexoptState<'a> {
+	pub fn get_package_path(&self, package_name: &str) -> Option<&str> {
+		let re_string = format!("^\\s+\\[{package_name}\\]$");
+		let re_package_name: Regex = Regex::new(&re_string).unwrap();
+
+		let mut in_section = false;
+
+		for line in self.data.lines() {
+			if let Some(_m) = re_package_name.captures(line) {
+				in_section = true;
+				continue;
+			}
+
+			if in_section {
+				if let Some(m) = RE_PACKAGE_PATH.captures(line) {
+					let group = m.name("path").map(|it| it.as_str());
+					return group;
+				}
+			}
+		}
+		return None;
+	}
+}
+
 pub fn is_system(data: &str) -> Result<bool> {
 	Ok(package_flags(data)?.contains(&PackageFlags::System))
 }
@@ -196,5 +248,17 @@ pub(crate) fn package_flags(dump: &str) -> Result<Vec<PackageFlags>> {
 		}
 	} else {
 		Err(Error::ParseInputError)
+	}
+}
+
+#[allow(dead_code)]
+pub fn is_installed(data: &str, package_name: &str) -> Option<String> {
+	match SimplePackageReader::new(data) {
+		Ok(reader) => {
+			let dex = reader.dexopt;
+			let result = dex.get_package_path(package_name).take().map(|s| s.to_string());
+			result
+		}
+		Err(_) => None,
 	}
 }

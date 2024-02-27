@@ -684,4 +684,9 @@ pub struct AdbInstallOptions {
 
 pub struct SimplePackageReader<'a> {
 	pub(crate) data: &'a str,
+	pub dexopt: DexoptState<'a>,
+}
+
+pub struct DexoptState<'a> {
+	pub(crate) data: &'a str,
 }

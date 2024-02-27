@@ -279,7 +279,7 @@ mod test {
 	use itertools::Itertools;
 
 	use crate::test::test::*;
-	use crate::types::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter};
+	use crate::types::{InstallLocationOption, InstallOptions, ListPackageDisplayOptions, ListPackageFilter, SimplePackageReader};
 
 	#[test]
 	fn test_path() {
@@ -440,8 +440,23 @@ mod test {
 			.pm()
 			.dump("com.android.bluetooth", None)
 			.expect("failed to dump package");
-		assert!(!dump.is_empty());
-		println!("dump: {dump}");
+		assert!(!&dump.is_empty());
+		//println!("dump: {dump}");
+
+		let reader = SimplePackageReader::new(dump.as_str()).unwrap();
+		let is_system = reader.is_system();
+		let code_path = reader.get_code_path();
+		let resource_path = reader.get_resource_path();
+		let data_dir = reader.get_data_dir();
+		let version_code = reader.get_version_code();
+		println!("is system: {is_system:?}");
+		println!("code path: {code_path:?}");
+		println!("resource path: {resource_path:?}");
+		println!("data dir: {data_dir:?}");
+		println!("version code: {version_code:?}");
+
+		let package_path = reader.dexopt.get_package_path("com.android.bluetooth");
+		println!("package path: {package_path:?}");
 	}
 
 	#[test]
