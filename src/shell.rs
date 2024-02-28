@@ -1140,7 +1140,8 @@ mod test {
 	use crate::test::test::*;
 	use crate::types::KeyCode::{KEYCODE_1, KEYCODE_2, KEYCODE_3, KEYCODE_DPAD_DOWN, KEYCODE_DPAD_RIGHT, KEYCODE_HOME};
 	use crate::types::{
-		DumpsysPriority, InputSource, KeyCode, MotionEvent, PropType, SELinuxType, ScreenRecordOptions, SettingsType,
+		DumpsysPriority, InputSource, Intent, KeyCode, MotionEvent, PropType, RebootType, SELinuxType, ScreenRecordOptions,
+		SettingsType,
 	};
 
 	#[test]
@@ -1880,5 +1881,34 @@ mod test {
 				],
 			)
 			.expect("failed to send key codes combination");
+	}
+
+	#[test]
+	fn test_dra() {
+		init_log();
+		let client = connect_tcp_ip_client();
+		client.reboot(Some(RebootType::Dra)).unwrap()
+	}
+
+	#[test]
+	fn test_factory_reset() {
+		init_log();
+		let client = connect_tcp_ip_client();
+
+		let intent = Intent {
+			action: Some("android.intent.action.FACTORY_RESET".to_string()),
+			data: None,
+			mime_type: None,
+			category: None,
+			component: None,
+			package: Some("android".to_string()),
+			user_id: None,
+			flags: 0,
+			receiver_foreground: true,
+			wait: false,
+			extra: Default::default(),
+		};
+
+		let _result = client.shell().am().broadcast(&intent).unwrap();
 	}
 }

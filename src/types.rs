@@ -188,6 +188,7 @@ pub enum RebootType {
 	Recovery,
 	Sideload,
 	SideloadAutoReboot,
+	Dra,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

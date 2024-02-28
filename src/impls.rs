@@ -438,6 +438,7 @@ impl Display for RebootType {
 			RebootType::Recovery => write!(f, "recovery"),
 			RebootType::Sideload => write!(f, "sideload"),
 			RebootType::SideloadAutoReboot => write!(f, "sideload-auto-reboot"),
+			RebootType::Dra => write!(f, "dra"),
 		}
 	}
 }
