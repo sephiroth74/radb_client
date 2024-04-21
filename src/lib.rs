@@ -3,11 +3,13 @@
 #[cfg(feature = "scanner")]
 pub mod scanner;
 
+pub mod cmdline_tools;
 pub mod error;
 pub mod prelude;
 pub mod result;
 pub mod traits;
 pub mod types;
+pub mod utils;
 
 pub(crate) mod adb;
 pub(crate) mod am;

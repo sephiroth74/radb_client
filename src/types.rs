@@ -9,6 +9,10 @@ use strum_macros::{Display, EnumIter, IntoStaticStr};
 #[repr(transparent)]
 pub struct Adb(pub(crate) PathBuf);
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct CmdlineTools(pub(crate) PathBuf);
+
 #[allow(dead_code)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ConnectionType {
