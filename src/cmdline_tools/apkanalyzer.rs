@@ -367,6 +367,7 @@ pub(crate) mod test {
 	fn test_dex_list() {
 		init_log();
 		let apk_path = PathBuf::from(APK_PATH);
+		assert!(apk_path.exists(), "apk path not found");
 		let apkanalyzer = ApkAnalyzer::new().expect("Failed to create ApkAnalyzer");
 		let result = apkanalyzer.dex_list(&apk_path).expect("Failed to get dex list");
 		assert!(result.len() > 0, "dex list len invalid");
@@ -379,6 +380,7 @@ pub(crate) mod test {
 	fn test_dex_code() {
 		init_log();
 		let apk_path = PathBuf::from(APK_PATH);
+		assert!(apk_path.exists(), "apk path not found");
 		let apkanalyzer = ApkAnalyzer::new().expect("Failed to create ApkAnalyzer");
 		let result = apkanalyzer
 			.dex_code(&apk_path, "com.swisscom.aot.library.commons.playback.contract.TimingInfo")
