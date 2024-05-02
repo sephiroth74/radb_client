@@ -1,10 +1,13 @@
 use std::fmt::{Display, Formatter};
 use std::io::BufRead;
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
 
 use anyhow::Error;
+
 use regex::Regex;
 use rustix::path::Arg;
+use simple_cmd::Cmd;
 
 use crate::cmdline_tools::{ApkAnalyzer, ApkSummary};
 
@@ -20,12 +23,13 @@ impl Display for ApkSummary {
 
 impl ApkAnalyzer {
 	pub fn new() -> anyhow::Result<Self> {
-		crate::utils::apk_analyzer().map(|path| ApkAnalyzer { path })
+		crate::utils::apk_analyzer().map(|path| ApkAnalyzer { path, debug: false })
 	}
 
-	pub fn from<P: AsRef<Path>>(path: P) -> Self {
+	pub fn from<P: AsRef<Path>>(path: P, debug: bool) -> Self {
 		ApkAnalyzer {
 			path: path.as_ref().to_path_buf(),
+			debug,
 		}
 	}
 
@@ -35,7 +39,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("version-name")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.trim().to_string()).map_err(|e| e.into())
@@ -47,7 +51,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("version-code")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.trim().to_string()).map_err(|e| e.into())
@@ -59,7 +63,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("application-id")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.trim().to_string()).map_err(|e| e.into())
@@ -71,7 +75,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("min-sdk")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str()?.trim().parse::<i64>().map_err(|e| e.into())
@@ -83,7 +87,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("target-sdk")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str()?.trim().parse::<i64>().map_err(|e| e.into())
@@ -95,7 +99,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("print")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.trim().to_string()).map_err(|e| e.into())
@@ -107,7 +111,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("debuggable")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.trim() == "true").map_err(|e| e.into())
@@ -119,7 +123,7 @@ impl ApkAnalyzer {
 			.arg("manifest")
 			.arg("permissions")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		let result = output
@@ -137,7 +141,7 @@ impl ApkAnalyzer {
 			.arg("files")
 			.arg("list")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		let lines = output.stdout.lines();
@@ -160,7 +164,7 @@ impl ApkAnalyzer {
 			.arg("--file")
 			.arg(path.as_ref())
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.trim().to_string()).map_err(|e| e.into())
@@ -172,7 +176,7 @@ impl ApkAnalyzer {
 			.arg("apk")
 			.arg("summary")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		let string = output.stdout.as_str().map(|s| s.trim().to_string())?;
@@ -192,7 +196,7 @@ impl ApkAnalyzer {
 			.arg("dex")
 			.arg("list")
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		let lines = output.stdout.lines();
@@ -211,15 +215,58 @@ impl ApkAnalyzer {
 			.arg("-class")
 			.arg(class_name)
 			.arg(apk_path.as_ref())
-			.with_debug(true)
+			.with_debug(self.debug)
 			.build()
 			.output()?;
 		output.stdout.as_str().map(|s| s.to_string()).map_err(|e| e.into())
+	}
+
+	/// Returns the smali code of the given class in the APK file
+	pub fn classes<P: AsRef<Path>>(
+		&self,
+		apk_path: P,
+		dex_names: Option<Vec<&str>>,
+		defined_only: Option<bool>,
+	) -> Result<Vec<String>, Error> {
+		let classname_reg = Regex::new(r#"^C\s+d\s[0-9\t]+(.*)"#).unwrap();
+		let mut builder = simple_cmd::Cmd::builder(&self.path).arg("dex").arg("packages");
+
+		if let Some(true) = defined_only {
+			builder = builder.arg("--defined-only");
+		}
+
+		if let Some(dex_names) = dex_names {
+			for dex_name in dex_names {
+				builder = builder.arg("--files").arg(dex_name);
+			}
+		}
+
+		let command2 = Cmd::builder("grep").arg(r#"^C d"#).stdout(Some(Stdio::piped())).build();
+
+		let output = builder.arg(apk_path.as_ref()).with_debug(self.debug).build().pipe(command2)?;
+
+		let lines = output.stdout.lines();
+		let result = lines
+			.into_iter()
+			.filter_map(|l| {
+				if let Ok(line) = l {
+					if let Some(result) = classname_reg.captures(&line) {
+						Some(result.get(1).unwrap().as_str().to_string())
+					} else {
+						None
+					}
+				} else {
+					None
+				}
+			})
+			.collect::<Vec<_>>();
+		Ok(result)
 	}
 }
 
 #[cfg(test)]
 pub(crate) mod test {
+
 	use std::path::PathBuf;
 
 	use tracing::trace;
@@ -229,7 +276,7 @@ pub(crate) mod test {
 
 	use super::*;
 
-	static APK_PATH: &str = "<path-to-apk>";
+	static APK_PATH: &str = "/Users/alessandro/Documents/git/swisscom/aot-lib/standalone/build/outputs/apk/ip2300/release/standalone-ip2300-release.apk";
 
 	#[test]
 	fn test_new() {
@@ -239,7 +286,7 @@ pub(crate) mod test {
 		trace!("apkanalyzer path: {:?}", apkanalyzer.path);
 
 		let apkpath = apk_analyzer().expect("Failed to get apkanalyzer path");
-		let apkanalyzer = ApkAnalyzer::from(apkpath);
+		let apkanalyzer = ApkAnalyzer::from(apkpath, true);
 		assert!(apkanalyzer.path.exists());
 		trace!("apkanalyzer path: {:?}", apkanalyzer.path);
 	}
@@ -374,20 +421,5 @@ pub(crate) mod test {
 		for dex in result {
 			trace!("dex-classes: {}", dex);
 		}
-	}
-
-	#[test]
-	fn test_dex_code() {
-		init_log();
-		let apk_path = PathBuf::from(APK_PATH);
-		assert!(apk_path.exists(), "apk path not found");
-		let apkanalyzer = ApkAnalyzer::new().expect("Failed to create ApkAnalyzer");
-		let result = apkanalyzer
-			.dex_code(&apk_path, "com.swisscom.aot.library.commons.playback.contract.TimingInfo")
-			.expect("Failed to get dex code");
-		assert!(result.len() > 0, "dex code invalid");
-		result.lines().for_each(|line| {
-			trace!("dex-code: {}", line);
-		});
 	}
 }

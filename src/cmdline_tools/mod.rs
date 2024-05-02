@@ -7,6 +7,7 @@ mod apkanalyzer;
 #[derive(Debug, Clone)]
 pub struct ApkAnalyzer {
 	pub(crate) path: PathBuf,
+	pub(crate) debug: bool,
 }
 
 #[derive(Debug, Clone)]

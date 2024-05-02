@@ -1,10 +1,10 @@
 #[cfg(test)]
 pub(crate) mod test {
 	use std::env::current_exe;
-	use std::io;
 	use std::path::{Path, PathBuf};
 	use std::sync::{Arc, Mutex, Once};
 	use std::time::Duration;
+	use std::{io, thread};
 
 	use cmd_lib::AsOsStr;
 	use crossbeam_channel::{bounded, Receiver};
@@ -177,5 +177,21 @@ pub(crate) mod test {
 			.parent()
 			.unwrap()
 			.join("test_files")
+	}
+
+	#[allow(dead_code)]
+	pub fn ctrl_c_receiver() -> io::Result<Receiver<()>> {
+		let (s, r) = bounded(1);
+		let mut signals = Signals::new(&[SIGINT])?;
+
+		thread::spawn(move || {
+			for _ in signals.forever() {
+				println!("Ctrl+c pressed!");
+				let _ = s.send(());
+				break;
+			}
+			drop(s);
+		});
+		Ok(r)
 	}
 }
