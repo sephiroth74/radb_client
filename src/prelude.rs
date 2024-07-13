@@ -3,6 +3,7 @@ use simple_cmd::CommandBuilder;
 use crate::types::{Adb, Client, ConnectionType};
 
 pub(crate) trait CommandBuilderExt {
+	#[allow(dead_code)]
 	fn client<C>(self, client: C) -> Self
 	where
 		C: Into<Client>;
