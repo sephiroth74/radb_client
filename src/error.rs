@@ -52,6 +52,9 @@ pub enum Error {
 
 	#[error("name not found {0}")]
 	NameNotFoundError(String),
+
+	#[error("avbctl not installed")]
+	AvbctlNotInstalled,
 }
 
 impl From<AddrParseError> for Error {

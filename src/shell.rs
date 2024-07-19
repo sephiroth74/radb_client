@@ -342,15 +342,13 @@ impl<'a> Shell<'a> {
 	}
 
 	/// Check if avbctl is available on the connected device
-	fn check_avbctl(&self) -> Result<()> {
-		self.get_command_path("avbctl")
-			.map(|_| ())
-			.ok_or(std::io::ErrorKind::NotFound.into())
+	pub fn check_avbctl(&self) -> Result<()> {
+		self.get_command_path("avbctl").map(|_| ()).ok_or(Error::AvbctlNotInstalled)
 	}
 
 	/// Returns if avbctl is available
 	#[allow(dead_code)]
-	fn has_avbctl(&self) -> Result<bool> {
+	pub fn has_avbctl(&self) -> Result<bool> {
 		self.check_avbctl().map(|_| true)
 	}
 
