@@ -349,7 +349,13 @@ impl<'a> Shell<'a> {
 	/// Returns if avbctl is available
 	#[allow(dead_code)]
 	pub fn has_avbctl(&self) -> Result<bool> {
-		self.check_avbctl().map(|_| true)
+		match self.check_avbctl() {
+			Ok(_) => Ok(true),
+			Err(err) => match err {
+				Error::AvbctlNotInstalled => Ok(false),
+				_ => Err(err),
+			},
+		}
 	}
 
 	pub fn get_command_path<T: Arg>(&self, command: T) -> Option<String> {
@@ -1165,6 +1171,17 @@ mod test {
 		} else {
 			assert!(!is_root);
 		}
+	}
+
+	#[test]
+	fn test_avbctl() {
+		init_log();
+		let client = connect_client(connection_from_tcpip());
+		let result = client.shell().has_avbctl();
+		eprintln!("result: {result:?}");
+
+		let result = client.shell().check_avbctl();
+		eprintln!("result: {result:?}");
 	}
 
 	#[test]
