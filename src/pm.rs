@@ -176,13 +176,15 @@ impl<'a> PackageManager<'a> {
 	/// get the install permissions for package
 	pub fn install_permissions(&self, package_name: &str) -> Result<Vec<InstallPermission>> {
 		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
-		SimplePackageReader::new(dump.as_str()).and_then(|pr| Ok(pr.install_permissions().unwrap_or(vec![])))
+		let sdk_int = self.parent.build_version_sdk()?;
+		SimplePackageReader::new(dump.as_str(), sdk_int).and_then(|pr| Ok(pr.install_permissions().unwrap_or(vec![])))
 	}
 
 	/// get the requested permissions installed for package
 	pub fn requested_permissions(&self, package_name: &str) -> Result<Vec<String>> {
 		let dump = self.dump(package_name, DUMP_TIMEOUT)?;
-		SimplePackageReader::new(dump.as_str()).and_then(|pr| Ok(pr.requested_permissions().unwrap_or(vec![])))
+		let sdk_int = self.parent.build_version_sdk()?;
+		SimplePackageReader::new(dump.as_str(), sdk_int).and_then(|pr| Ok(pr.requested_permissions().unwrap_or(vec![])))
 	}
 
 	pub fn package_flags(&self, package_name: &str) -> Result<Vec<PackageFlags>> {
@@ -435,6 +437,7 @@ mod test {
 	fn test_dump() {
 		init_log();
 		let client = connect_emulator();
+		let sdk_int = client.shell().build_version_sdk().unwrap();
 		let dump = client
 			.shell()
 			.pm()
@@ -443,7 +446,7 @@ mod test {
 		assert!(!&dump.is_empty());
 		//println!("dump: {dump}");
 
-		let reader = SimplePackageReader::new(dump.as_str()).unwrap();
+		let reader = SimplePackageReader::new(dump.as_str(), sdk_int).unwrap();
 		let is_system = reader.is_system();
 		let code_path = reader.get_code_path();
 		let resource_path = reader.get_resource_path();

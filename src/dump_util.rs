@@ -6,7 +6,8 @@ use crate::result::Result;
 use crate::types::{DexoptState, InstallPermission, PackageFlags, RuntimePermission, SimplePackageReader};
 
 lazy_static! {
-	static ref RE_PACKAGES: Regex = Regex::new("(?m)^Packages:\\n").unwrap();
+	static ref RE_PACKAGES: &'static str = "(?m)^Packages:\\n";
+	static ref RE_PACKAGES_26: &'static str = "(?m)^\\s\\sPackages:\\n";
 	static ref RE_NEW_EMPTY_LINE: Regex = Regex::new("(?m)^$").unwrap();
 	static ref RE_REQUESTED_PERMISSIONS: Regex = Regex::new("(?m)^\\s{3,}requested permissions:\\n((\\s{4,}[\\w\\.]+$)+)").unwrap();
 	static ref RE_SINGLE_PERMISSION: Regex = Regex::new("(?m)^\\s{4,}([\\w\\.]+)$").unwrap();
@@ -30,18 +31,24 @@ lazy_static! {
 
 #[allow(dead_code)]
 impl<'a> SimplePackageReader<'a> {
-	pub fn new(data: &'a str) -> Result<SimplePackageReader<'a>> {
+	/// Create a new SimplePackageReader from the given data.
+	/// The data should be the output of the `dump` command.
+	/// The `sdk_version` should be the version of the SDK of the device.
+	/// This is used to determine the correct regex to use.
+	///
+	pub fn new(data: &'a str, sdk_version: u16) -> Result<SimplePackageReader<'a>> {
 		let mut packages_data: Option<&str> = None;
 		let mut dexopt_data: Option<&str> = None;
 
-		if let Some(m) = RE_PACKAGES.captures(data) {
+		let re_packages = Self::packages_regex(sdk_version);
+
+		if let Some(m) = re_packages.captures(data) {
 			if m.len() == 1 {
 				let mut new_data = &data[m.get(0).unwrap().end()..];
 				if let Some(m) = RE_NEW_EMPTY_LINE.captures(new_data) {
 					if m.len() == 1 {
 						new_data = &new_data[..m.get(0).unwrap().start()];
 						packages_data = Some(new_data);
-						//return Ok(SimplePackageReader { data: new_data });
 					}
 				}
 			}
@@ -68,6 +75,14 @@ impl<'a> SimplePackageReader<'a> {
 			}),
 			None => Err(Error::ParseInputError),
 		};
+	}
+
+	fn packages_regex(sdk_int: u16) -> Regex {
+		if sdk_int > 26 {
+			Regex::new(&RE_PACKAGES).unwrap()
+		} else {
+			Regex::new(&RE_PACKAGES_26).unwrap()
+		}
 	}
 
 	pub fn requested_permissions(&self) -> Option<Vec<String>> {
@@ -252,13 +267,71 @@ pub(crate) fn package_flags(dump: &str) -> Result<Vec<PackageFlags>> {
 }
 
 #[allow(dead_code)]
-pub fn is_installed(data: &str, package_name: &str) -> Option<String> {
-	match SimplePackageReader::new(data) {
+pub fn is_installed(data: &str, package_name: &str, sdk_int: u16) -> Option<String> {
+	match SimplePackageReader::new(data, sdk_int) {
 		Ok(reader) => {
 			let dex = reader.dexopt;
 			let result = dex.get_package_path(package_name).take().map(|s| s.to_string());
 			result
 		}
 		Err(_) => None,
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use crate::test::test::{connect_client, connection_from_tcpip, init_log};
+
+	use super::*;
+
+	#[test]
+	fn test_package_flags() {
+		init_log();
+		let client = connect_client(connection_from_tcpip());
+
+		let package_path = client.shell().pm().path("com.swisscom.swisscomTv", None).unwrap();
+		eprintln!("Package path: {}", package_path);
+		assert!(package_path.contains("SwisscomTvUI"));
+
+		let dump = client
+			.shell()
+			.pm()
+			.dump("com.swisscom.swisscomTv", Some(std::time::Duration::from_secs(3)))
+			.unwrap();
+
+		let sdk_version = client.shell().build_version_sdk().unwrap();
+		let reader = SimplePackageReader::new(&dump, sdk_version).unwrap();
+		let flags = reader.get_package_flags().unwrap();
+		eprintln!("Flags: {:?}", flags);
+		let is_system = reader.is_system();
+		eprintln!("Is system: {}", is_system.unwrap());
+		let code_path = reader.get_code_path();
+		eprintln!("Code path: {}", code_path.unwrap());
+		let resource_path = reader.get_resource_path();
+		eprintln!("Resource path: {}", resource_path.unwrap());
+		let data_dir = reader.get_data_dir();
+		eprintln!("Data dir: {}", data_dir.unwrap());
+		let version_name = reader.get_version_name().unwrap();
+		eprintln!("Version name: {}", version_name);
+		let version_code = reader.get_version_code();
+		eprintln!("Version code: {}", version_code.unwrap());
+
+		let requested_permissions = reader.requested_permissions().unwrap();
+		eprintln!("Requested permissions: {:?}", requested_permissions);
+
+		let install_permissions = reader.install_permissions();
+		eprintln!("Install permissions: {:?}", install_permissions);
+
+		let value = reader.get_first_install_time().unwrap();
+		eprintln!("First install time: {}", value);
+
+		let value = reader.get_last_update_time().unwrap();
+		eprintln!("Last update time: {}", value);
+
+		let value = reader.get_timestamp().unwrap();
+		eprintln!("Timestamp: {}", value);
+
+		let value = reader.get_user_id().unwrap();
+		eprintln!("User id: {}", value);
 	}
 }
