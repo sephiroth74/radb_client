@@ -38,7 +38,6 @@ pub(crate) mod test {
 				.with_file(false)
 				.with_target(true)
 				.with_level(false)
-				.without_time()
 				.with_writer(non_blocking);
 
 			let filter = EnvFilter::builder()
