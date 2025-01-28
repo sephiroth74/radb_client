@@ -14,8 +14,8 @@ pub enum Error {
 	#[error("Failed to parse address")]
 	AddressParseError,
 
-	#[error(transparent)]
-	WhichError(#[from] which::Error),
+	#[error("Failed to find adb command in your PATH")]
+	AdbNotFoundError(#[from] which::Error),
 
 	#[error(transparent)]
 	CommandError(#[from] simple_cmd::Error),

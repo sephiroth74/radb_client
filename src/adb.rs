@@ -26,8 +26,11 @@ impl Adb {
 	/// let adb = Adb::new().expect("failed to find adb");
 	/// ```
 	pub fn new() -> Result<Adb> {
-		let adb = which("adb")?;
-		Ok(Adb(adb))
+		let result = which("adb");
+		match result {
+			Ok(path) => Ok(Adb::from(path)),
+			Err(err) => Err(Error::AdbNotFoundError(err)),
+		}
 	}
 
 	/// Execute a custom `adb` command with an optional cancel signal and timeout.
@@ -165,7 +168,15 @@ impl Adb {
 		Ok(devices)
 	}
 
-	/// Disconnect from all connected devices
+	/// Disconnect all connected devices.
+	///
+	/// # Arguments
+	///
+	/// * `debug` - A boolean to toggle tracing verbosity.
+	///
+	/// # Returns
+	///
+	/// * `Result<bool>` - A boolean indicating whether the disconnection was successful.
 	pub fn disconnect_all(&self, debug: bool) -> Result<bool> {
 		match Cmd::builder(self.0.as_path())
 			.with_debug(debug)
@@ -178,7 +189,15 @@ impl Adb {
 		}
 	}
 
-	/// kill the server if it is running
+	/// Kill the adb server.
+	///
+	/// # Arguments
+	///
+	/// * `debug` - A boolean to toggle tracing verbosity.
+	///
+	/// # Returns
+	///
+	/// * `Result<bool>` - A boolean indicating whether the server was successfully killed.
 	pub fn kill_server(&self, debug: bool) -> Result<bool> {
 		let output = Cmd::builder(self.0.as_path())
 			.with_debug(debug)
@@ -188,7 +207,16 @@ impl Adb {
 		Ok(output.success())
 	}
 
-	/// ensure that there is a server running
+	/// Start the adb server.
+	///
+	/// # Arguments
+	///
+	/// * `debug` - A boolean to toggle tracing verbosity.
+	///
+	/// # Returns
+	///
+	/// * `Result<bool>` - A boolean indicating whether the server was successfully started.
+	///
 	pub fn start_server(&self, debug: bool) -> Result<bool> {
 		let output = Cmd::builder(self.0.as_path())
 			.with_debug(debug)
@@ -198,7 +226,24 @@ impl Adb {
 		Ok(output.success())
 	}
 
-	/// Return the adb version
+	/// Retrieve the version of the adb tool.
+	///
+	/// # Arguments
+	///
+	/// * `debug` - A boolean to toggle tracing verbosity.
+	///
+	/// # Returns
+	///
+	/// * `Result<String>` - The version string of the adb tool.
+	///
+	/// # Examples
+	///
+	/// ```rust
+	/// use radb_client::types::Adb;
+	/// let adb = Adb::new().expect("adb not found");
+	/// let version = adb.version(true).expect("failed to get adb version");
+	/// println!("version: {version}");
+	/// ```
 	pub fn version(&self, debug: bool) -> Result<String> {
 		lazy_static! {
 			static ref RE: Regex = Regex::new(r#"^Version\s+(?P<version>[\d+\.-]+)$"#).unwrap();
@@ -270,7 +315,7 @@ pub(crate) mod test {
 	use crate::test::test::init_log;
 	use crate::types::{Adb, Client, ConnectionType};
 
-	static DEVICE_IP: &'static str = "192.168.1.34:5555";
+	static DEVICE_IP: &'static str = "192.168.1.101:5555";
 
 	#[test]
 	fn test_adb() {

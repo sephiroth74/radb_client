@@ -104,7 +104,14 @@ impl<'a> SimplePackageReader<'a> {
 			if m.len() > 0 {
 				let mut result = vec![];
 				let new_data = &self.data[m.get(0).unwrap().range()];
-				for (_, [name, granted]) in RE_INSTALL_PERMISSION.captures_iter(new_data).map(|c| c.extract()) {
+				for (
+					_,
+					[
+						name,
+						granted,
+					],
+				) in RE_INSTALL_PERMISSION.captures_iter(new_data).map(|c| c.extract())
+				{
 					result.push(InstallPermission {
 						name: name.to_string(),
 						granted: granted == "true",
@@ -226,7 +233,15 @@ pub(crate) fn runtime_permissions(data: &str) -> Result<Vec<RuntimePermission>> 
 
 			if let Some(m2) = RE_NEW_EMPTY_LINE.find(output2) {
 				let output3 = &output2[..m2.end()];
-				for (_, [name, granted, flag_str]) in RE_SINGLE_RUNTIME_PERMISSION.captures_iter(output3).map(|c| c.extract()) {
+				for (
+					_,
+					[
+						name,
+						granted,
+						flag_str,
+					],
+				) in RE_SINGLE_RUNTIME_PERMISSION.captures_iter(output3).map(|c| c.extract())
+				{
 					let flags = flag_str.split("|").map(|f| f.to_string()).collect::<Vec<_>>();
 					result.push(RuntimePermission {
 						name: name.to_string(),

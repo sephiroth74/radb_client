@@ -163,13 +163,16 @@ impl PartialEq for ClientResult {
 fn connect(adb: Arc<Adb>, host: &str, tcp_timeout: Duration, adb_timeout: Duration, debug: bool) -> Option<ClientResult> {
 	let sock_addr = SocketAddr::from_str(host).ok();
 	if sock_addr.is_none() {
+		if debug {
+			warn!("[{:}] failed to parse socket address", host);
+		}
 		return None;
 	}
 
 	let sock_addr = sock_addr.unwrap();
 
 	if debug {
-		trace!("[{}] trying to connect to ...", sock_addr);
+		trace!("[{}] trying to connect with timeout: {:#?}", sock_addr, tcp_timeout);
 	}
 
 	match TcpStream::connect_timeout(&sock_addr, tcp_timeout) {
@@ -237,11 +240,12 @@ fn connect(adb: Arc<Adb>, host: &str, tcp_timeout: Duration, adb_timeout: Durati
 
 #[cfg(test)]
 pub(crate) mod test {
+	use std::net::TcpStream;
 	use std::str::FromStr;
 	use std::time::{Duration, Instant};
 
-	use cidr_utils::cidr::Ipv4Cidr;
 	use cidr_utils::Ipv4CidrSize;
+	use cidr_utils::cidr::Ipv4Cidr;
 	use crossbeam_channel::unbounded;
 	use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 	use itertools::Either;
@@ -251,10 +255,20 @@ pub(crate) mod test {
 	use crate::types::Adb;
 
 	#[test]
+	fn test_tcp_stream() {
+		init_log();
+
+		let addr = "192.168.1.101:5555";
+		let tcp_timeout = Duration::from_millis(500);
+		let result = TcpStream::connect_timeout(&addr.parse().unwrap(), tcp_timeout);
+		println!("result: {:?}", result);
+	}
+
+	#[test]
 	fn test_scan() {
 		init_log();
 
-		let cidr = Ipv4Cidr::from_str("192.168.1.0/24").unwrap();
+		let cidr = Ipv4Cidr::from_str("192.168.1.100/31").unwrap();
 		let progress_style = ProgressStyle::with_template(
 			"{prefix:.cyan.bold/blue.bold}: {elapsed_precise} [{bar:40.cyan/blue}] {percent:.bold}%. {msg} ",
 		)
@@ -270,9 +284,9 @@ pub(crate) mod test {
 		let adb = Adb::new().expect("failed to find adb");
 
 		let scanner = Scanner::default()
-			.with_debug(false)
-			.with_tcp_timeout(Duration::from_millis(300))
-			.with_adb_timeout(Duration::from_millis(300));
+			.with_debug(true)
+			.with_tcp_timeout(Duration::from_millis(500))
+			.with_adb_timeout(Duration::from_millis(500));
 
 		let start = Instant::now();
 		scanner.scan(&adb, cidr.iter(), tx.clone());

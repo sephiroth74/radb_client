@@ -11,9 +11,9 @@ use crossbeam_channel::Receiver;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rustix::path::Arg;
+use simple_cmd::CommandBuilder;
 use simple_cmd::debug::CommandDebug;
 use simple_cmd::prelude::OutputExt;
-use simple_cmd::CommandBuilder;
 
 use crate::error::Error;
 use crate::prelude::*;
@@ -428,11 +428,7 @@ impl<'a> Shell<'a> {
 			None,
 		)?;
 
-		if output.error() {
-			Err(output.into())
-		} else {
-			Ok(())
-		}
+		if output.error() { Err(output.into()) } else { Ok(()) }
 	}
 
 	/// Enable verity using the avbctl service, if available
@@ -446,11 +442,7 @@ impl<'a> Shell<'a> {
 			None,
 			None,
 		)?;
-		if output.error() {
-			Err(output.into())
-		} else {
-			Ok(())
-		}
+		if output.error() { Err(output.into()) } else { Ok(()) }
 	}
 
 	/// Returns the selinux enforce status
@@ -753,11 +745,7 @@ impl<'a> Shell<'a> {
 
 		if !output.is_empty() {
 			let o = Arg::as_str(&output).map(|s| s.trim().to_string())?;
-			if &"null" == &o {
-				Ok(None)
-			} else {
-				Ok(Some(o))
-			}
+			if &"null" == &o { Ok(None) } else { Ok(Some(o)) }
 		} else {
 			Ok(None)
 		}
@@ -1853,22 +1841,16 @@ mod test {
 		let client = connect_emulator();
 		client
 			.shell()
-			.send_keyevent_combination(
-				None,
-				[
-					KEYCODE_1, KEYCODE_2, KEYCODE_3,
-				],
-			)
+			.send_keyevent_combination(None, [
+				KEYCODE_1, KEYCODE_2, KEYCODE_3,
+			])
 			.expect("failed to send key codes combination");
 		std::thread::sleep(Duration::from_secs(1));
 		client
 			.shell()
-			.try_send_keyevent_combination(
-				None,
-				[
-					KEYCODE_1, KEYCODE_2, KEYCODE_3,
-				],
-			)
+			.try_send_keyevent_combination(None, [
+				KEYCODE_1, KEYCODE_2, KEYCODE_3,
+			])
 			.expect("failed to send key codes combination");
 	}
 
@@ -1878,23 +1860,17 @@ mod test {
 		let client = connect_emulator();
 		client
 			.shell()
-			.send_keycode_combination(
-				None,
-				[
-					83, 84, 85,
-				],
-			)
+			.send_keycode_combination(None, [
+				83, 84, 85,
+			])
 			.expect("failed to send key codes combination");
 		std::thread::sleep(Duration::from_secs(1));
 
 		client
 			.shell()
-			.try_send_keycode_combination(
-				None,
-				[
-					83, 84, 85,
-				],
-			)
+			.try_send_keycode_combination(None, [
+				83, 84, 85,
+			])
 			.expect("failed to send key codes combination");
 	}
 

@@ -7,7 +7,7 @@ pub(crate) mod test {
 	use std::{io, thread};
 
 	use cmd_lib::AsOsStr;
-	use crossbeam_channel::{bounded, Receiver};
+	use crossbeam_channel::{Receiver, bounded};
 	use lazy_static::lazy_static;
 	use once_cell::sync::Lazy;
 	use regex::Regex;
@@ -19,7 +19,7 @@ pub(crate) mod test {
 
 	use crate::types::{Adb, Client, ConnectionType};
 
-	pub(crate) static DEVICE_IP: &'static str = "192.168.1.52:5555";
+	pub(crate) static DEVICE_IP: &'static str = "192.168.1.101:5555";
 	pub(crate) static TRANSPORT_ID: u8 = 4;
 
 	pub(crate) static INIT: Once = Once::new();

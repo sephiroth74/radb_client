@@ -331,11 +331,7 @@ impl Client {
 			.build()
 			.output()?;
 
-		if output.error() {
-			Err(output.into())
-		} else {
-			Ok(())
-		}
+		if output.error() { Err(output.into()) } else { Ok(()) }
 	}
 
 	pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> Result<Output> {
@@ -382,11 +378,7 @@ impl Client {
 	pub fn disable_verity(&self) -> Result<()> {
 		let output = CommandBuilder::from(self).arg("disable-verity").build().output()?;
 
-		if !output.success() {
-			Err(output.into())
-		} else {
-			Ok(())
-		}
+		if !output.success() { Err(output.into()) } else { Ok(()) }
 	}
 
 	/// Enable verity
@@ -394,11 +386,7 @@ impl Client {
 		let output = CommandBuilder::from(self).arg("enable-verity").build().output()?;
 		println!("output: {output:?}");
 
-		if !output.success() {
-			Err(output.into())
-		} else {
-			Ok(())
-		}
+		if !output.success() { Err(output.into()) } else { Ok(()) }
 	}
 
 	pub fn pull<S, T>(&self, src: S, dst: T) -> Result<Output>
@@ -458,7 +446,7 @@ impl Client {
 
 #[cfg(test)]
 mod test {
-	use std::fs::{remove_file, File};
+	use std::fs::{File, remove_file};
 	use std::io::BufRead;
 	use std::net::SocketAddr;
 	use std::time::Duration;
@@ -805,10 +793,12 @@ mod test {
 			)
 			.expect("failed to install apk");
 
-		assert!(client
-			.shell()
-			.pm()
-			.is_installed(package_name, None)
-			.expect("failed to check if package is installed"));
+		assert!(
+			client
+				.shell()
+				.pm()
+				.is_installed(package_name, None)
+				.expect("failed to check if package is installed")
+		);
 	}
 }
