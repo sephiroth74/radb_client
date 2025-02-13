@@ -1,6 +1,6 @@
 [package]
 name = "radb_client"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 authors = ["Alessandro Crugnola <alessandro.crugnola@gmail.com>"]
 description = "adb client for rust"
@@ -11,39 +11,39 @@ repository = "https://github.com/sephiroth74/radb_client"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-once_cell = "1.20.2"
-chrono = "0.4.39"
-file-mode = "0.1.2"
-lazy_static = "1.5.0"
-java-properties = "2.0.0"
-regex = "1.11.1"
-strum_macros = "0.26.4"
-time = { version = "0.3.37", features = ["macros"] }
-which = "7.0.1"
-mac_address = "1.1.7"
-uuid = { version = "1.12.1", features = ["v4"] }
-arboard = "3.4.1"
-image = "0.25.5"
-num_cpus = "1.16.0"
-thiserror = "2.0.11"
-rustix = "0.38.44"
-dirs = "6.0.0"
-itertools = "0.14.0"
-crossbeam = "0.8.4"
-signal-hook = "0.3.17"
-crossbeam-channel = "0.5.14"
-threadpool = { version = "1.8.1", optional = true }
-cmd_lib = "1.9.5"
-tracing = "0.1.41"
-simple-cmd = "0.0.20"
-cached = { version = "0.54.0" }
-serde = { version = "1.0.217", features = ["derive"] }
-cidr-utils = "0.6.1"
-strum = "0.26.3"
 anyhow = "1.0.95"
+arboard = "3.4.1"
+cached = { version = "0.54.0" }
+chrono = "0.4.39"
+cidr-utils = "0.6.1"
+cmd_lib = "1.9.5"
+crossbeam = "0.8.4"
+crossbeam-channel = "0.5.14"
+dirs = "6.0.0"
+file-mode = "0.1.2"
+image = "0.25.5"
+itertools = "0.14.0"
+java-properties = "2.0.0"
+lazy_static = "1.5.0"
+mac_address = "1.1.8"
+num_cpus = "1.16.0"
+once_cell = "1.20.3"
+regex = "1.11.1"
+rustix = "0.38.44"
+serde = { version = "1.0.217", features = ["derive"] }
+signal-hook = "0.3.17"
+simple-cmd = "0.0.21"
+strum = "0.27.0"
+strum_macros = "0.27.0"
+thiserror = "2.0.11"
+threadpool = { version = "1.8.1", optional = true }
+time = { version = "0.3.37", features = ["macros"] }
+tracing = "0.1.41"
+uuid = { version = "1.13.1", features = ["v4"] }
+which = "7.0.2"
 
 [dev-dependencies]
-indicatif = { version = "0.17.9" }
+indicatif = { version = "0.17.11" }
 anyhow = "1.0.95"
 ctrlc = "3.4.5"
 tracing-subscriber = { version = "0.3.19", features = ["local-time", "env-filter"] }
