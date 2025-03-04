@@ -144,7 +144,7 @@ impl Adb {
 						let product = c.name("device_product").unwrap().as_str();
 						let model = c.name("model").unwrap().as_str();
 						let device = c.name("device").unwrap().as_str();
-						let tr = c.name("transport_id").unwrap().as_str().parse::<u8>().unwrap();
+						let tr = c.name("transport_id").unwrap().as_str().parse::<u8>()?;
 						let connected = c.name("status").unwrap().as_str() == "device";
 
 						if let Ok(d) = match ConnectionType::try_from_ip(ip) {
