@@ -9,7 +9,13 @@ use crate::traits::AsArgs;
 use crate::types::{ActivityManager, Intent, MemoryStatus, UserOption};
 
 impl<'a> ActivityManager<'a> {
-    /// Force stop a package
+    /// Force-stop an application package using the Activity Manager (am).
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package to force-stop.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn force_stop(&self, package_name: &str) -> Result<()> {
         let result = self
             .parent
@@ -17,7 +23,13 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
-    /// Start a service (using am start-service)
+    /// Start a service using the Activity Manager (am startservice).
+    ///
+    /// # Arguments
+    /// * `intent` - The intent describing the service to start.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn start_service(&self, intent: &Intent) -> Result<()> {
         let result = self.parent.exec(
             vec!["am", "startservice", format!("{:}", intent).as_str()],
@@ -27,7 +39,13 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
-    /// Start a foreground service (using am start-service)
+    /// Start a foreground service using the Activity Manager (am start-foreground-service).
+    ///
+    /// # Arguments
+    /// * `intent` - The intent describing the foreground service to start.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn start_foreground_service(&self, intent: &Intent) -> Result<()> {
         let result = self.parent.exec(
             vec![
@@ -41,6 +59,13 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
+    /// Start an activity using the Activity Manager (am start).
+    ///
+    /// # Arguments
+    /// * `intent` - The intent describing the activity to start.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn start(&self, intent: &Intent) -> Result<()> {
         let result = self.parent.exec(
             vec!["am", "start", format!("{:}", intent).as_str()],
@@ -50,6 +75,13 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
+    /// Broadcast an intent using the Activity Manager (am broadcast).
+    ///
+    /// # Arguments
+    /// * `intent` - The intent to broadcast.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn broadcast(&self, intent: &Intent) -> Result<()> {
         let result = self.parent.exec(
             vec!["am", "broadcast", format!("{:}", intent).as_str()],
@@ -59,7 +91,14 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
-    /// Kill all background processes associated with the given application.
+    /// Kill all background processes associated with the given application package.
+    ///
+    /// # Arguments
+    /// * `user` - The user option specifying which user's processes to kill.
+    /// * `package_name` - The name of the package whose processes to kill.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn kill(&self, user: UserOption, package_name: &str) -> Result<()> {
         let mut args: Vec<OsString> = vec!["am".as_os_str(), "kill".as_os_str()];
         args.extend(user.as_args());
@@ -69,13 +108,23 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
-    /// Kill all processes that are safe to kill
+    /// Kill all processes that are safe to kill using the Activity Manager (am kill-all).
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn kill_all(&self) -> Result<()> {
         let result = self.parent.exec(["am", "kill-all"], None, None)?;
         ActivityManager::handle_result(result)
     }
 
-    /// Send a memory trim event to a PROCESS.  May also supply a raw trim int level.
+    /// Send a memory trim event to a process using the Activity Manager (am send-trim-memory).
+    ///
+    /// # Arguments
+    /// * `process_name` - The name of the process to trim.
+    /// * `status` - The memory status to send.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn trim_memory(&self, process_name: &str, status: MemoryStatus) -> Result<()> {
         let result = self.parent.exec(
             ["am", "send-trim-memory", process_name, &status.to_string()],
@@ -85,7 +134,14 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
-    /// Induce a VM crash in the specified package or process
+    /// Induce a VM crash in the specified package or process using the Activity Manager (am crash).
+    ///
+    /// # Arguments
+    /// * `user_id` - Optional user ID to specify the user.
+    /// * `package_or_pid` - The package name or process ID to crash.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
     pub fn crash(&self, user_id: Option<String>, package_or_pid: &str) -> Result<()> {
         let mut args = vec!["am".as_os_str(), "crash".as_os_str()];
         if let Some(user_id) = user_id {
@@ -96,7 +152,10 @@ impl<'a> ActivityManager<'a> {
         ActivityManager::handle_result(result)
     }
 
-    /// Returns id of the current foreground user.
+    /// Get the ID of the current foreground user using the Activity Manager (am get-current-user).
+    ///
+    /// # Returns
+    /// * `Result<String>` - The user ID as a string, or an error if the command fails.
     pub fn get_current_user(&self) -> Result<String> {
         let result = self.parent.exec(["am", "get-current-user"], None, None)?;
         if result.error() && !result.kill() && !result.interrupt() {

@@ -32,6 +32,14 @@ lazy_static! {
         Mutex::new(SizedCache::with_size(10));
 }
 
+/// Handle the result of a shell command execution.
+///
+/// # Arguments
+/// * `result` - The output of the executed command.
+///
+/// # Returns
+/// * `Result<()>` - Ok if the command succeeded, or an error if it failed.
+///
 pub(crate) fn handle_result(result: Output) -> Result<()> {
     if result.error() && !result.kill() && !result.interrupt() {
         Err(result.into())
@@ -39,6 +47,16 @@ pub(crate) fn handle_result(result: Output) -> Result<()> {
         Ok(())
     }
 }
+
+/// Create arguments for sending a key event combination.
+///
+/// # Arguments
+/// * `source` - Optional input source.
+/// * `keycodes` - An iterator of keycodes to send as a combination.
+///
+/// # Returns
+/// * `Vec<OsString>` - Arguments for the shell command.
+///
 
 fn make_keyevent_combination<I, S>(source: Option<InputSource>, keycodes: I) -> Vec<OsString>
 where
@@ -56,6 +74,15 @@ where
     args
 }
 
+/// Create arguments for sending a keycode combination.
+///
+/// # Arguments
+/// * `source` - Optional input source.
+/// * `keycodes` - An iterator of keycodes (u32) to send as a combination.
+///
+/// # Returns
+/// * `Vec<OsString>` - Arguments for the shell command.
+///
 fn make_keycode_combination<I>(source: Option<InputSource>, keycodes: I) -> Vec<OsString>
 where
     I: IntoIterator<Item = u32>,
@@ -71,6 +98,17 @@ where
     args
 }
 
+/// Create arguments for sending a drag and drop event.
+///
+/// # Arguments
+/// * `source` - Optional input source.
+/// * `duration` - Optional duration for the drag event.
+/// * `from_pos` - Starting position (x, y).
+/// * `to_pos` - Ending position (x, y).
+///
+/// # Returns
+/// * `Vec<OsString>` - Arguments for the shell command.
+///
 fn make_draganddrop(
     source: Option<InputSource>,
     duration: Option<Duration>,
@@ -655,6 +693,14 @@ impl<'a> Shell<'a> {
         self.try_exec(make_keyevent_combination(source, keycodes), None, None)
     }
 
+    /// Sends a combination of keycodes as a single event.
+    ///
+    /// # Arguments
+    /// * `source` - Optional input source.
+    /// * `keycodes` - An iterator of keycodes to send as a combination.
+    ///
+    /// # Returns
+    /// * `Result<Option<ExitStatus>>` - The result of the execution.
     pub fn try_send_keycode_combination<I>(
         &self,
         source: Option<InputSource>,
@@ -666,6 +712,14 @@ impl<'a> Shell<'a> {
         self.try_exec(make_keycode_combination(source, keycodes), None, None)
     }
 
+    /// Sends multiple keycodes as individual events.
+    ///
+    /// # Arguments
+    /// * `keycodes` - An iterator of keycodes to send.
+    /// * `source` - Optional input source.
+    ///
+    /// # Returns
+    /// * `Result<Option<ExitStatus>>` - The result of the execution.
     pub fn try_send_keycodes<I>(
         &self,
         keycodes: I,
@@ -677,6 +731,14 @@ impl<'a> Shell<'a> {
         self.try_exec(make_keycodes(keycodes, source), None, None)
     }
 
+    /// Sends a sequence of key events.
+    ///
+    /// # Arguments
+    /// * `keycodes` - A vector of `KeyCode` to send as events.
+    /// * `source` - Optional input source.
+    ///
+    /// # Returns
+    /// * `Result<Option<ExitStatus>>` - The result of the execution.
     pub fn try_send_keyevents<I, S>(
         &self,
         keycodes: Vec<KeyCode>,

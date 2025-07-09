@@ -25,7 +25,24 @@ macro_rules! build_pm_operation {
 }
 
 impl<'a> PackageManager<'a> {
-    /// Return the path of a given package name
+    /// Return the path of a given package name.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package to query.
+    /// * `user` - Optional user ID as a string slice.
+    ///
+    /// # Returns
+    /// * `Result<String>` - The path to the package, or an error if not found.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let shell = client.shell();
+    /// let pm = shell.pm();
+    /// let path = pm.path("com.example.app", None).unwrap();
+    /// println!("APK path: {}", path);
+    /// ```
     pub fn path(&self, package_name: &str, user: Option<&str>) -> Result<String> {
         let mut args = vec!["pm", "path"];
         if let Some(u) = user {
@@ -42,7 +59,24 @@ impl<'a> PackageManager<'a> {
         split
     }
 
-    // Grant permission to given package
+    /// Grant a permission to a given package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    /// * `permission` - The permission to grant.
+    /// * `user` - Optional user ID as a string slice.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let shell = client.shell();
+    /// let pm = shell.pm();
+    /// pm.grant("com.example.app", "android.permission.CAMERA", None).unwrap();
+    /// ```
     pub fn grant(&self, package_name: &str, permission: &str, user: Option<&str>) -> Result<()> {
         let mut args = vec!["pm", "grant"];
         if let Some(u) = user {
@@ -53,7 +87,23 @@ impl<'a> PackageManager<'a> {
         handle_result(self.parent.exec(args, None, None)?)
     }
 
-    // Revoke permission to given package
+    /// Revoke a permission from a given package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    /// * `permission` - The permission to revoke.
+    /// * `user` - Optional user ID as a string slice.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// pm.revoke("com.example.app", "android.permission.CAMERA", None).unwrap();
+    /// ```
     pub fn revoke(&self, package_name: &str, permission: &str, user: Option<&str>) -> Result<()> {
         let mut args = vec!["pm", "revoke"];
         if let Some(u) = user {
@@ -64,7 +114,18 @@ impl<'a> PackageManager<'a> {
         handle_result(self.parent.exec(args, None, None)?)
     }
 
-    /// Revert all runtime permissions to their default state
+    /// Revert all runtime permissions to their default state.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// pm.reset_permissions().unwrap();
+    /// ```
     pub fn reset_permissions(&self) -> Result<()> {
         handle_result(
             self.parent
@@ -72,7 +133,24 @@ impl<'a> PackageManager<'a> {
         )
     }
 
-    /// list installed packages
+    /// List installed packages with optional filters and display options.
+    ///
+    /// # Arguments
+    /// * `filters` - Filters for package listing (e.g., only enabled, only system).
+    /// * `display` - Display options (e.g., show version code, show UID).
+    /// * `name_filter` - Optional filter for package name substring.
+    ///
+    /// # Returns
+    /// * `Result<Vec<Package>>` - A vector of `Package` structs.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let packages = pm.list_packages(Default::default(), Default::default(), None).unwrap();
+    /// for pkg in packages { println!("{}", pkg.package_name); }
+    /// ```
     pub fn list_packages(
         &self,
         filters: ListPackageFilter,
@@ -140,20 +218,66 @@ impl<'a> PackageManager<'a> {
         Ok(result)
     }
 
-    /// dump a package
+    /// Dump information about a package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package to dump.
+    /// * `timeout` - Optional timeout for the operation.
+    ///
+    /// # Returns
+    /// * `Result<String>` - The dump output as a string.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let dump = pm.dump("com.example.app", None).unwrap();
+    /// println!("Dump: {}", dump);
+    /// ```
     pub fn dump(&self, package_name: &str, timeout: Option<Duration>) -> Result<String> {
         let args = vec!["pm", "dump", package_name.into()];
         let result = self.parent.exec(args, None, timeout)?.stdout;
         Ok(Arg::as_str(&result)?.to_string())
     }
 
-    /// get requested runtime permissions for package
+    /// Get requested runtime permissions for a package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    ///
+    /// # Returns
+    /// * `Result<Vec<RuntimePermission>>` - A vector of runtime permissions.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let perms = pm.runtime_permissions("com.example.app").unwrap();
+    /// for perm in perms { println!("{}", perm.name); }
+    /// ```
     pub fn runtime_permissions(&self, package_name: &str) -> Result<Vec<RuntimePermission>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         runtime_permissions(dump.as_str())
     }
 
-    /// get the install permissions for package
+    /// Get the install permissions for a package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    ///
+    /// # Returns
+    /// * `Result<Vec<InstallPermission>>` - A vector of install permissions.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let perms = pm.install_permissions("com.example.app").unwrap();
+    /// for perm in perms { println!("{}", perm.name); }
+    /// ```
     pub fn install_permissions(&self, package_name: &str) -> Result<Vec<InstallPermission>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         let sdk_int = self.parent.build_version_sdk()?;
@@ -161,7 +285,22 @@ impl<'a> PackageManager<'a> {
             .and_then(|pr| Ok(pr.install_permissions().unwrap_or(vec![])))
     }
 
-    /// get the requested permissions installed for package
+    /// Get the requested permissions installed for a package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    ///
+    /// # Returns
+    /// * `Result<Vec<String>>` - A vector of permission names.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let perms = pm.requested_permissions("com.example.app").unwrap();
+    /// for perm in perms { println!("{}", perm); }
+    /// ```
     pub fn requested_permissions(&self, package_name: &str) -> Result<Vec<String>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         let sdk_int = self.parent.build_version_sdk()?;
@@ -169,17 +308,66 @@ impl<'a> PackageManager<'a> {
             .and_then(|pr| Ok(pr.requested_permissions().unwrap_or(vec![])))
     }
 
+    /// Get the package flags for a package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    ///
+    /// # Returns
+    /// * `Result<Vec<PackageFlags>>` - A vector of package flags.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let flags = pm.package_flags("com.example.app").unwrap();
+    /// for flag in flags { println!("{}", flag); }
+    /// ```
     pub fn package_flags(&self, package_name: &str) -> Result<Vec<PackageFlags>> {
         let result = self.dump(package_name, DUMP_TIMEOUT)?;
         package_flags(result.as_str())
     }
 
+    /// Returns true if the package is a system package.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    ///
+    /// # Returns
+    /// * `Result<bool>` - True if the package is a system package.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let is_system = pm.is_system("com.example.app").unwrap();
+    /// println!("Is system: {}", is_system);
+    /// ```
     pub fn is_system(&self, package_name: &str) -> Result<bool> {
         Ok(self
             .package_flags(package_name)?
             .contains(&PackageFlags::System))
     }
 
+    /// Returns true if the package is installed for the given user.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package.
+    /// * `user` - Optional user ID as a string slice.
+    ///
+    /// # Returns
+    /// * `Result<bool>` - True if the package is installed.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// let installed = pm.is_installed("com.example.app", None).unwrap();
+    /// println!("Installed: {}", installed);
+    /// ```
     pub fn is_installed(&self, package_name: &str, user: Option<&str>) -> Result<bool> {
         let r = self.path(package_name, user).map(|f| f.len() > 0);
         match r {
@@ -198,6 +386,22 @@ impl<'a> PackageManager<'a> {
         }
     }
 
+    /// Uninstall a package from the device.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package to uninstall.
+    /// * `options` - Optional uninstall options.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// pm.uninstall("com.example.app", None).unwrap();
+    /// ```
     pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> Result<()> {
         let mut args: Vec<OsString> = vec!["cmd".into(), "package".into(), "uninstall".into()];
         match options {
@@ -208,6 +412,22 @@ impl<'a> PackageManager<'a> {
         handle_result(self.parent.exec(args, None, None)?)
     }
 
+    /// Install a package from the given source path.
+    ///
+    /// # Arguments
+    /// * `src` - The source path of the APK file.
+    /// * `options` - Optional install options.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let client: Client = Client::try_from(ConnectionType::try_from_ip("192.168.1.42:5555")).unwrap();
+    /// let pm = client.shell().pm();
+    /// pm.install("/data/local/tmp/app.apk", None).unwrap();
+    /// ```
     pub fn install<T: Arg>(&self, src: T, options: Option<InstallOptions>) -> Result<()> {
         let mut args: Vec<OsString> = vec!["cmd".into(), "package".into(), "install".into()];
         match options {

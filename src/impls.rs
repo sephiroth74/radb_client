@@ -518,6 +518,21 @@ impl IntoIterator for LogcatOptions {
     }
 }
 
+impl Default for LogcatOptions {
+    fn default() -> Self {
+        LogcatOptions {
+            expr: None,
+            dump: false,
+            filename: None,
+            format: None,
+            pid: None,
+            since: None,
+            tags: None,
+            timeout: None,
+        }
+    }
+}
+
 // endregion LogcatOptions
 
 // region LogcatLevel

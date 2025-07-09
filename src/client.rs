@@ -69,9 +69,9 @@ impl Client {
         let output = command.build().output()?;
 
         if output.error() {
-            return Err(Error::IoError(std::io::Error::from(
+            Err(Error::IoError(std::io::Error::from(
                 std::io::ErrorKind::NotConnected,
-            )));
+            )))
         } else {
             match self.is_connected() {
                 true => Ok(()),
@@ -82,9 +82,6 @@ impl Client {
         }
     }
 
-    /// Disconnect a device.
-    /// Note that if the connection type is not tcp/ip, all devices
-    /// will be disconnected
     pub fn disconnect(&self) -> Result<bool> {
         let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
         command = command.arg("disconnect");
@@ -112,7 +109,6 @@ impl Client {
         }
     }
 
-    /// disconnect all connected devices
     pub fn disconnect_all(&self) -> Result<()> {
         super::shell::handle_result(
             CommandBuilder::adb(&self.adb)
@@ -123,18 +119,17 @@ impl Client {
         )
     }
 
-    /// Checks if the client is already connected
     pub fn is_connected(&self) -> bool {
         let mut command = CommandBuilder::from(self);
         command = command
             .arg("get-state")
             .timeout(Some(Duration::from_millis(GET_STATE_TIMEOUT)));
         let output = command.build().output();
-        return if let Ok(output) = output {
+        if let Ok(output) = output {
             output.success()
         } else {
             false
-        };
+        }
     }
 
     /// Wait for device to be available with an optional timeout
@@ -151,7 +146,6 @@ impl Client {
         Ok(())
     }
 
-    /// Get the current awake status
     pub fn get_wakefulness(&self) -> Result<Wakefulness> {
         let command1 = CommandBuilder::from(self)
             .args(vec!["shell", "dumpsys", "power"])
@@ -168,17 +162,14 @@ impl Client {
         Ok(awake.try_into()?)
     }
 
-    /// Return true if the device is awake
     pub fn is_awake(&self) -> Result<bool> {
         Ok(self.get_wakefulness()? != Wakefulness::Asleep)
     }
 
-    /// return the adb root status for the current connection
     pub fn is_root(&self) -> Result<bool> {
         self.shell().is_root()
     }
 
-    /// Attempt to run adb as root
     pub fn root(&self) -> Result<bool> {
         if self.shell().is_root()? {
             return Ok(true);
@@ -194,7 +185,6 @@ impl Client {
         }
     }
 
-    /// unroot the adb connection
     pub fn unroot(&self) -> Result<()> {
         super::shell::handle_result(CommandBuilder::from(self).arg("unroot").build().output()?)
     }
@@ -238,7 +228,6 @@ impl Client {
         Ok(())
     }
 
-    /// copy the device screenshot to clipboard
     pub fn copy_screencap(&self) -> Result<()> {
         let mut dir = temp_dir();
         let file_name = format!("{}.png", Uuid::new_v4());
@@ -263,11 +252,11 @@ impl Client {
         Ok(())
     }
 
-    /// reboot the device; defaults to booting system image but
-    /// supports bootloader and recovery too. sideload reboots
-    /// into recovery and automatically starts sideload mode,
-    /// sideload-auto-reboot is the same but reboots after sideloading.
     pub fn reboot(&self, reboot_type: Option<RebootType>) -> Result<()> {
+        // reboot the device; defaults to booting system image but
+        // supports bootloader and recovery too. sideload reboots
+        // into recovery and automatically starts sideload mode,
+        // sideload-auto-reboot is the same but reboots after sideloading.
         let mut args = vec!["reboot".to_string()];
 
         if let Some(reboot_type) = reboot_type {
@@ -279,9 +268,9 @@ impl Client {
         Ok(())
     }
 
-    /// remount partitions read-write. if a reboot is required, `reboot_if_required` will
-    /// will automatically reboot the device.
     pub fn remount(&self, reboot_if_required: bool) -> Result<()> {
+        // remount partitions read-write. if a reboot is required, `reboot_if_required`
+        // will automatically reboot the device.
         let mut cmd = CommandBuilder::from(self).arg("remount");
         if reboot_if_required {
             cmd = cmd.arg("-R");
@@ -296,8 +285,21 @@ impl Client {
         }
     }
 
-    /// print serial-number
+    /// Get the serial number of the connected device.
+    ///
+    /// # Returns
+    /// * `Result<String>` - The serial number as a string.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let serial = client.get_seriano().unwrap();
+    /// println!("Serial: {}", serial);
+    /// ```
     pub fn get_seriano(&self) -> Result<String> {
+        // print serial-number
         let output = CommandBuilder::from(self)
             .arg("get-serialno")
             .build()
@@ -305,9 +307,22 @@ impl Client {
         Ok(Arg::as_str(&output.stdout)?.trim().to_string())
     }
 
-    /// reconnect                kick connection from host side to force reconnect
-    /// reconnect device         kick connection from device side to force reconnect
-    /// reconnect offline        reset offline/unauthorized devices to force reconnect
+    /// Reconnect the device, optionally specifying the reconnect type.
+    ///
+    /// # Arguments
+    /// * `r#type` - Optional reconnect type (e.g., device, offline).
+    ///
+    /// # Returns
+    /// * `Result<String>` - The output of the reconnect command.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType, Reconnect};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let result = client.reconnect(Some(Reconnect::Device)).unwrap();
+    /// println!("Reconnect result: {}", result);
+    /// ```
     pub fn reconnect(&self, r#type: Option<Reconnect>) -> Result<String> {
         let mut cmd = CommandBuilder::from(self).arg("reconnect".to_string());
         if let Some(reconnect_type) = r#type {
@@ -317,11 +332,27 @@ impl Client {
         Ok(Arg::as_str(&output.stdout)?.trim().to_owned())
     }
 
-    ///  bugreport PATH
-    ///     write bugreport to given PATH (default=bugreport.zip);
-    ///     if PATH is a directory, the bug report is saved in that directory.
-    ///     devices that don't support zipped bug reports output to stdout.
+    /// Generate a bug report and save it to the specified output path or to the default location.
+    ///
+    /// # Arguments
+    /// * `output` - Optional output path or directory.
+    ///
+    /// # Returns
+    /// * `Result<Output>` - The output of the bugreport command.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let output = client.bug_report::<&str>(None).unwrap();
+    /// println!("Bugreport status: {}", output.status);
+    /// ```
     pub fn bug_report<T: Arg>(&self, output: Option<T>) -> Result<Output> {
+        //  bugreport PATH
+        //     write bugreport to given PATH (default=bugreport.zip);
+        //     if PATH is a directory, the bug report is saved in that directory.
+        //     devices that don't support zipped bug reports output to stdout.
         let args = match output.as_ref() {
             Some(s) => vec!["bugreport", s.as_str()?],
             None => vec!["bugreport"],
@@ -333,6 +364,18 @@ impl Client {
             .map_err(|e| e.into())
     }
 
+    /// Clear all logcat buffers on the device.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// client.clear_logcat().unwrap();
+    /// ```
     pub fn clear_logcat(&self) -> Result<()> {
         let output = CommandBuilder::from(self)
             .args(["logcat", "-b", "all", "-c"])
@@ -346,6 +389,24 @@ impl Client {
         }
     }
 
+    /// Run logcat with the specified options and optional cancellation signal.
+    ///
+    /// # Arguments
+    /// * `options` - Logcat options (filters, format, etc.).
+    /// * `cancel` - Optional cancellation signal.
+    ///
+    /// # Returns
+    /// * `Result<Output>` - The output of the logcat command.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType, LogcatOptions};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let options = LogcatOptions::default();
+    /// let output = client.logcat(options, None).unwrap();
+    /// println!("Logcat output: {}", String::from_utf8_lossy(&output.stdout));
+    /// ```
     pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> Result<Output> {
         let mut command = CommandBuilder::from(self);
         let mut args = vec!["logcat".into()];
@@ -366,32 +427,83 @@ impl Client {
             .map_err(|e| e.into())
     }
 
-    /// Returns the device mac-address
+    /// Get the MAC address of the device's ethernet interface (eth0).
+    ///
+    /// # Returns
+    /// * `Result<MacAddress>` - The MAC address as a `MacAddress` struct.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let mac = client.get_mac_address().unwrap();
+    /// println!("MAC address: {}", mac);
+    /// ```
     pub fn get_mac_address(&self) -> Result<MacAddress> {
+        // Returns the device mac-address
         let output = self.shell().cat("/sys/class/net/eth0/address")?;
         let mac_address_str = Arg::as_str(&output)?.trim_end();
         let mac_address = MacAddress::try_from(mac_address_str)?;
         Ok(mac_address)
     }
 
-    /// Returns the wlan mac-address
+    /// Get the MAC address of the device's WLAN interface (wlan0).
+    ///
+    /// # Returns
+    /// * `Result<MacAddress>` - The MAC address as a `MacAddress` struct.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let mac = client.get_wlan_address().unwrap();
+    /// println!("WLAN MAC address: {}", mac);
+    /// ```
     pub fn get_wlan_address(&self) -> Result<MacAddress> {
+        // Returns the wlan mac-address
         let output = self.shell().cat("/sys/class/net/wlan0/address")?;
         let mac_address_str = Arg::as_str(&output)?.trim_end();
         let mac_address = MacAddress::try_from(mac_address_str)?;
         Ok(mac_address)
     }
 
-    /// Returns the boot id
+    /// Get the boot ID of the device (from /proc/sys/kernel/random/boot_id).
+    ///
+    /// # Returns
+    /// * `Result<Uuid>` - The boot ID as a `Uuid` struct.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let boot_id = client.get_boot_id().unwrap();
+    /// println!("Boot ID: {}", boot_id);
+    /// ```
     pub fn get_boot_id(&self) -> Result<Uuid> {
+        // Returns the boot id
         let output = self.shell().cat("/proc/sys/kernel/random/boot_id")?;
         let output_str = Arg::as_str(&output)?.trim();
         let boot_id = output_str.try_into()?;
         Ok(boot_id)
     }
 
-    /// Disable verity
+    /// Disable verity on the device.
+    ///
+    /// # Returns
+    /// * `Result<()>` - Ok if successful, or an error if the command fails.
+    ///
+    /// # Example
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// client.disable_verity().unwrap();
+    /// ```
     pub fn disable_verity(&self) -> Result<()> {
+        // Disable verity
         let output = CommandBuilder::from(self)
             .arg("disable-verity")
             .build()
@@ -404,8 +516,8 @@ impl Client {
         }
     }
 
-    /// Enable verity
     pub fn enable_verity(&self) -> Result<()> {
+        // Enable verity
         let output = CommandBuilder::from(self)
             .arg("enable-verity")
             .build()
@@ -452,6 +564,20 @@ impl Client {
         super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
     }
 
+    /// Uninstall an application package from the device.
+    ///
+    /// # Arguments
+    /// * `package_name` - The name of the package to uninstall.
+    /// * `options` - Optional uninstall options.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// client.connect(None).unwrap();
+    /// client.uninstall("com.example.app", None).unwrap();
+    /// ```
     pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> Result<()> {
         let mut args: Vec<OsString> = vec!["uninstall".into()];
         match options {
@@ -462,12 +588,33 @@ impl Client {
         super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
     }
 
-    /// return the client shell interface
+    /// Return the client shell interface for running shell commands.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// let shell = client.shell();
+    /// let user = shell.whoami().unwrap();
+    /// println!("Current user: {}", user);
+    /// ```
     pub fn shell(&self) -> Shell {
+        // return the client shell interface
         Shell { parent: self }
     }
 
-    /// Add debug tracing to connection
+    /// Enable or disable debug tracing for the client connection.
+    ///
+    /// # Arguments
+    /// * `debug` - If true, enables debug output for all commands.
+    ///
+    /// # Examples
+    /// ```rust
+    /// use radb_client::types::{Client, ConnectionType};
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap().with_debug(true);
+    /// ```
     pub fn with_debug(mut self, debug: bool) -> Self {
         self.debug = debug;
         self
