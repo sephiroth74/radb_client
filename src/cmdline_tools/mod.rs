@@ -6,13 +6,13 @@ mod apkanalyzer;
 /// for more information.
 #[derive(Debug, Clone)]
 pub struct ApkAnalyzer {
-	pub(crate) path: PathBuf,
-	pub(crate) debug: bool,
+    pub(crate) path: PathBuf,
+    pub(crate) debug: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct ApkSummary {
-	pub package_name: String,
-	pub version_code: String,
-	pub version_name: String,
+    pub package_name: String,
+    pub version_code: String,
+    pub version_name: String,
 }
