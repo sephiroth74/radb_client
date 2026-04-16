@@ -957,6 +957,35 @@ impl<'a> Shell<'a> {
         Ok(lines)
     }
 
+    pub fn dir_size<T: Arg>(&self, path: T, summary: bool) -> Result<Vec<(String, u64)>> {
+        let mut args = vec!["du".as_os_str()];
+
+        if summary {
+            args.push("-s".as_os_str());
+        }
+
+        args.push(path.as_str()?.as_os_str());
+        let stdout = self.exec(args, None, None)?.stdout;
+        let lines = stdout.lines().filter_map(|s| s.ok()).collect::<Vec<_>>();
+        // we will have a list of [{size}\t{dirname}]
+        // we want to return a Vec<(String,u64)>
+
+        let result = lines
+            .into_iter()
+            .filter_map(|line| {
+                let parts: Vec<&str> = line.split('\t').collect();
+                if parts.len() == 2 {
+                    if let Ok(size) = parts[0].trim().parse::<u64>() {
+                        return Some((parts[1].to_string(), size));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        Ok(result)
+    }
+
     pub fn exists<T: Arg>(&self, path: T) -> Result<bool> {
         self.test_file(path, "e")
     }
@@ -1253,11 +1282,11 @@ impl<'a> Shell<'a> {
             .map(|s| PropType::try_from(s))?
     }
 
-    pub fn am(&self) -> ActivityManager {
+    pub fn am(&self) -> ActivityManager<'_> {
         ActivityManager { parent: self }
     }
 
-    pub fn pm(&self) -> PackageManager {
+    pub fn pm(&self) -> PackageManager<'_> {
         PackageManager { parent: self }
     }
 }
@@ -1652,6 +1681,21 @@ mod test {
             .expect("failed to list dir");
         assert!(!ls.is_empty());
         println!("ls: {:?}", ls);
+    }
+
+    #[test]
+    fn test_dir_size() {
+        init_log();
+        let client = connect_emulator();
+        let dir_size = client
+            .shell()
+            .dir_size("/system/app", false)
+            .expect("failed to get dir size");
+        assert!(!dir_size.is_empty());
+
+        dir_size.iter().for_each(|(name, size)| {
+            println!("{}: {}Kb", name, size);
+        });
     }
 
     #[test]

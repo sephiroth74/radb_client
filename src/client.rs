@@ -599,7 +599,7 @@ impl Client {
     /// let user = shell.whoami().unwrap();
     /// println!("Current user: {}", user);
     /// ```
-    pub fn shell(&self) -> Shell {
+    pub fn shell(&self) -> Shell<'_> {
         // return the client shell interface
         Shell { parent: self }
     }

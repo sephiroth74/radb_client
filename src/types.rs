@@ -635,7 +635,7 @@ pub enum SettingsType {
     secure,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Intent {
     pub action: Option<String>,
     pub data: Option<String>,
@@ -650,7 +650,7 @@ pub struct Intent {
     pub extra: Extra,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Extra {
     pub es: HashMap<String, String>,
     pub ez: HashMap<String, bool>,
@@ -687,11 +687,13 @@ pub struct AdbInstallOptions {
     pub instant: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SimplePackageReader<'a> {
     pub(crate) data: &'a str,
     pub dexopt: DexoptState<'a>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct DexoptState<'a> {
     pub(crate) data: &'a str,
 }
