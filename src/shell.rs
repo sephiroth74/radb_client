@@ -5,7 +5,7 @@ use std::process::{ExitStatus, Output};
 use std::sync::Mutex;
 use std::time::Duration;
 
-use cached::{Cached, SizedCache};
+use lru::LruCache;
 use cmd_lib::AsOsStr;
 use crossbeam_channel::Receiver;
 use lazy_static::lazy_static;
@@ -28,8 +28,8 @@ use crate::types::{
 lazy_static! {
     static ref RE_GET_PROPS: Regex =
         Regex::new("(?m)^\\[(.*)\\]\\s*:\\s*\\[([^\\]]*)\\]$").unwrap();
-    static ref COMMANDS_CACHE: Mutex<SizedCache<String, Option<String>>> =
-        Mutex::new(SizedCache::with_size(10));
+    static ref COMMANDS_CACHE: Mutex<LruCache<String, Option<String>>> =
+        Mutex::new(LruCache::new(std::num::NonZeroUsize::new(10).unwrap()));
 }
 
 /// Handle the result of a shell command execution.
@@ -467,24 +467,28 @@ impl<'a> Shell<'a> {
             let mut binding = COMMANDS_CACHE.lock().unwrap();
             let cache_key = format!("{}{}", self.parent.addr, command_string);
 
-            binding
-                .cache_get_or_set_with(cache_key.clone(), || {
-                    self.exec(
-                        vec![format!("command -v {}", command_string).as_str()],
-                        None,
-                        None,
-                    )
-                    .and_then(|result| Ok(Arg::as_str(&result.stdout)?.trim().to_string()))
-                    .and_then(|result| {
-                        if result.is_empty() {
-                            Err(std::io::ErrorKind::NotFound.into())
-                        } else {
-                            Ok(result)
-                        }
-                    })
-                    .ok()
+            if let Some(cached) = binding.get(&cache_key) {
+                return cached.clone();
+            }
+
+            let value = self
+                .exec(
+                    vec![format!("command -v {}", command_string).as_str()],
+                    None,
+                    None,
+                )
+                .and_then(|result| Ok(Arg::as_str(&result.stdout)?.trim().to_string()))
+                .and_then(|result| {
+                    if result.is_empty() {
+                        Err(std::io::ErrorKind::NotFound.into())
+                    } else {
+                        Ok(result)
+                    }
                 })
-                .clone()
+                .ok();
+
+            binding.put(cache_key, value.clone());
+            value
         } else {
             None
         }
