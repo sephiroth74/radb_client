@@ -1213,17 +1213,22 @@ impl<'a> Shell<'a> {
     }
 
     pub fn getprop(&self, key: &str) -> Result<String> {
-        let result = self
-            .exec(vec!["getprop", key], None, None)
-            .map(|s| s.stdout)?;
-        Ok(Arg::as_str(&result).map(|f| f.trim_end())?.to_string())
+        let output = self.exec(vec!["getprop", key], None, None)?;
+        // a failed adb shell (e.g. device offline) returns an empty stdout
+        if output.error() {
+            return Err(output.into());
+        }
+        Ok(Arg::as_str(&output.stdout).map(|f| f.trim_end())?.to_string())
     }
 
     pub fn getprops(&self) -> Result<Vec<Property>> {
-        let output = self.exec(["getprop"], None, None);
+        let output = self.exec(["getprop"], None, None)?;
+        if output.error() {
+            return Err(output.into());
+        }
         let mut result: Vec<Property> = Vec::new();
 
-        for line in output?.stdout.lines().filter_map(|l| l.ok()) {
+        for line in output.stdout.lines().filter_map(|l| l.ok()) {
             let captures = RE_GET_PROPS.captures(line.as_str());
             if let Some(cap1) = captures {
                 let k = cap1.get(1);
@@ -1240,10 +1245,12 @@ impl<'a> Shell<'a> {
     }
 
     pub fn getprops_type(&self) -> Result<HashMap<String, PropType>> {
-        let output = self
-            .exec(vec!["getprop", "-T"], None, None)
-            .map(|s| s.stdout)?;
+        let output = self.exec(vec!["getprop", "-T"], None, None)?;
+        if output.error() {
+            return Err(output.into());
+        }
         let hash_map = output
+            .stdout
             .lines()
             .filter_map(|l| l.ok())
             .into_iter()
