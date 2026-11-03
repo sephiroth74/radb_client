@@ -1,0 +1,182 @@
+Permissions:
+  Permission [android.permission.POST_NOTIFICATIONS] (c1e73d7):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=dangerous|instant
+    perm=PermissionInfo{f8d04c4 android.permission.POST_NOTIFICATIONS}
+    flags=0x0
+  Permission [android.permission.INSTALL_PACKAGES] (a936ec1):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{6cb2666 android.permission.INSTALL_PACKAGES}
+    flags=0x0
+  Permission [android.permission.INTERNET] (199f81b):
+    sourcePackage=android
+    uid=1000 gids=[3003] type=0 prot=normal|instant
+    perm=PermissionInfo{8090db8 android.permission.INTERNET}
+    flags=0x0
+  Permission [android.permission.WRITE_SECURE_SETTINGS] (6d65e63):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged|development|installer|role
+    perm=PermissionInfo{d9a8a60 android.permission.WRITE_SECURE_SETTINGS}
+    flags=0x0
+  Permission [android.permission.READ_PRIVILEGED_PHONE_STATE] (4d5e3c8):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged|role
+    perm=PermissionInfo{f291c61 android.permission.READ_PRIVILEGED_PHONE_STATE}
+    flags=0x0
+  Permission [android.permission.CAMERA] (e0b5e1f):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=dangerous|instant
+    perm=PermissionInfo{c7eb56c android.permission.CAMERA}
+    flags=0x0
+  Permission [com.google.android.apps.nexuslauncher.permission.READ_SETTINGS] (d8719bd):
+    sourcePackage=com.google.android.apps.nexuslauncher
+    uid=10162 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{18bbbb2 com.google.android.apps.nexuslauncher.permission.READ_SETTINGS}
+    flags=0x0
+  Permission [android.permission.health.READ_RESTING_HEART_RATE] (95b5703):
+    sourcePackage=com.google.android.healthconnect.controller
+    uid=10171 gids=[] type=0 prot=dangerous
+    perm=PermissionInfo{fb92680 android.permission.health.READ_RESTING_HEART_RATE}
+    flags=0x0
+  Permission [android.permission.LAUNCH_DEVICE_MANAGER_SETUP] (29094b9):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|role
+    perm=PermissionInfo{4f5e0fe android.permission.LAUNCH_DEVICE_MANAGER_SETUP}
+    flags=0x0
+  Permission [android.permission.MANAGE_DEVICE_POLICY_PROFILE_INTERACTION] (9b2605f):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=internal|role
+    perm=PermissionInfo{2ca2aac android.permission.MANAGE_DEVICE_POLICY_PROFILE_INTERACTION}
+    flags=0x0
+  Permission [com.google.android.settings.intelligence.apiproxy] (61cc375):
+    sourcePackage=com.google.android.settings.intelligence
+    uid=10128 gids=[] type=0 prot=signature
+    perm=PermissionInfo{f4b0f0a com.google.android.settings.intelligence.apiproxy}
+    flags=0x0
+  Permission [com.google.android.gms.auth.api.phone.permission.SEND] (d46a37b):
+    sourcePackage=com.google.android.gms
+    uid=10127 gids=[] type=0 prot=signature
+    perm=PermissionInfo{9054598 com.google.android.gms.auth.api.phone.permission.SEND}
+    flags=0x0
+  Permission [android.permission.REAL_GET_TASKS] (e0321f1):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{d1311d6 android.permission.REAL_GET_TASKS}
+    flags=0x0
+  Permission [android.permission.ACCESS_CACHE_FILESYSTEM] (211fc57):
+    sourcePackage=android
+    uid=1000 gids=[2001] type=0 prot=signature|privileged
+    perm=PermissionInfo{ed52344 android.permission.ACCESS_CACHE_FILESYSTEM}
+    flags=0x0
+  Permission [android.permission.REMOTE_AUDIO_PLAYBACK] (c16ec2d):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature
+    perm=PermissionInfo{9867562 android.permission.REMOTE_AUDIO_PLAYBACK}
+    flags=0x0
+  Permission [android.permission.START_CROSS_PROFILE_ACTIVITIES] (1d006f3):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|role
+    perm=PermissionInfo{aa32fb0 android.permission.START_CROSS_PROFILE_ACTIVITIES}
+    flags=0x0
+  Permission [android.permission.DOWNLOAD_WITHOUT_NOTIFICATION] (2231e29):
+    sourcePackage=com.android.providers.downloads
+    uid=10083 gids=[] type=0 prot=normal
+    perm=PermissionInfo{8da85ae android.permission.DOWNLOAD_WITHOUT_NOTIFICATION}
+    flags=0x0
+  Permission [android.permission.health.WRITE_BASAL_METABOLIC_RATE] (c5a1f4f):
+    sourcePackage=com.google.android.healthconnect.controller
+    uid=10171 gids=[] type=0 prot=dangerous
+    perm=PermissionInfo{e0396dc android.permission.health.WRITE_BASAL_METABOLIC_RATE}
+    flags=0x0
+  Permission [android.permission.FOREGROUND_SERVICE_CAMERA] (9a673e5):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=normal|instant
+    perm=PermissionInfo{b4d4eba android.permission.FOREGROUND_SERVICE_CAMERA}
+    flags=0x0
+  Permission [android.permission.NFC_PREFERRED_PAYMENT_INFO] (bc3616b):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=normal
+    perm=PermissionInfo{da144c8 android.permission.NFC_PREFERRED_PAYMENT_INFO}
+    flags=0x0
+  Permission [android.permission.ACCESS_GPU_SERVICE] (b4f6961):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature
+    perm=PermissionInfo{4f19c86 android.permission.ACCESS_GPU_SERVICE}
+    flags=0x0
+  Permission [com.google.android.gms.permission.BIND_USER_STATUS_REPORT_SERVICE] (e34a947):
+    sourcePackage=com.google.android.gms
+    uid=10127 gids=[] type=0 prot=signature
+    perm=PermissionInfo{be9e574 com.google.android.gms.permission.BIND_USER_STATUS_REPORT_SERVICE}
+    flags=0x0
+  Permission [android.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS] (2383a9d):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|role
+    perm=PermissionInfo{63afb12 android.permission.WIFI_ACCESS_COEX_UNSAFE_CHANNELS}
+    flags=0x0
+  Permission [com.google.android.apps.photos.permission.C2D_MESSAGE] (18892e3):
+    sourcePackage=com.google.android.apps.photos
+    uid=10141 gids=[] type=0 prot=signature
+    perm=PermissionInfo{279e4e0 com.google.android.apps.photos.permission.C2D_MESSAGE}
+    flags=0x0
+  Permission [com.google.android.apps.nexuslauncher.permission.HOTSEAT_EDU] (6e2e399):
+    sourcePackage=com.google.android.apps.nexuslauncher
+    uid=10162 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{149b65e com.google.android.apps.nexuslauncher.permission.HOTSEAT_EDU}
+    flags=0x0
+  Permission [android.permission.MANAGE_APPOPS] (ca77a3f):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature
+    perm=PermissionInfo{6486f0c android.permission.MANAGE_APPOPS}
+    flags=0x0
+  Permission [android.permission.REGISTER_WINDOW_MANAGER_LISTENERS] (df52055):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature
+    perm=PermissionInfo{7f6da6a android.permission.REGISTER_WINDOW_MANAGER_LISTENERS}
+    flags=0x0
+  Permission [android.permission.INTENT_FILTER_VERIFICATION_AGENT] (2a37b5b):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{2936ff8 android.permission.INTENT_FILTER_VERIFICATION_AGENT}
+    flags=0x0
+  Permission [android.permission.BIND_INCALL_SERVICE] (6b46cd1):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{ea03336 android.permission.BIND_INCALL_SERVICE}
+    flags=0x0
+  Permission [android.permission.PROVIDE_RESOLVER_RANKER_SERVICE] (b947237):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged
+    perm=PermissionInfo{68b93a4 android.permission.PROVIDE_RESOLVER_RANKER_SERVICE}
+    flags=0x0
+  Permission [android.permission.MANAGE_DEVICE_POLICY_STATUS_BAR] (542050d):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=internal|role
+    perm=PermissionInfo{fb44cc2 android.permission.MANAGE_DEVICE_POLICY_STATUS_BAR}
+    flags=0x0
+  Permission [com.google.android.gms.trustagent.framework.model.DATA_CHANGE_NOTIFICATION] (f33fad3):
+    sourcePackage=com.google.android.gms
+    uid=10127 gids=[] type=0 prot=signature
+    perm=PermissionInfo{1c04610 com.google.android.gms.trustagent.framework.model.DATA_CHANGE_NOTIFICATION}
+    flags=0x0
+  Permission [android.permission.PROVIDE_REMOTE_CREDENTIALS] (496e509):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|privileged|role
+    perm=PermissionInfo{bfe730e android.permission.PROVIDE_REMOTE_CREDENTIALS}
+    flags=0x0
+  Permission [android.permission.MANAGE_DEVICE_POLICY_PRIVATE_DNS] (d39712f):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=internal|role
+    perm=PermissionInfo{b4bb33c android.permission.MANAGE_DEVICE_POLICY_PRIVATE_DNS}
+    flags=0x0
+  Permission [android.permission.WRITE_SETTINGS] (c3fc8c5):
+    sourcePackage=android
+    uid=1000 gids=[] type=0 prot=signature|appop|pre23|preinstalled|role
+    perm=PermissionInfo{3b2b21a android.permission.WRITE_SETTINGS}
+    flags=0x0
+  Permission [com.google.android.gm.permission.WRITE_GMAIL] (f75f14b):
+    sourcePackage=com.google.android.gm
+    uid=10147 gids=[] type=0 prot=signature
+    perm=PermissionInfo{fbec728 com.google.android.gm.permission.WRITE_GMAIL}
+    flags=0x0
+

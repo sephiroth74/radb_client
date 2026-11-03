@@ -1,0 +1,8 @@
+List of devices attached
+192.168.1.114:5555     device product:SwisscomBox23 model:IP2300 device:IP2300 transport_id:3
+emulator-5554          device product:sdk_gphone64_arm64 model:sdk_gphone64_arm64 device:emu64a transport_id:4
+emulator-5556          offline transport_id:300
+R58M123ABC             unauthorized usb:1-1 transport_id:7
+0123456789ABCDEF       recovery usb:1-2 product:twrp model:Pixel_6 device:oriole transport_id:8
+adb-28131FDH2000VM-QeZ8ZW._adb-tls-connect._tcp device product:oriole model:Pixel_6 device:oriole transport_id:9
+

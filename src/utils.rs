@@ -1,39 +1,40 @@
+//! Host helpers: the Android SDK location, and quoting for the device shell.
+
 use std::path::PathBuf;
 
-use anyhow::anyhow;
+use crate::adb::Adb;
+use crate::error::{Error, Result};
 
-use crate::types::Adb;
+pub use crate::command::shell_quote;
 
-/// Attempt to find the ANDROID_HOME environment variable, if it is not found, attempt to find it using the adb command location
-pub fn android_home() -> anyhow::Result<PathBuf> {
-    match std::env::var("ANDROID_HOME") {
-        Ok(path) => {
-            let pathbuf = PathBuf::from(path);
-            if pathbuf.exists() {
-                return Ok(pathbuf);
-            } else {
-                match Adb::new() {
-                    Ok(adb) => match adb.0.parent() {
-                        Some(x) => {
-                            let pathbuf = x.to_path_buf();
-                            if pathbuf.exists() {
-                                Ok(pathbuf)
-                            } else {
-                                Err(anyhow!("ANDROID_HOME not set or invalid"))
-                            }
-                        }
-                        None => Err(anyhow!("ANDROID_HOME not set or invalid")),
-                    },
-                    Err(err) => Err(anyhow::Error::from(err)),
-                }
+/// The Android SDK directory: `ANDROID_HOME`, then `ANDROID_SDK_ROOT`, then the
+/// SDK that contains the `adb` found in `PATH` (`<sdk>/platform-tools/adb`).
+pub fn android_home() -> Result<PathBuf> {
+    for var in ["ANDROID_HOME", "ANDROID_SDK_ROOT"] {
+        if let Some(path) = std::env::var_os(var).map(PathBuf::from) {
+            if path.is_dir() {
+                return Ok(path);
             }
         }
-        Err(err) => Err(anyhow::Error::from(err)),
     }
+    Adb::new()
+        .ok()
+        .and_then(|adb| {
+            Some(
+                adb.path()
+                    .canonicalize()
+                    .ok()?
+                    .parent()?
+                    .parent()?
+                    .to_path_buf(),
+            )
+        })
+        .filter(|path| path.join("platform-tools").is_dir())
+        .ok_or_else(|| Error::ToolNotFound("Android SDK (set ANDROID_HOME)".to_string()))
 }
 
-/// Attempt to find the apkanalyzer command path
-pub fn apk_analyzer() -> anyhow::Result<PathBuf> {
+/// The path of `apkanalyzer` (`<sdk>/cmdline-tools/latest/bin/apkanalyzer`).
+pub fn apk_analyzer() -> Result<PathBuf> {
     let path = android_home()?
         .join("cmdline-tools")
         .join("latest")
@@ -42,6 +43,6 @@ pub fn apk_analyzer() -> anyhow::Result<PathBuf> {
     if path.exists() {
         Ok(path)
     } else {
-        Err(anyhow::Error::msg("apkanalyzer not found"))
+        Err(Error::ToolNotFound(path.display().to_string()))
     }
 }

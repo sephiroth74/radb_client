@@ -1,38 +1,43 @@
 #!/usr/bin/env -S just --justfile
 
 alias d := dev
-alias r := run
 alias f := fmt
 alias l := lint
 alias t := test
+alias te := test-emulator
 
 # List available commands.
 _default:
     just --list --unsorted
 
-# Develop the app.
+# Lint on every change.
 dev:
-    cargo watch -x 'clippy --locked --all-targets --all-features'
-
-# Develop the app.
-run:
-    touch qml/qml.qrc && cargo run
+    cargo watch -x 'clippy --all-targets --features scanner,clipboard'
 
 # Format the codebase.
 fmt:
-    cargo fmt --all -- --config-path ~/.config/rustfmt/rustfmt.toml
+    cargo fmt --all
 
 # Check if the codebase is properly formatted.
 fmt-check:
     cargo fmt --all -- --check
 
-# Lint the codebase.
+# Lint the codebase (warnings are errors).
 lint:
-    cargo clippy --locked --all-targets --all-features
+    cargo clippy --all-targets --all-features -- -D warnings
 
-# Test the codebase.
+# Unit tests and doctests: no device needed.
 test:
-    cargo test run --all-targets
+    cargo test --features scanner,clipboard
+
+# Start the radb-test emulator, headless, and wait for the boot (see README to create it).
+emulator:
+    "${ANDROID_HOME}/emulator/emulator" -avd radb-test -no-window -no-audio -no-boot-anim -no-snapshot -writable-system > /dev/null 2>&1 &
+    adb -s emulator-5554 wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 1; done'
+
+# Integration tests on a running emulator (e.g. `just test-emulator --include-ignored`).
+test-emulator *args:
+    cargo test --features emulator-tests,scanner --test emulator -- {{args}}
 
 udeps:
     cargo +nightly udeps --all-targets
