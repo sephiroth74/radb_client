@@ -1,53 +1,176 @@
-use std::borrow::Cow;
-use std::env::temp_dir;
 use std::ffi::OsString;
-
+use std::fmt::{Display, Formatter};
 use std::fs::File;
-use std::process::{Output, Stdio};
+use std::path::Path;
+use std::process::Stdio;
 use std::thread::sleep;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use arboard::ImageData;
 use crossbeam_channel::Receiver;
 use mac_address::MacAddress;
-use rustix::path::Arg;
 use simple_cmd::debug::CommandDebug;
-use simple_cmd::prelude::OutputExt;
-use simple_cmd::{Cmd, CommandBuilder};
+use simple_cmd::CommandBuilder;
+use strum::Display;
 use uuid::Uuid;
 
-use crate::error::Error;
-use crate::prelude::*;
-use crate::result::Result;
-use crate::traits::AsArgs;
-use crate::types::{
-    Adb, AdbInstallOptions, Client, ConnectionType, LogcatOptions, RebootType, Reconnect, Shell,
-    UninstallOptions, Wakefulness,
-};
+use crate::adb::{Adb, AdbDevice};
+use crate::am::ActivityManager;
+use crate::command::{run, run_string, run_unchecked, stdout_string, was_stopped};
+use crate::connection::ConnectionType;
+use crate::error::{CommandFailure, Error, Result};
+use crate::pm::{PackageManager, UninstallOptions};
+use crate::shell::Shell;
 
-static GET_STATE_TIMEOUT: u64 = 200;
-static SLEEP_AFTER_ROOT: u64 = 1_000;
+const GET_STATE_TIMEOUT: Duration = Duration::from_secs(2);
+const ADBD_RESTART_TIMEOUT: Duration = Duration::from_secs(20);
+const BOOT_COMPLETED_SCRIPT: &str =
+    r#"while [ "$(getprop sys.boot_completed)" != "1" ]; do sleep 1; done"#;
+
+/// A device, reached through the host `adb`.
+///
+/// ```no_run
+/// use radb_client::{Client, ConnectionType};
+///
+/// let client = Client::try_from(ConnectionType::emulator(5554)).unwrap();
+/// let sdk = client.shell().build_version_sdk().unwrap();
+/// println!("{client} runs API {sdk}");
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Client {
+    pub adb: Adb,
+    pub addr: ConnectionType,
+    /// Log the command lines (at trace level, target `simple_cmd`) and command timeouts.
+    pub debug: bool,
+}
+
+#[derive(Debug, Display, Eq, PartialEq, Hash, Clone, Copy)]
+pub enum Wakefulness {
+    Awake,
+    Asleep,
+    Dreaming,
+    Dozing,
+}
+
+#[derive(Debug, Display, Eq, PartialEq, Hash, Clone, Copy)]
+#[strum(serialize_all = "lowercase")]
+pub enum Reconnect {
+    Device,
+    Offline,
+}
+
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
+#[strum(serialize_all = "kebab-case")]
+pub enum RebootType {
+    Bootloader,
+    Recovery,
+    Sideload,
+    SideloadAutoReboot,
+    Userspace,
+    Dra,
+}
+
+#[derive(Debug, Default, Clone, Eq, PartialEq)]
+pub struct LogcatOptions {
+    /// `-e expr`: only print lines where the log message matches the regular expression.
+    pub expr: Option<String>,
+    /// `-d`: dump the log and exit.
+    pub dump: bool,
+    /// `-f filename`: write the log to `filename` on the device.
+    pub filename: Option<String>,
+    /// `-s tag:level ...`: only print these tags (every other tag is silenced).
+    pub tags: Option<Vec<LogcatTag>>,
+    /// `-v format`: output format.
+    pub format: Option<String>,
+    /// `-T time`: print the lines since the given time.
+    pub since: Option<chrono::DateTime<chrono::Local>>,
+    /// `--pid=pid`: only print the logs of this process.
+    pub pid: Option<i32>,
+    /// Stop logcat after this time. The logs collected until then are returned.
+    pub timeout: Option<Duration>,
+}
+
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq)]
+pub enum LogcatLevel {
+    #[strum(serialize = "V")]
+    Verbose,
+    #[strum(serialize = "D")]
+    Debug,
+    #[strum(serialize = "I")]
+    Info,
+    #[strum(serialize = "W")]
+    Warn,
+    #[strum(serialize = "E")]
+    Error,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub struct LogcatTag {
+    pub name: String,
+    pub level: LogcatLevel,
+}
+
+/// Options of `adb install`.
+#[derive(Debug, Default, Eq, PartialEq, Clone)]
+pub struct AdbInstallOptions {
+    /// `-d`: allow version code downgrade
+    pub allow_version_downgrade: bool,
+    /// `-t`: allow test packages
+    pub allow_test_package: bool,
+    /// `-r`: replace existing application
+    pub replace: bool,
+    /// `-l`: forward lock the app
+    pub forward_lock: bool,
+    /// `-s`: install on SD card instead of internal storage
+    pub install_external: bool,
+    /// `-g`: grant all runtime permissions
+    pub grant_permissions: bool,
+    /// `--instant`: install the app as an ephemeral install app
+    pub instant: bool,
+}
 
 impl Client {
     pub fn new(adb: Adb, addr: ConnectionType, debug: bool) -> Self {
         Client { adb, addr, debug }
     }
 
-    /// Attempt to connect to a tcp/ip client, optionally waiting until the given
-    /// timeout expires.
-    /// # Examples:
-    /// ```rust
-    /// use radb_client::types::ConnectionType;
-    /// use radb_client::types::Client;
+    pub fn with_debug(mut self, debug: bool) -> Self {
+        self.debug = debug;
+        self
+    }
+
+    /// `adb <selector>`, ready for the arguments.
+    pub(crate) fn command(&self) -> CommandBuilder {
+        CommandBuilder::new(self.adb.path())
+            .with_debug(self.debug)
+            .args(self.addr.as_args())
+    }
+
+    /// The `adb shell` interface.
+    pub fn shell(&self) -> Shell<'_> {
+        Shell { parent: self }
+    }
+
+    /// Shortcut for `client.shell().am()`.
+    pub fn am(&self) -> ActivityManager<'_> {
+        self.shell().am()
+    }
+
+    /// Shortcut for `client.shell().pm()`.
+    pub fn pm(&self) -> PackageManager<'_> {
+        self.shell().pm()
+    }
+
+    /// Connect to a tcp/ip device, waiting at most `timeout` for `adb connect`.
     ///
-    /// pub fn main() {
-    /// 	use std::time::Duration;
-    /// 	let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// 	let client = Client::try_from(conn).unwrap();
-    /// 	match client.connect(Some(Duration::from_secs(1))) {
-    /// 		Ok(_) => println!("client connected!"),
-    /// 		Err(err) => eprintln!("failed to connect: {err}"),
-    /// 	}
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use radb_client::{Client, ConnectionType};
+    ///
+    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
+    /// let client = Client::try_from(conn).unwrap();
+    /// match client.connect(Some(Duration::from_secs(1))) {
+    ///     Ok(_) => println!("client connected!"),
+    ///     Err(err) => eprintln!("failed to connect: {err}"),
     /// }
     /// ```
     pub fn connect(&self, timeout: Option<Duration>) -> Result<()> {
@@ -55,111 +178,64 @@ impl Client {
             return Ok(());
         }
 
-        let addr = match self.addr {
-            ConnectionType::TcpIp(ip) => ip.ip(),
-            _ => return Err(Error::InvalidConnectionTypeError),
-        };
-
-        let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
-        command = command
+        let addr = self.tcp_addr()?;
+        run(self
+            .adb
+            .command()
             .arg("connect")
             .arg(addr.to_string())
-            .timeout(timeout);
+            .timeout(timeout))?;
 
-        let output = command.build().output()?;
-
-        if output.error() {
-            Err(Error::IoError(std::io::Error::from(
-                std::io::ErrorKind::NotConnected,
-            )))
+        if self.is_connected() {
+            Ok(())
         } else {
-            match self.is_connected() {
-                true => Ok(()),
-                false => Err(Error::IoError(std::io::Error::from(
-                    std::io::ErrorKind::NotConnected,
-                ))),
-            }
+            Err(std::io::ErrorKind::NotConnected.into())
         }
     }
 
-    pub fn disconnect(&self) -> Result<bool> {
-        let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
-        command = command.arg("disconnect");
-        command = match self.addr {
-            ConnectionType::TcpIp(ip) => command.arg(ip.to_string()),
-            _ => command,
-        };
+    /// Disconnect a tcp/ip device.
+    pub fn disconnect(&self) -> Result<()> {
+        let addr = self.tcp_addr()?;
+        run(self.adb.command().arg("disconnect").arg(addr.to_string())).map(|_| ())
+    }
 
-        match command.build().output() {
-            Ok(output) => Ok(output.success()),
-            Err(err) => Err(Error::CommandError(err)),
+    fn tcp_addr(&self) -> Result<std::net::SocketAddr> {
+        match &self.addr {
+            ConnectionType::TcpIp(addr) => Ok(*addr),
+            other => Err(Error::InvalidConnectionTypeError(format!(
+                "{other} is not a tcp/ip connection"
+            ))),
         }
     }
 
-    pub fn try_disconnect(&self) -> Result<bool> {
-        let mut command = CommandBuilder::adb(&self.adb).with_debug(self.debug);
-        command = command.arg("disconnect");
-        command = match self.addr {
-            ConnectionType::TcpIp(ip) => command.arg(ip.to_string()),
-            _ => command,
-        };
-        match command.build().run() {
-            Ok(status) => Ok(status.map_or(false, |status| status.success())),
-            Err(err) => Err(Error::CommandError(err)),
-        }
-    }
-
-    pub fn disconnect_all(&self) -> Result<()> {
-        super::shell::handle_result(
-            CommandBuilder::adb(&self.adb)
-                .with_debug(self.debug)
-                .arg("disconnect")
-                .build()
-                .output()?,
-        )
-    }
-
+    /// True if adb sees the device and it is online.
     pub fn is_connected(&self) -> bool {
-        let mut command = CommandBuilder::from(self);
-        command = command
+        run(self
+            .command()
             .arg("get-state")
-            .timeout(Some(Duration::from_millis(GET_STATE_TIMEOUT)));
-        let output = command.build().output();
-        if let Ok(output) = output {
-            output.success()
-        } else {
-            false
-        }
+            .timeout(Some(GET_STATE_TIMEOUT)))
+        .ok()
+        .filter(|output| !was_stopped(output))
+        .and_then(|output| stdout_string(&output).ok())
+        .is_some_and(|state| state == "device")
     }
 
-    /// Wait for device to be available with an optional timeout
+    /// Wait until the device is available and has completed the boot.
     pub fn wait_for_device(&self, timeout: Option<Duration>) -> Result<()> {
-        CommandBuilder::from(self)
-			.args([
-				"wait-for-device",
-				"shell",
-				"while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done; input keyevent 143",
-			])
-			.timeout(timeout)
-			.build()
-			.output()?;
-        Ok(())
+        let output = run(self
+            .command()
+            .args(["wait-for-device", "shell", BOOT_COMPLETED_SCRIPT])
+            .timeout(timeout))?;
+        if was_stopped(&output) {
+            Err(Error::Timeout(format!("waiting for {}", self.addr)))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn get_wakefulness(&self) -> Result<Wakefulness> {
-        let command1 = CommandBuilder::from(self)
-            .args(vec!["shell", "dumpsys", "power"])
-            .build();
-        let command2 = Cmd::builder("sed")
-            .arg("-n")
-            .arg("s/mWakefulness=\\(\\S*\\)/\\1/p")
-            .with_debug(self.debug)
-            .stdout(Some(Stdio::piped()))
-            .build();
-
-        let result = command1.pipe(command2)?;
-        let awake = Arg::as_str(&result.stdout)?.trim();
-        Ok(awake.try_into()?)
+        let dump = self.shell().exec_string(["dumpsys", "power"])?;
+        parse_wakefulness(&dump)
     }
 
     pub fn is_awake(&self) -> Result<bool> {
@@ -170,843 +246,452 @@ impl Client {
         self.shell().is_root()
     }
 
-    pub fn root(&self) -> Result<bool> {
-        if self.shell().is_root()? {
-            return Ok(true);
+    /// Restart adbd as root and wait until it is back.
+    /// Fails on production builds, where adbd cannot run as root.
+    pub fn root(&self) -> Result<()> {
+        if self.is_root()? {
+            return Ok(());
         }
-
-        let output = CommandBuilder::from(self).arg("root").build().output()?;
-
-        if output.success() {
-            sleep(Duration::from_millis(SLEEP_AFTER_ROOT));
-            Ok(self.is_root()?)
-        } else {
-            Err(Error::CommandError(simple_cmd::Error::from(output)))
-        }
+        self.restart_adbd("root", true)
     }
 
+    /// Restart adbd without root and wait until it is back.
     pub fn unroot(&self) -> Result<()> {
-        super::shell::handle_result(CommandBuilder::from(self).arg("unroot").build().output()?)
+        if !self.is_root()? {
+            return Ok(());
+        }
+        self.restart_adbd("unroot", false)
     }
 
-    /// Save screencap to local file.
-    /// # Examples:
-    /// ```rust
-    /// use std::fs::File;
-    /// use radb_client::types::{Client, ConnectionType};
-    /// fn test_save_screencap_locally() {
-    /// 	let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// 	let client = Client::try_from(conn).unwrap();
-    /// 	client.connect(None).unwrap();
+    fn restart_adbd(&self, command: &str, root: bool) -> Result<()> {
+        let command_line = format!("adb {} {command}", self.addr);
+        let output = run(self.command().arg(command))?;
+        let message = stdout_string(&output)?;
+        if message.contains("cannot run as root") {
+            return Err(CommandFailure::new(command_line, &output).into());
+        }
+
+        let start = Instant::now();
+        loop {
+            // adbd restarts: the device disappears for a moment
+            let _ = run_unchecked(
+                self.command()
+                    .arg("wait-for-device")
+                    .timeout(Some(Duration::from_secs(5))),
+            );
+            if self.is_root().ok() == Some(root) {
+                return Ok(());
+            }
+            if start.elapsed() > ADBD_RESTART_TIMEOUT {
+                return Err(Error::Timeout(format!(
+                    "waiting for adbd after `{command_line}`"
+                )));
+            }
+            sleep(Duration::from_millis(250));
+        }
+    }
+
+    /// Save a PNG screenshot to a local file.
     ///
-    ///    	let output = dirs::desktop_dir().unwrap().join("screencap.png");
-    ///    	let output_path = output.as_path();
-    ///    	let file = File::create(output_path).expect("failed to create file");
-    ///    	let result = client.save_screencap(file);
-    /// 	match result {
-    /// 		Ok(_) => println!("screenshot saved"),
-    /// 		Err(err) => eprintln!("failed to save screenshot: {err}"),
-    /// 	}
-    ///    }
+    /// ```no_run
+    /// use std::fs::File;
+    /// use radb_client::{Client, ConnectionType};
+    ///
+    /// let client = Client::try_from(ConnectionType::emulator(5554)).unwrap();
+    /// let file = File::create("screencap.png").unwrap();
+    /// client.save_screencap(file).unwrap();
     /// ```
     pub fn save_screencap(&self, output: File) -> Result<()> {
-        let args = vec!["exec-out", "screencap", "-p"];
-        let pipe_out = Stdio::from(output);
-        let mut cmd = std::process::Command::new(self.adb.as_os_str());
-
+        let mut cmd = std::process::Command::new(self.adb.path());
         cmd.args(self.addr.as_args())
-            .args(args)
-            .stdout(pipe_out)
+            .args(["exec-out", "screencap", "-p"])
+            .stdout(Stdio::from(output))
             .stderr(Stdio::piped());
-
         if self.debug {
             cmd.debug();
         }
-
-        cmd.output()?;
-
-        Ok(())
+        let command_line = cmd.as_string();
+        let result = cmd.output()?;
+        if result.status.success() {
+            Ok(())
+        } else {
+            Err(CommandFailure::new(command_line, &result).into())
+        }
     }
 
+    /// Copy a screenshot to the host clipboard.
+    #[cfg(feature = "clipboard")]
     pub fn copy_screencap(&self) -> Result<()> {
-        let mut dir = temp_dir();
-        let file_name = format!("{}.png", Uuid::new_v4());
-        dir.push(file_name);
+        let path = std::env::temp_dir().join(format!("{}.png", Uuid::new_v4()));
+        self.save_screencap(File::create(&path)?)?;
+        let img = image::open(&path);
+        let _ = std::fs::remove_file(&path);
+        let img = img?.to_rgba8();
 
-        let path = dir.as_path().to_owned();
-        let file = File::create(path.as_path())?;
-        self.save_screencap(file)?;
-
-        let img = image::open(path.as_path())?;
-        let width = img.width();
-        let height = img.height();
-
-        let image_data = ImageData {
-            width: width as usize,
-            height: height as usize,
-            bytes: Cow::from(img.as_bytes()),
+        let image_data = arboard::ImageData {
+            width: img.width() as usize,
+            height: img.height() as usize,
+            bytes: std::borrow::Cow::from(img.as_raw().as_slice()),
         };
-
-        let mut clipboard = arboard::Clipboard::new()?;
-        clipboard.set_image(image_data)?;
+        arboard::Clipboard::new()?.set_image(image_data)?;
         Ok(())
     }
 
+    /// Reboot the device, by default into the system image.
     pub fn reboot(&self, reboot_type: Option<RebootType>) -> Result<()> {
-        // reboot the device; defaults to booting system image but
-        // supports bootloader and recovery too. sideload reboots
-        // into recovery and automatically starts sideload mode,
-        // sideload-auto-reboot is the same but reboots after sideloading.
-        let mut args = vec!["reboot".to_string()];
-
+        let mut builder = self.command().arg("reboot");
         if let Some(reboot_type) = reboot_type {
-            let s = format!("{}", reboot_type);
-            args.push(s.to_owned());
+            builder = builder.arg(reboot_type.to_string());
         }
-
-        CommandBuilder::from(self).args(args).build().output()?;
-        Ok(())
+        run(builder).map(|_| ())
     }
 
+    /// Remount the partitions read-write. With `reboot_if_required`, adb reboots
+    /// the device if that is needed for the remount.
     pub fn remount(&self, reboot_if_required: bool) -> Result<()> {
-        // remount partitions read-write. if a reboot is required, `reboot_if_required`
-        // will automatically reboot the device.
-        let mut cmd = CommandBuilder::from(self).arg("remount");
+        let mut builder = self.command().arg("remount");
         if reboot_if_required {
-            cmd = cmd.arg("-R");
+            builder = builder.arg("-R");
         }
+        run(builder).map(|_| ())
+    }
 
-        let result = cmd.build().output()?;
+    pub fn get_serialno(&self) -> Result<String> {
+        run_string(self.command().arg("get-serialno"))
+    }
 
-        if result.success() {
-            Ok(())
-        } else {
-            Err(simple_cmd::Error::CommandError(simple_cmd::errors::CmdError::from(result)).into())
+    /// Reconnect the device, returning the adb message.
+    pub fn reconnect(&self, reconnect_type: Option<Reconnect>) -> Result<String> {
+        let mut builder = self.command().arg("reconnect");
+        if let Some(reconnect_type) = reconnect_type {
+            builder = builder.arg(reconnect_type.to_string());
         }
+        run_string(builder)
     }
 
-    /// Get the serial number of the connected device.
-    ///
-    /// # Returns
-    /// * `Result<String>` - The serial number as a string.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let serial = client.get_seriano().unwrap();
-    /// println!("Serial: {}", serial);
-    /// ```
-    pub fn get_seriano(&self) -> Result<String> {
-        // print serial-number
-        let output = CommandBuilder::from(self)
-            .arg("get-serialno")
-            .build()
-            .output()?;
-        Ok(Arg::as_str(&output.stdout)?.trim().to_string())
-    }
-
-    /// Reconnect the device, optionally specifying the reconnect type.
-    ///
-    /// # Arguments
-    /// * `r#type` - Optional reconnect type (e.g., device, offline).
-    ///
-    /// # Returns
-    /// * `Result<String>` - The output of the reconnect command.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType, Reconnect};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let result = client.reconnect(Some(Reconnect::Device)).unwrap();
-    /// println!("Reconnect result: {}", result);
-    /// ```
-    pub fn reconnect(&self, r#type: Option<Reconnect>) -> Result<String> {
-        let mut cmd = CommandBuilder::from(self).arg("reconnect".to_string());
-        if let Some(reconnect_type) = r#type {
-            cmd = cmd.arg(reconnect_type.to_string());
+    /// Write a bug report to `output` (a zip file or a directory), by default
+    /// `bugreport.zip` in the current directory.
+    pub fn bug_report<P: AsRef<Path>>(&self, output: Option<P>) -> Result<()> {
+        let mut builder = self.command().arg("bugreport");
+        if let Some(output) = output {
+            builder = builder.arg(output.as_ref());
         }
-        let output = cmd.build().output()?;
-        Ok(Arg::as_str(&output.stdout)?.trim().to_owned())
+        run(builder).map(|_| ())
     }
 
-    /// Generate a bug report and save it to the specified output path or to the default location.
-    ///
-    /// # Arguments
-    /// * `output` - Optional output path or directory.
-    ///
-    /// # Returns
-    /// * `Result<Output>` - The output of the bugreport command.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let output = client.bug_report::<&str>(None).unwrap();
-    /// println!("Bugreport status: {}", output.status);
-    /// ```
-    pub fn bug_report<T: Arg>(&self, output: Option<T>) -> Result<Output> {
-        //  bugreport PATH
-        //     write bugreport to given PATH (default=bugreport.zip);
-        //     if PATH is a directory, the bug report is saved in that directory.
-        //     devices that don't support zipped bug reports output to stdout.
-        let args = match output.as_ref() {
-            Some(s) => vec!["bugreport", s.as_str()?],
-            None => vec!["bugreport"],
-        };
-        CommandBuilder::from(self)
-            .args(args)
-            .build()
-            .output()
-            .map_err(|e| e.into())
-    }
-
-    /// Clear all logcat buffers on the device.
-    ///
-    /// # Returns
-    /// * `Result<()>` - Ok if successful, or an error if the command fails.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// client.clear_logcat().unwrap();
-    /// ```
+    /// Clear all logcat buffers.
     pub fn clear_logcat(&self) -> Result<()> {
-        let output = CommandBuilder::from(self)
-            .args(["logcat", "-b", "all", "-c"])
-            .build()
-            .output()?;
-
-        if output.error() {
-            Err(output.into())
-        } else {
-            Ok(())
-        }
+        run(self.command().args(["logcat", "-b", "all", "-c"])).map(|_| ())
     }
 
-    /// Run logcat with the specified options and optional cancellation signal.
+    /// Run logcat and return its output. Use `dump`, `timeout` or `cancel` to stop it.
     ///
-    /// # Arguments
-    /// * `options` - Logcat options (filters, format, etc.).
-    /// * `cancel` - Optional cancellation signal.
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use radb_client::{Client, ConnectionType, LogcatOptions};
     ///
-    /// # Returns
-    /// * `Result<Output>` - The output of the logcat command.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType, LogcatOptions};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let options = LogcatOptions::default();
-    /// let output = client.logcat(options, None).unwrap();
-    /// println!("Logcat output: {}", String::from_utf8_lossy(&output.stdout));
+    /// let client = Client::try_from(ConnectionType::emulator(5554)).unwrap();
+    /// let options = LogcatOptions { dump: true, ..Default::default() };
+    /// let logs = client.logcat(options, None).unwrap();
+    /// println!("{logs}");
     /// ```
-    pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> Result<Output> {
-        let mut command = CommandBuilder::from(self);
-        let mut args = vec!["logcat".into()];
-        args.extend(options.clone());
-
-        if let Some(timeout) = options.timeout {
-            command = command.with_timeout(timeout);
-        }
-
-        if let Some(signal) = cancel {
-            command = command.with_signal(signal);
-        }
-
-        command
-            .with_args(args)
-            .build()
-            .output()
-            .map_err(|e| e.into())
+    pub fn logcat(&self, options: LogcatOptions, cancel: Option<Receiver<()>>) -> Result<String> {
+        let timeout = options.timeout;
+        // `adb logcat` escapes its arguments itself
+        let output = run(self
+            .command()
+            .arg("logcat")
+            .args(options)
+            .timeout(timeout)
+            .signal(cancel))?;
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
-    /// Get the MAC address of the device's ethernet interface (eth0).
-    ///
-    /// # Returns
-    /// * `Result<MacAddress>` - The MAC address as a `MacAddress` struct.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let mac = client.get_mac_address().unwrap();
-    /// println!("MAC address: {}", mac);
-    /// ```
+    /// The MAC address of `eth0`.
     pub fn get_mac_address(&self) -> Result<MacAddress> {
-        // Returns the device mac-address
-        let output = self.shell().cat("/sys/class/net/eth0/address")?;
-        let mac_address_str = Arg::as_str(&output)?.trim_end();
-        let mac_address = MacAddress::try_from(mac_address_str)?;
-        Ok(mac_address)
+        self.read_mac_address("/sys/class/net/eth0/address")
     }
 
-    /// Get the MAC address of the device's WLAN interface (wlan0).
-    ///
-    /// # Returns
-    /// * `Result<MacAddress>` - The MAC address as a `MacAddress` struct.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let mac = client.get_wlan_address().unwrap();
-    /// println!("WLAN MAC address: {}", mac);
-    /// ```
+    /// The MAC address of `wlan0`.
     pub fn get_wlan_address(&self) -> Result<MacAddress> {
-        // Returns the wlan mac-address
-        let output = self.shell().cat("/sys/class/net/wlan0/address")?;
-        let mac_address_str = Arg::as_str(&output)?.trim_end();
-        let mac_address = MacAddress::try_from(mac_address_str)?;
-        Ok(mac_address)
+        self.read_mac_address("/sys/class/net/wlan0/address")
     }
 
-    /// Get the boot ID of the device (from /proc/sys/kernel/random/boot_id).
-    ///
-    /// # Returns
-    /// * `Result<Uuid>` - The boot ID as a `Uuid` struct.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let boot_id = client.get_boot_id().unwrap();
-    /// println!("Boot ID: {}", boot_id);
-    /// ```
+    fn read_mac_address(&self, path: &str) -> Result<MacAddress> {
+        let output = self.shell().cat(path)?;
+        Ok(MacAddress::try_from(std::str::from_utf8(&output)?.trim())?)
+    }
+
+    /// The boot id (`/proc/sys/kernel/random/boot_id`), which changes at every boot.
     pub fn get_boot_id(&self) -> Result<Uuid> {
-        // Returns the boot id
         let output = self.shell().cat("/proc/sys/kernel/random/boot_id")?;
-        let output_str = Arg::as_str(&output)?.trim();
-        let boot_id = output_str.try_into()?;
-        Ok(boot_id)
+        Ok(Uuid::try_parse(std::str::from_utf8(&output)?.trim())?)
     }
 
-    /// Disable verity on the device.
-    ///
-    /// # Returns
-    /// * `Result<()>` - Ok if successful, or an error if the command fails.
-    ///
-    /// # Example
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// client.disable_verity().unwrap();
-    /// ```
     pub fn disable_verity(&self) -> Result<()> {
-        // Disable verity
-        let output = CommandBuilder::from(self)
-            .arg("disable-verity")
-            .build()
-            .output()?;
-
-        if !output.success() {
-            Err(output.into())
-        } else {
-            Ok(())
-        }
+        run(self.command().arg("disable-verity")).map(|_| ())
     }
 
     pub fn enable_verity(&self) -> Result<()> {
-        // Enable verity
-        let output = CommandBuilder::from(self)
-            .arg("enable-verity")
-            .build()
-            .output()?;
-        println!("output: {output:?}");
+        run(self.command().arg("enable-verity")).map(|_| ())
+    }
 
-        if !output.success() {
-            Err(output.into())
-        } else {
-            Ok(())
+    /// Copy a file or directory from the device to the host.
+    pub fn pull<S: AsRef<str>, D: AsRef<Path>>(&self, src: S, dst: D) -> Result<()> {
+        run(self
+            .command()
+            .arg("pull")
+            .arg(src.as_ref())
+            .arg(dst.as_ref()))
+        .map(|_| ())
+    }
+
+    /// Copy a file or directory from the host to the device.
+    pub fn push<S: AsRef<Path>, D: AsRef<str>>(&self, src: S, dst: D) -> Result<()> {
+        run(self
+            .command()
+            .arg("push")
+            .arg(src.as_ref())
+            .arg(dst.as_ref()))
+        .map(|_| ())
+    }
+
+    /// Install an APK from the host.
+    pub fn install<P: AsRef<Path>>(
+        &self,
+        path: P,
+        options: Option<AdbInstallOptions>,
+    ) -> Result<()> {
+        let mut builder = self.command().arg("install");
+        if let Some(options) = options {
+            builder = builder.args(options);
         }
+        run(builder.arg(path.as_ref())).map(|_| ())
     }
 
-    pub fn pull<S, T>(&self, src: S, dst: T) -> Result<Output>
-    where
-        S: Arg,
-        T: Arg,
-    {
-        let mut command = CommandBuilder::from(self);
-        command = command.arg("pull").arg(src.as_str()?).arg(dst.as_str()?);
-        command.build().output().map_err(|e| e.into())
-    }
-
-    pub fn push<S, T>(&self, src: S, dst: T) -> Result<Output>
-    where
-        S: Arg,
-        T: Arg,
-    {
-        let mut command = CommandBuilder::from(self);
-        command = command.arg("push").arg(src.as_str()?).arg(dst.as_str()?);
-        command.build().output().map_err(|e| e.into())
-    }
-
-    pub fn install<T>(&self, path: T, install_options: Option<AdbInstallOptions>) -> Result<()>
-    where
-        T: Arg,
-    {
-        let mut args = vec!["install".into()];
-        match install_options {
-            None => {}
-            Some(options) => args.extend(options),
-        }
-        args.push(path.as_str()?.into());
-        super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
-    }
-
-    /// Uninstall an application package from the device.
+    /// Uninstall a package.
     ///
-    /// # Arguments
-    /// * `package_name` - The name of the package to uninstall.
-    /// * `options` - Optional uninstall options.
+    /// ```no_run
+    /// use radb_client::{Client, ConnectionType};
     ///
-    /// # Examples
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// client.connect(None).unwrap();
+    /// let client = Client::try_from(ConnectionType::emulator(5554)).unwrap();
     /// client.uninstall("com.example.app", None).unwrap();
     /// ```
     pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> Result<()> {
-        let mut args: Vec<OsString> = vec!["uninstall".into()];
-        match options {
-            None => {}
-            Some(options) => args.extend(options.into_iter()),
+        let mut builder = self.command().arg("uninstall");
+        if let Some(options) = options {
+            builder = builder.args(options);
         }
-        args.push(package_name.into());
-        super::shell::handle_result(self.adb.exec(self.addr, args, None, None, self.debug)?)
+        run(builder.arg(package_name)).map(|_| ())
     }
+}
 
-    /// Return the client shell interface for running shell commands.
-    ///
-    /// # Examples
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap();
-    /// let shell = client.shell();
-    /// let user = shell.whoami().unwrap();
-    /// println!("Current user: {}", user);
-    /// ```
-    pub fn shell(&self) -> Shell<'_> {
-        // return the client shell interface
-        Shell { parent: self }
+/// Parse `mWakefulness=` from `dumpsys power`.
+pub(crate) fn parse_wakefulness(dump: &str) -> Result<Wakefulness> {
+    let value = dump
+        .lines()
+        .find_map(|line| line.trim().strip_prefix("mWakefulness="))
+        .ok_or_else(|| Error::ParseError("mWakefulness in dumpsys power".to_string()))?;
+    value.trim().try_into()
+}
+
+impl TryFrom<&str> for Wakefulness {
+    type Error = Error;
+
+    fn try_from(value: &str) -> Result<Self> {
+        match value.to_lowercase().as_str() {
+            "awake" => Ok(Wakefulness::Awake),
+            "asleep" => Ok(Wakefulness::Asleep),
+            "dreaming" => Ok(Wakefulness::Dreaming),
+            "dozing" => Ok(Wakefulness::Dozing),
+            _ => Err(Error::ParseError(format!("wakefulness `{value}`"))),
+        }
     }
+}
 
-    /// Enable or disable debug tracing for the client connection.
-    ///
-    /// # Arguments
-    /// * `debug` - If true, enables debug output for all commands.
-    ///
-    /// # Examples
-    /// ```rust
-    /// use radb_client::types::{Client, ConnectionType};
-    /// let conn = ConnectionType::try_from_ip("192.168.1.101").unwrap();
-    /// let client = Client::try_from(conn).unwrap().with_debug(true);
-    /// ```
-    pub fn with_debug(mut self, debug: bool) -> Self {
-        self.debug = debug;
-        self
+impl IntoIterator for LogcatOptions {
+    type Item = OsString;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut args: Vec<OsString> = vec![];
+        if let Some(expr) = self.expr {
+            args.extend(["-e".into(), expr.into()]);
+        }
+        if self.dump {
+            args.push("-d".into());
+        }
+        if let Some(filename) = self.filename {
+            args.extend(["-f".into(), filename.into()]);
+        }
+        if let Some(format) = self.format {
+            args.extend(["-v".into(), format.into()]);
+        }
+        if let Some(pid) = self.pid {
+            args.push(format!("--pid={pid}").into());
+        }
+        if let Some(since) = self.since {
+            args.extend([
+                "-T".into(),
+                since.format("%m-%d %H:%M:%S%.3f").to_string().into(),
+            ]);
+        }
+        if let Some(tags) = self.tags {
+            if !tags.is_empty() {
+                args.extend(tags.iter().map(|tag| tag.to_string().into()));
+                args.push("*:S".into());
+            }
+        }
+        args.into_iter()
+    }
+}
+
+impl Display for LogcatTag {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.name, self.level)
+    }
+}
+
+impl IntoIterator for AdbInstallOptions {
+    type Item = OsString;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let flags = [
+            (self.allow_version_downgrade, "-d"),
+            (self.allow_test_package, "-t"),
+            (self.replace, "-r"),
+            (self.forward_lock, "-l"),
+            (self.install_external, "-s"),
+            (self.grant_permissions, "-g"),
+            (self.instant, "--instant"),
+        ];
+        flags
+            .into_iter()
+            .filter(|(enabled, _)| *enabled)
+            .map(|(_, flag)| flag.into())
+            .collect::<Vec<_>>()
+            .into_iter()
+    }
+}
+
+impl TryFrom<ConnectionType> for Client {
+    type Error = Error;
+
+    /// A client using the `adb` found in `PATH`.
+    fn try_from(value: ConnectionType) -> Result<Self> {
+        Ok(Client::new(Adb::new()?, value, false))
+    }
+}
+
+impl TryFrom<AdbDevice> for Client {
+    type Error = Error;
+
+    fn try_from(value: AdbDevice) -> Result<Self> {
+        value.addr.try_into()
+    }
+}
+
+impl TryFrom<&AdbDevice> for Client {
+    type Error = Error;
+
+    fn try_from(value: &AdbDevice) -> Result<Self> {
+        value.addr.clone().try_into()
+    }
+}
+
+impl Display for Client {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        self.addr.fmt(f)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::fs::{remove_file, File};
-    use std::io::BufRead;
-    use std::net::SocketAddr;
-    use std::time::Duration;
+    use chrono::TimeZone;
 
-    use chrono::Local;
-    use simple_cmd::prelude::OutputExt;
+    use super::*;
 
-    use crate::error::Error;
-    use crate::test::test::{
-        client_from, connect_client, connect_emulator, connect_tcp_ip_client,
-        connection_from_tcpip, init_log, test_files_dir,
-    };
-    use crate::types::{
-        AdbInstallOptions, Client, ConnectionType, LogcatLevel, LogcatOptions, LogcatTag, Reconnect,
-    };
-
-    #[test]
-    fn test_new_client() {
-        let address: ConnectionType = connection_from_tcpip();
-        let mut client = client_from(address);
-        client = client.with_debug(true);
-        let connected = client.is_connected();
-        println!("connected: {}", connected);
-
-        let mut client = connect_emulator();
-        client = client.with_debug(true);
-        let connected = client.is_connected();
-        println!("connected: {}", connected);
+    fn strings<I: IntoIterator<Item = OsString>>(args: I) -> Vec<String> {
+        args.into_iter().map(|s| s.into_string().unwrap()).collect()
     }
 
     #[test]
-    fn test_connect() {
-        init_log();
-        let client = connect_tcp_ip_client();
-        let _ = client
-            .connect(Some(Duration::from_secs(1)))
-            .expect("failed to connect");
+    fn test_parse_wakefulness() {
+        let dump = include_str!("../test_files/fixtures/api35/dumpsys_power.txt");
+        assert_eq!(parse_wakefulness(dump).unwrap(), Wakefulness::Awake);
+        assert_eq!(
+            parse_wakefulness("  mWakefulness=Asleep\n").unwrap(),
+            Wakefulness::Asleep
+        );
+        assert!(parse_wakefulness("nothing here").is_err());
     }
 
     #[test]
-    fn test_disconnect() {
-        init_log();
-        let client = connect_tcp_ip_client();
-        let disconnected = client.disconnect().expect("failed to disconnect");
-        println!("disconnected: {disconnected}");
-    }
+    fn test_logcat_options() {
+        assert!(strings(LogcatOptions::default()).is_empty());
 
-    #[test]
-    fn test_try_disconnect() {
-        init_log();
-        let client = connect_emulator();
-        let disconnected = client.try_disconnect().expect("failed to disconnect");
-        println!("disconnected: {disconnected}");
-    }
-
-    #[test]
-    fn test_wait_for_device() {
-        init_log();
-        let client = connect_client(connection_from_tcpip());
-        client
-            .wait_for_device(Some(Duration::from_secs(1)))
-            .expect("failed to wait for device");
-
-        let client = connect_emulator();
-        client
-            .wait_for_device(None)
-            .expect("failed to wait for emulator");
-    }
-
-    #[test]
-    fn test_get_wakefulness() {
-        init_log();
-        let client = connect_client(connection_from_tcpip());
-        let awake = client
-            .get_wakefulness()
-            .expect("failed to get awake status");
-        println!("awake status: {awake}");
-
-        let client = connect_emulator();
-        let awake = client
-            .get_wakefulness()
-            .expect("failed to get awake status");
-        println!("awake status: {awake}");
-    }
-
-    #[test]
-    fn test_is_root() {
-        init_log();
-        let client = connect_emulator();
-        let is_root = client.is_root().expect("failed to get root status");
-        println!("client {client} is root: {is_root}");
-    }
-
-    #[test]
-    fn test_root() {
-        init_log();
-        let client = connect_client(connection_from_tcpip());
-
-        if client.is_root().expect("failed to get user") {
-            client.unroot().expect("failed to unroot");
-        }
-
-        let is_root = client.is_root().expect("failed to get user");
-        assert!(!is_root);
-
-        let success = client.root().expect("failed to root client");
-        assert!(success);
-
-        let is_root = client.is_root().expect("failed to get user status");
-        assert!(is_root);
-
-        client.unroot().expect("failed to unroot");
-        let is_root = client.is_root().expect("failed to get user status");
-        assert!(!is_root);
-
-        let client = connect_emulator();
-        let success = client.root();
-
-        if let Err(Error::CommandError(simple_cmd::Error::CommandError(err))) = success {
-            println!("expected error: {}", err);
-            return;
-        } else if let Ok(false) = success {
-            // ok
-        } else {
-            println!("err = {:?}", success);
-            assert!(false, "incorrect error received");
-        }
-    }
-
-    #[test]
-    fn test_save_screencap_locally() {
-        init_log();
-        let client = connect_client(connection_from_tcpip());
-
-        let output = dirs::desktop_dir().unwrap().join("screencap.png");
-        let output_path = output.as_path();
-
-        println!("target local file: {:?}", output_path.to_str());
-
-        if output.exists() {
-            remove_file(output_path).expect("Error deleting file");
-        }
-
-        let file = File::create(output_path).expect("failed to create file");
-        let _result = client
-            .save_screencap(file)
-            .expect("failed to save screencap");
-        println!("ok. done => {:?}", output);
-
-        remove_file(output_path).unwrap();
-    }
-
-    #[test]
-    pub fn test_copy_screencap() {
-        init_log();
-        let client = connect_emulator();
-        let _result = client.copy_screencap().expect("failed to copy screencap");
-    }
-
-    #[test]
-    pub fn test_reboot() {
-        init_log();
-        let client = connect_emulator();
-        let _result = client.reboot(None);
-    }
-
-    #[test]
-    fn test_remount() {
-        init_log();
-        let client = connect_emulator();
-        client
-            .remount(true)
-            .expect_err("remount should have returned an error");
-
-        let client = connect_tcp_ip_client();
-        client.root().expect("failed to root client");
-        client.remount(true).expect("failed to remount");
-    }
-
-    #[test]
-    fn test_get_serialno() {
-        init_log();
-        let client = connect_emulator();
-        let serial_no = client.get_seriano().expect("failed to get serial number");
-        assert!(serial_no.starts_with("emulator-"));
-        println!("serial: {serial_no}");
-
-        let client = connect_tcp_ip_client();
-        let serial_no = client.get_seriano().expect("failed to get serial number");
-        let ip_addr = serial_no
-            .parse::<SocketAddr>()
-            .expect("failed to parse serial no");
-        println!("serial: {ip_addr}");
-    }
-
-    #[test]
-    fn test_reconnect() {
-        init_log();
-        let client = connect_emulator();
-        client.reconnect(None).expect("failed to reconnect");
-        client
-            .reconnect(Some(Reconnect::Device))
-            .expect("failed to reconnect device");
-        client
-            .reconnect(Some(Reconnect::Offline))
-            .expect("failed to reconnect offline");
-
-        let client = Client::try_from(
-            ConnectionType::try_from_ip("192.168.1.99:5555").expect("failed to parse ip address"),
-        )
-        .expect("failed to create client");
-        client.reconnect(None).expect("failed to reconnect");
-        client
-            .reconnect(Some(Reconnect::Device))
-            .expect("failed to reconnect");
-        client
-            .reconnect(Some(Reconnect::Offline))
-            .expect("failed to reconnect");
-    }
-
-    #[test]
-    fn test_bugreport() {
-        let client = connect_emulator();
-        let output = dirs::desktop_dir().unwrap().join("bugreport.zip");
-
-        if output.exists() {
-            remove_file(output.as_path()).expect("failed to delete file");
-        }
-
-        let _ = client
-            .bug_report(Some(output.clone()))
-            .expect("failed to generate bugreport");
-        assert!(output.exists());
-
-        remove_file(output.as_path()).expect("failed to delete file");
-    }
-
-    #[test]
-    fn test_clear_logcat() {
-        let client = connect_emulator();
-        let _ = client.clear_logcat().expect("failed to clear logcat");
-    }
-
-    #[test]
-    fn test_get_mac_address() {
-        let client = connect_tcp_ip_client();
-        client.root().expect("failed to root");
-        let mac_address = client
-            .get_mac_address()
-            .expect("failed to read mac address");
-        println!("mac address: {}", mac_address);
-    }
-
-    #[test]
-    fn test_get_wlan_address() {
-        let client = connect_tcp_ip_client();
-        client.root().expect("failed to root");
-        match client.get_wlan_address() {
-            Ok(mac_address) => {
-                println!("wlan mac address: {}", mac_address);
-            }
-            Err(err) => {
-                eprintln!("unable to fetch wlan address: {err}");
-            }
-        }
-    }
-
-    #[test]
-    fn test_get_boot_id() {
-        let client = connect_tcp_ip_client();
-        client.root().expect("failed to root");
-        let boot_id = client.get_boot_id().expect("failed to read boot_id");
-        println!("boot_id: {boot_id}");
-    }
-
-    #[test]
-    fn test_disable_verity() {
-        let client = connect_tcp_ip_client();
-        client.root().expect("failed to root");
-        let _ = client.disable_verity().expect("failed to disable verity");
-    }
-
-    #[test]
-    fn test_enable_verity() {
-        let client = connect_tcp_ip_client();
-        client.root().expect("failed to root");
-        let _ = client.enable_verity().expect("failed to enable verity");
-    }
-
-    #[test]
-    fn test_logcat() {
-        init_log();
-        let client = connect_tcp_ip_client();
-
-        let timeout = Some(Duration::from_secs(3));
-        let since = Some(Local::now() - chrono::Duration::seconds(600));
-
+        let since = chrono::Local
+            .with_ymd_and_hms(2026, 11, 3, 9, 5, 7)
+            .unwrap();
         let options = LogcatOptions {
-            expr: None,
-            dump: false,
-            filename: None,
+            expr: Some("Activity.*".to_string()),
+            dump: true,
+            format: Some("threadtime".to_string()),
+            pid: Some(42),
+            since: Some(since),
             tags: Some(vec![LogcatTag {
-                name: "tl.RestClient".to_string(),
-                level: LogcatLevel::Debug,
+                name: "ActivityManager".to_string(),
+                level: LogcatLevel::Info,
             }]),
-            format: None,
-            since,
-            pid: None,
-            timeout,
+            ..Default::default()
         };
-
-        let output = client.logcat(options, None);
-
-        match output {
-            Ok(o) => {
-                if o.status.success() || o.kill() || o.interrupt() {
-                    let mut index = 0;
-                    let stdout = o.stdout;
-                    let lines = stdout.lines().map(|l| l.unwrap());
-                    for line in lines {
-                        println!("{}", line);
-                        index = index + 1;
-                        if index > 10 {
-                            break;
-                        }
-                    }
-                } else if o.error() {
-                    panic!("{:?}", o);
-                } else {
-                    panic!("{:?}", o);
-                }
-            }
-            Err(err) => {
-                panic!("{}", err);
-            }
-        }
+        assert_eq!(
+            strings(options),
+            [
+                "-e",
+                "Activity.*",
+                "-d",
+                "-v",
+                "threadtime",
+                "--pid=42",
+                "-T",
+                "11-03 09:05:07.000",
+                "ActivityManager:I",
+                "*:S"
+            ]
+        );
     }
 
     #[test]
-    fn test_install() {
-        init_log();
-        let client = connect_emulator();
-        let test_files_dir = test_files_dir();
-        println!("test_files_dir: {:?}", test_files_dir);
+    fn test_adb_install_options() {
+        assert!(strings(AdbInstallOptions::default()).is_empty());
+        let options = AdbInstallOptions {
+            replace: true,
+            grant_permissions: true,
+            allow_version_downgrade: true,
+            ..Default::default()
+        };
+        assert_eq!(strings(options), ["-d", "-r", "-g"]);
+    }
 
-        let path = test_files_dir.join("app-debug.apk");
-        let package_name = "it.sephiroth.android.app.app";
+    #[test]
+    fn test_display() {
+        assert_eq!(
+            RebootType::SideloadAutoReboot.to_string(),
+            "sideload-auto-reboot"
+        );
+        assert_eq!(RebootType::Bootloader.to_string(), "bootloader");
+        assert_eq!(Reconnect::Offline.to_string(), "offline");
+        assert_eq!(LogcatLevel::Warn.to_string(), "W");
+    }
 
-        let is_installed = client
-            .shell()
-            .pm()
-            .is_installed(package_name, None)
-            .expect("failed to check if package is installed");
-        if is_installed {
-            client
-                .uninstall(package_name, None)
-                .expect("failed to uninstall package");
-            assert!(!client
-                .shell()
-                .pm()
-                .is_installed(package_name, None)
-                .unwrap());
-        }
-
-        client
-            .install(
-                path,
-                Some(AdbInstallOptions {
-                    allow_version_downgrade: false,
-                    allow_test_package: false,
-                    replace: false,
-                    forward_lock: false,
-                    install_external: false,
-                    grant_permissions: false,
-                    instant: false,
-                }),
-            )
-            .expect("failed to install apk");
-
-        assert!(client
-            .shell()
-            .pm()
-            .is_installed(package_name, None)
-            .expect("failed to check if package is installed"));
+    #[test]
+    fn test_disconnect_requires_tcp() {
+        let client = Client::new(Adb::from_path("adb"), ConnectionType::emulator(5554), false);
+        assert!(matches!(
+            client.disconnect(),
+            Err(Error::InvalidConnectionTypeError(_))
+        ));
     }
 }

@@ -1,22 +1,19 @@
 #![doc = include_str!("../README.md")]
 
-#[cfg(feature = "scanner")]
-pub mod scanner;
-
 pub mod cmdline_tools;
 pub mod error;
-pub mod prelude;
-pub mod result;
-pub mod traits;
+#[cfg(feature = "scanner")]
+pub mod scanner;
 pub mod types;
 pub mod utils;
 
-pub(crate) mod adb;
-pub(crate) mod am;
-pub(crate) mod client;
-pub(crate) mod connection_type;
-pub(crate) mod dump_util;
-pub(crate) mod impls;
-pub(crate) mod pm;
-pub(crate) mod shell;
-pub(crate) mod test;
+mod adb;
+mod am;
+mod client;
+mod command;
+mod connection;
+mod pm;
+mod shell;
+
+pub use error::{CommandFailure, Error, Result};
+pub use types::*;

@@ -1,0 +1,17 @@
+  mCurHostInputToken=null
+  mCurIntent=Intent { act=android.view.InputMethod cmp=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME (has extras) }
+  mCurMethod=com.android.server.inputmethod.IInputMethodInvoker@6d0608c
+  mEnabledSession=SessionState{uid=10178 pid=1258 method=c5e14e1 session=571a206 channel=ClientState{8ddc4e8 mUid=10178 mPid=1258 mSelfReportedDisplayId=0} (server)}
+  mRequestedShowExplicitly=false mShowForced=false
+  mImeHiddenByDisplayPolicy=false
+  mInputShown=false
+  mInFullscreenMode=false
+  mSystemReady=true mInteractive=true
+  mExperimentalConcurrentMultiUserModeEnabled=false
+  ENABLE_HIDE_IME_CAPTION_BAR=true
+  mSettingsObserver=SettingsObserver{mUserId=0 mRegistered=true mLastEnabled=com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME;1594443099:com.google.android.tts/com.google.android.apps.speech.tts.googletts.settings.asr.voiceime.VoiceInputMethodService}
+  mStylusIds=[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+  mSwitchingController:
+    mSwitchingAwareRotationList:
+      rank=0 item=ImeSubtypeListItem{mImeName=Gboard mSubtypeName=English (US) mSubtypeId=144 mIsSystemLocale=false mIsSystemLanguage=false}
+    mSwitchingUnawareRotationList:

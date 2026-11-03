@@ -1,0 +1,3 @@
+664	/data/local/tmp/.studio
+672	/data/local/tmp
+8	/sdcard/Download
