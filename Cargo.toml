@@ -8,7 +8,7 @@ description = "adb client for rust"
 license = "MIT"
 homepage = "https://github.com/sephiroth74/radb_client"
 repository = "https://github.com/sephiroth74/radb_client"
-exclude = ["test_files/*.apk", "coverage/", "output/"]
+exclude = ["test_files/*.apk", "test_files/system_app/*.jks", "coverage/", "output/"]
 
 [dependencies]
 chrono = "0.4.40"
@@ -16,8 +16,9 @@ crossbeam-channel = "0.5.14"
 file-mode = "0.1.2"
 java-properties = "2.0.0"
 mac_address = "1.1.8"
+miniz_oxide = "0.9.1"
 regex = "1.11.1"
-simple-cmd = "0.0.22"
+simple-cmd = "0.0.23"
 strum = { version = "0.28.0", features = ["derive"] }
 thiserror = "2.0.12"
 tracing = "0.1.41"

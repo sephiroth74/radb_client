@@ -31,8 +31,11 @@ pub struct ScreenRecordOptions {
 /// Options of `ffplay`, for [`Shell::screen_mirror`].
 #[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct FFPlayOptions {
+    /// `-framerate`
     pub framerate: Option<u16>,
+    /// `-vf scale=<width>:<height>`
     pub size: Option<(u16, u16)>,
+    /// `-probesize`
     pub probesize: Option<u16>,
 }
 
@@ -96,6 +99,7 @@ impl Shell<'_> {
 }
 
 impl ScreenRecordOptions {
+    /// A 4 Mbps bit rate and a 10 second time limit.
     pub fn new() -> Self {
         ScreenRecordOptions {
             bitrate: Some(4_000_000),

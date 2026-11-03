@@ -2,6 +2,7 @@
 
 pub use crate::adb::{Adb, AdbDevice, DeviceState};
 pub use crate::am::{ActivityManager, Extra, Intent, MemoryStatus, UserOption};
+pub use crate::apk::ApkManifest;
 pub use crate::client::{
     AdbInstallOptions, Client, LogcatLevel, LogcatOptions, LogcatTag, RebootType, Reconnect,
     Wakefulness,
@@ -10,11 +11,15 @@ pub use crate::cmdline_tools::{ApkAnalyzer, ApkSummary};
 pub use crate::connection::{ConnectionType, DEFAULT_ADB_PORT};
 pub use crate::pm::{
     DexoptState, InstallLocationOption, InstallOptions, InstallPermission,
-    ListPackageDisplayOptions, ListPackageFilter, Package, PackageFlags, PackageManager,
-    RuntimePermission, SimplePackageReader, UninstallOptions,
+    ListPackageDisplayOptions, ListPackageFilter, Package, PackageCopy, PackageFlags,
+    PackageManager, RuntimePermission, SimplePackageReader, SystemAppInfo, UninstallOptions,
 };
 pub use crate::shell::{
     ChmodMode, ChmodModeSpecs, ChmodOptions, DumpsysOptions, DumpsysPriority, FFPlayOptions,
     InputSource, KeyCode, KeyEventType, MotionEvent, PropType, Property, SELinuxType,
     ScreenRecordOptions, SettingsType, Shell,
+};
+pub use crate::system_app::{
+    PrivappPermissionsPolicy, SystemAppInstallMethod, SystemAppInstallOptions,
+    SystemAppInstallReport, SystemAppRemoveOptions, SystemAppStrategy,
 };

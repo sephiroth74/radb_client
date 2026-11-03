@@ -1,6 +1,12 @@
 use strum::{Display, IntoStaticStr};
 
 /// Android key codes, sent to `input keyevent` by name.
+///
+/// The variants are the `KeyEvent.KEYCODE_*` constants of the Android SDK, with the same
+/// meaning: see <https://developer.android.com/reference/android/view/KeyEvent>.
+/// [`Shell::send_keycode`](crate::Shell::send_keycode) sends a numeric key code instead.
+// The variants are documented by the Android SDK: one doc comment each would only repeat the name.
+#[allow(missing_docs)]
 #[derive(IntoStaticStr, Display, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 #[allow(non_camel_case_types)]
 pub enum KeyCode {

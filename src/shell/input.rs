@@ -9,31 +9,50 @@ use crate::shell::{KeyCode, Shell};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr)]
 #[allow(non_camel_case_types)]
+/// The input source of the `input` command (`input <source> <command>`).
 pub enum InputSource {
+    /// A directional pad.
     dpad,
+    /// A keyboard.
     keyboard,
+    /// A mouse.
     mouse,
+    /// A touchpad.
     touchpad,
+    /// A gamepad.
     gamepad,
+    /// A touch navigation device.
     touchnavigation,
+    /// A joystick.
     joystick,
+    /// A touchscreen.
     touchscreen,
+    /// A stylus.
     stylus,
+    /// A trackball.
     trackball,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr)]
 #[allow(non_camel_case_types)]
+/// The action of [`Shell::send_motion`] (`input motionevent <action>`).
 pub enum MotionEvent {
+    /// A pointer goes down.
     DOWN,
+    /// A pointer goes up.
     UP,
+    /// A pointer moves.
     MOVE,
+    /// The gesture is cancelled.
     CANCEL,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+/// A special key event (`input keyevent --longpress | --doubletap`).
 pub enum KeyEventType {
+    /// `--longpress`
     LongPress,
+    /// `--doubletap`
     DoubleTap,
 }
 
@@ -145,6 +164,7 @@ fn key_numbers<I: IntoIterator<Item = u32>>(keycodes: I) -> impl Iterator<Item =
 }
 
 impl Shell<'_> {
+    /// Send a key event (`input keyevent`).
     pub fn send_keyevent(
         &self,
         keycode: KeyCode,
@@ -176,6 +196,7 @@ impl Shell<'_> {
             .map(|_| ())
     }
 
+    /// Send several key events by numeric key code, one after the other.
     pub fn send_keycodes<I>(&self, keycodes: I, source: Option<InputSource>) -> Result<()>
     where
         I: IntoIterator<Item = u32>,
@@ -198,6 +219,7 @@ impl Shell<'_> {
             .map(|_| ())
     }
 
+    /// Press the keys together, by numeric key code.
     pub fn send_keycode_combination<I>(
         &self,
         source: Option<InputSource>,
@@ -210,10 +232,12 @@ impl Shell<'_> {
             .map(|_| ())
     }
 
+    /// Tap the screen at `(x, y)` (`input tap`).
     pub fn send_tap(&self, position: (i32, i32), source: Option<InputSource>) -> Result<()> {
         self.exec(make_tap(position, source)).map(|_| ())
     }
 
+    /// Swipe from `from_pos` to `to_pos` (`input swipe`), optionally in `duration`.
     pub fn send_swipe(
         &self,
         from_pos: (i32, i32),
@@ -225,6 +249,7 @@ impl Shell<'_> {
             .map(|_| ())
     }
 
+    /// Drag from `from_pos` and drop at `to_pos` (`input draganddrop`).
     pub fn send_draganddrop(
         &self,
         source: Option<InputSource>,
@@ -242,10 +267,12 @@ impl Shell<'_> {
         .map(|_| ())
     }
 
+    /// Press the trackball (`input press`).
     pub fn send_press(&self, source: Option<InputSource>) -> Result<()> {
         self.exec(input(source, "press")).map(|_| ())
     }
 
+    /// Type a character (`input text`).
     pub fn send_char(&self, chr: char, source: Option<InputSource>) -> Result<()> {
         self.exec(make_text(&chr.to_string(), source)).map(|_| ())
     }
@@ -255,6 +282,7 @@ impl Shell<'_> {
         self.exec(make_text(text, source)).map(|_| ())
     }
 
+    /// Send a motion event at `pos` (`input motionevent`).
     pub fn send_motion(
         &self,
         source: Option<InputSource>,

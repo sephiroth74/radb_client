@@ -1,3 +1,6 @@
+//! [`Client`]: one device, and the adb commands that are not run by its shell (connect,
+//! root, reboot, install, push/pull, logcat...).
+
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
 use std::fs::File;
@@ -37,39 +40,57 @@ const BOOT_COMPLETED_SCRIPT: &str =
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Client {
+    /// The `adb` executable.
     pub adb: Adb,
+    /// Which device: the adb selector (`-s`, `-t`, `-d`, `-e`).
     pub addr: ConnectionType,
     /// Log the command lines (at trace level, target `simple_cmd`) and command timeouts.
     pub debug: bool,
 }
 
 #[derive(Debug, Display, Eq, PartialEq, Hash, Clone, Copy)]
+/// The power state of the device (`mWakefulness` in `dumpsys power`).
 pub enum Wakefulness {
+    /// The device is awake (screen on).
     Awake,
+    /// The device is sleeping (screen off).
     Asleep,
+    /// The screen saver (dream) is running.
     Dreaming,
+    /// A low power state, e.g. the ambient display.
     Dozing,
 }
 
 #[derive(Debug, Display, Eq, PartialEq, Hash, Clone, Copy)]
 #[strum(serialize_all = "lowercase")]
+/// What [`Client::reconnect`] reconnects.
 pub enum Reconnect {
+    /// `adb reconnect device`: kick the connection from the device side.
     Device,
+    /// `adb reconnect offline`: reconnect the offline devices.
     Offline,
 }
 
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, Hash)]
 #[strum(serialize_all = "kebab-case")]
+/// The target of [`Client::reboot`] (`adb reboot <target>`).
 pub enum RebootType {
+    /// `bootloader`
     Bootloader,
+    /// `recovery`
     Recovery,
+    /// `sideload`: recovery, waiting for `adb sideload`.
     Sideload,
+    /// `sideload-auto-reboot`: like `Sideload`, then reboot after the sideload.
     SideloadAutoReboot,
+    /// `userspace`: restart the userspace only (Android 11+).
     Userspace,
+    /// `dra` (vendor specific).
     Dra,
 }
 
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
+/// Options of [`Client::logcat`].
 pub struct LogcatOptions {
     /// `-e expr`: only print lines where the log message matches the regular expression.
     pub expr: Option<String>,
@@ -90,22 +111,31 @@ pub struct LogcatOptions {
 }
 
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq)]
+/// A logcat priority.
 pub enum LogcatLevel {
     #[strum(serialize = "V")]
+    /// `V`
     Verbose,
     #[strum(serialize = "D")]
+    /// `D`
     Debug,
     #[strum(serialize = "I")]
+    /// `I`
     Info,
     #[strum(serialize = "W")]
+    /// `W`
     Warn,
     #[strum(serialize = "E")]
+    /// `E`
     Error,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]
+/// A logcat filter: the logs of a tag, from a priority (`tag:level`).
 pub struct LogcatTag {
+    /// The log tag.
     pub name: String,
+    /// The minimum priority.
     pub level: LogcatLevel,
 }
 
@@ -129,10 +159,12 @@ pub struct AdbInstallOptions {
 }
 
 impl Client {
+    /// A client for the device `addr`.
     pub fn new(adb: Adb, addr: ConnectionType, debug: bool) -> Self {
         Client { adb, addr, debug }
     }
 
+    /// Log the command lines (see [`Client::debug`]).
     pub fn with_debug(mut self, debug: bool) -> Self {
         self.debug = debug;
         self
@@ -233,15 +265,18 @@ impl Client {
         }
     }
 
+    /// The power state (`dumpsys power`).
     pub fn get_wakefulness(&self) -> Result<Wakefulness> {
         let dump = self.shell().exec_string(["dumpsys", "power"])?;
         parse_wakefulness(&dump)
     }
 
+    /// True unless the device is [`Wakefulness::Asleep`].
     pub fn is_awake(&self) -> Result<bool> {
         Ok(self.get_wakefulness()? != Wakefulness::Asleep)
     }
 
+    /// True if adbd runs as root.
     pub fn is_root(&self) -> Result<bool> {
         self.shell().is_root()
     }
@@ -265,9 +300,13 @@ impl Client {
 
     fn restart_adbd(&self, command: &str, root: bool) -> Result<()> {
         let command_line = format!("adb {} {command}", self.addr);
-        let output = run(self.command().arg(command))?;
+        // Recent adb clients wait for adbd to come back, and exit with 1 ("timeout expired
+        // while waiting for device") when the restart is slow: adbd is restarting anyway,
+        // and the loop below waits longer.
+        let output = run_unchecked(self.command().arg(command))?;
         let message = stdout_string(&output)?;
-        if message.contains("cannot run as root") {
+        let restarting = message.contains("restarting adbd");
+        if message.contains("cannot run as root") || (!output.status.success() && !restarting) {
             return Err(CommandFailure::new(command_line, &output).into());
         }
 
@@ -346,6 +385,71 @@ impl Client {
         run(builder).map(|_| ())
     }
 
+    /// Reboot into the system image and wait until the new boot is completed.
+    ///
+    /// Unlike `reboot` + `wait_for_device`, it can't be fooled by the old boot still
+    /// answering for a moment after `adb reboot`: it waits for the old boot to go away
+    /// (a new boot id, or the device disconnected), then for the new boot to complete.
+    pub fn reboot_and_wait(&self, timeout: Duration) -> Result<()> {
+        let boot_id = self.get_boot_id().ok();
+        self.reboot(None)?;
+        let deadline = Instant::now() + timeout;
+        let timed_out = || {
+            Error::Timeout(format!(
+                "{} did not complete the boot in {timeout:?}",
+                self.addr
+            ))
+        };
+
+        // 1. the old boot goes away
+        let shutdown_deadline = Instant::now() + Duration::from_secs(60).min(timeout);
+        loop {
+            match self.get_boot_id() {
+                Ok(id) if Some(id) == boot_id || boot_id.is_none() => {
+                    if Instant::now() > shutdown_deadline {
+                        return Err(Error::Timeout(format!("{} did not reboot", self.addr)));
+                    }
+                    sleep(Duration::from_millis(500));
+                }
+                // a new boot id, or the device is down
+                _ => break,
+            }
+        }
+
+        // 2. the new boot completes
+        let network = matches!(self.addr, ConnectionType::TcpIp(_));
+        loop {
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                return Err(timed_out());
+            }
+            // a network device must be connected again: the adb server does not always
+            // reconnect it, so wait in short slices and try `adb connect` before each one
+            let slice = if network {
+                if let ConnectionType::TcpIp(addr) = &self.addr {
+                    let _ = run_unchecked(
+                        self.adb
+                            .command()
+                            .arg("connect")
+                            .arg(addr.to_string())
+                            .timeout(Some(Duration::from_secs(5))),
+                    );
+                }
+                remaining.min(Duration::from_secs(15))
+            } else {
+                remaining
+            };
+            match self.wait_for_device(Some(slice)) {
+                Ok(()) if boot_id.is_none() || self.get_boot_id().ok() != boot_id => return Ok(()),
+                Err(Error::Timeout(_)) if !network || Instant::now() >= deadline => {
+                    return Err(timed_out())
+                }
+                // the connection dropped while the device was starting, or not connected yet
+                _ => sleep(Duration::from_secs(1)),
+            }
+        }
+    }
+
     /// Remount the partitions read-write. With `reboot_if_required`, adb reboots
     /// the device if that is needed for the remount.
     pub fn remount(&self, reboot_if_required: bool) -> Result<()> {
@@ -356,6 +460,7 @@ impl Client {
         run(builder).map(|_| ())
     }
 
+    /// The serial number (`adb get-serialno`).
     pub fn get_serialno(&self) -> Result<String> {
         run_string(self.command().arg("get-serialno"))
     }
@@ -428,10 +533,14 @@ impl Client {
         Ok(Uuid::try_parse(std::str::from_utf8(&output)?.trim())?)
     }
 
+    /// Disable dm-verity (`adb disable-verity`), effective after a reboot. Root is required.
     pub fn disable_verity(&self) -> Result<()> {
         run(self.command().arg("disable-verity")).map(|_| ())
     }
 
+    /// Enable dm-verity (`adb enable-verity`), effective after a reboot. Root is required.
+    /// On devices with overlayfs it also removes the overlays of `adb remount`: the
+    /// changes made to the system partitions are lost.
     pub fn enable_verity(&self) -> Result<()> {
         run(self.command().arg("enable-verity")).map(|_| ())
     }

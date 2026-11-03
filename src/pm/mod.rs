@@ -20,33 +20,52 @@ pub struct PackageManager<'a> {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+/// A package listed by [`PackageManager::list_packages`].
 pub struct Package {
+    /// The package name.
     pub package_name: String,
+    /// The APK path (`-f`).
     pub file_name: Option<String>,
+    /// The version code (`--show-versioncode`).
     pub version_code: Option<i64>,
+    /// The Linux uid of the app (`-U`).
     pub uid: Option<i32>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
+/// A runtime (dangerous) permission of a package, for user 0.
 pub struct RuntimePermission {
+    /// The permission name.
     pub name: String,
+    /// True if the user granted it.
     pub granted: bool,
+    /// The permission flags, e.g. `USER_SET`, `USER_SENSITIVE_WHEN_GRANTED`.
     pub flags: Vec<String>,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
+/// An install-time (normal or signature) permission of a package.
 pub struct InstallPermission {
+    /// The permission name.
     pub name: String,
+    /// True if it was granted at install time.
     pub granted: bool,
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy, Hash, strum::IntoStaticStr, strum::Display)]
+/// The known `pkgFlags` of `dumpsys package`.
 pub enum PackageFlags {
+    /// `SYSTEM`: the package has a copy on a system partition.
     System,
+    /// `HAS_CODE`
     HasCode,
+    /// `ALLOW_CLEAR_USER_DATA`
     AllowClearUserData,
+    /// `UPDATED_SYSTEM_APP`: a system app whose active copy is an update in `/data/app`.
     UpdatedSystemApp,
+    /// `ALLOW_BACKUP`
     AllowBackup,
+    /// `DEBUGGABLE`
     Debuggable,
 }
 
@@ -85,10 +104,14 @@ pub struct InstallOptions {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy, Hash, Default)]
+/// `pm install --install-location`.
 pub enum InstallLocationOption {
     #[default]
+    /// `0`: let the system decide.
     Auto,
+    /// `1`: internal storage only.
     InternalOnly,
+    /// `2`: prefer the external storage.
     PreferExternal,
 }
 
@@ -154,6 +177,8 @@ impl PackageManager<'_> {
         }
     }
 
+    /// True if the package is installed (for `user`, or the current user). A system app
+    /// hidden with `pm uninstall --user` is not installed for that user.
     pub fn is_installed(&self, package_name: &str, user: Option<&str>) -> Result<bool> {
         match self.path(package_name, user) {
             Ok(_) => Ok(true),
@@ -162,10 +187,12 @@ impl PackageManager<'_> {
         }
     }
 
+    /// Grant a runtime permission (`pm grant`). Fails if the package is not installed.
     pub fn grant(&self, package_name: &str, permission: &str, user: Option<&str>) -> Result<()> {
         self.permission("grant", package_name, permission, user)
     }
 
+    /// Revoke a runtime permission (`pm revoke`). Fails if the package is not installed.
     pub fn revoke(&self, package_name: &str, permission: &str, user: Option<&str>) -> Result<()> {
         self.permission("revoke", package_name, permission, user)
     }
@@ -182,7 +209,12 @@ impl PackageManager<'_> {
             args.extend(["--user", user]);
         }
         args.extend([package_name, permission]);
-        self.shell.exec(args).map(|_| ())
+        self.shell.exec(args)?;
+        // Android 14 exits with 0, without a message, for an unknown package
+        if !self.is_installed(package_name, user)? {
+            return Err(Error::PackageNotFoundError(package_name.to_string()));
+        }
+        Ok(())
     }
 
     /// Revert all the runtime permissions to their default state.
@@ -190,6 +222,8 @@ impl PackageManager<'_> {
         self.shell.exec(["pm", "reset-permissions"]).map(|_| ())
     }
 
+    /// The installed packages (`pm list packages`), optionally only those whose name
+    /// contains `name_filter`.
     pub fn list_packages(
         &self,
         filters: ListPackageFilter,
@@ -213,26 +247,31 @@ impl PackageManager<'_> {
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
+    /// The runtime permissions of a package, for user 0.
     pub fn runtime_permissions(&self, package_name: &str) -> Result<Vec<RuntimePermission>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         Ok(SimplePackageReader::new(&dump)?.runtime_permissions())
     }
 
+    /// The install-time permissions of a package.
     pub fn install_permissions(&self, package_name: &str) -> Result<Vec<InstallPermission>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         Ok(SimplePackageReader::new(&dump)?.install_permissions())
     }
 
+    /// The permissions requested by the manifest of a package.
     pub fn requested_permissions(&self, package_name: &str) -> Result<Vec<String>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         Ok(SimplePackageReader::new(&dump)?.requested_permissions())
     }
 
+    /// The known `pkgFlags` of a package.
     pub fn package_flags(&self, package_name: &str) -> Result<Vec<PackageFlags>> {
         let dump = self.dump(package_name, DUMP_TIMEOUT)?;
         Ok(SimplePackageReader::new(&dump)?.package_flags())
     }
 
+    /// True if the package is a system app (it has a copy on a system partition).
     pub fn is_system(&self, package_name: &str) -> Result<bool> {
         Ok(self
             .package_flags(package_name)?
@@ -249,6 +288,8 @@ impl PackageManager<'_> {
         self.shell.exec(args).map(|_| ())
     }
 
+    /// Uninstall a package (`cmd package uninstall`). For a system app it only removes
+    /// the updates: see [`crate::Client::remove_system_app`] to remove a system app.
     pub fn uninstall(&self, package_name: &str, options: Option<UninstallOptions>) -> Result<()> {
         let mut args: Vec<OsString> = vec!["cmd".into(), "package".into(), "uninstall".into()];
         if let Some(options) = options {
@@ -281,6 +322,131 @@ impl PackageManager<'_> {
         }
         args.push(package_or_component);
         self.shell.exec(args).map(|_| ())
+    }
+
+    /// Where the copies of a package are: the system copy, the update in `/data/app`...
+    /// Fails with [`Error::PackageNotFoundError`] if the package manager doesn't know it.
+    pub fn system_app_info(&self, package_name: &str) -> Result<SystemAppInfo> {
+        let dump = self.dump(package_name, DUMP_TIMEOUT)?;
+        SystemAppInfo::parse(package_name, &dump)
+    }
+
+    /// Remove the updates (in `/data/app`) of a system app: the system copy is used again.
+    /// Does nothing if the app has no updates.
+    ///
+    /// Like "Uninstall updates" in the Android settings, it resets the app data when the
+    /// system copy is older than the update.
+    pub fn uninstall_system_updates(&self, package_name: &str) -> Result<()> {
+        if self.system_app_info(package_name)?.update.is_none() {
+            return Ok(());
+        }
+        // it prints "Success" but can exit with 1 (Android 14, 15)
+        let output =
+            self.shell
+                .exec_raw(["pm", "uninstall-system-updates", package_name], None, None)?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if !stdout.contains("Success") {
+            if stdout.contains("Unknown command")
+                || String::from_utf8_lossy(&output.stderr).contains("Unknown command")
+            {
+                // before Android 10: `pm uninstall` of a system app removes its updates
+                return self
+                    .shell
+                    .exec(["pm", "uninstall", package_name])
+                    .map(|_| ());
+            }
+            let command = format!(
+                "adb {} shell pm uninstall-system-updates {package_name}",
+                self.shell.client().addr
+            );
+            return Err(crate::error::CommandFailure::new(command, &output).into());
+        }
+        match self.system_app_info(package_name)?.update {
+            None => Ok(()),
+            Some(update) => Err(Error::SystemAppError(format!(
+                "the update of {package_name} is still installed: {}",
+                update.code_path
+            ))),
+        }
+    }
+}
+
+/// One copy (APK or APK directory) of a package.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PackageCopy {
+    /// The APK directory (or the APK, for an APK placed directly in `priv-app`).
+    pub code_path: String,
+    /// The version code.
+    pub version_code: Option<i64>,
+    /// The version name.
+    pub version_name: Option<String>,
+    /// Signature ids: equal ids mean the same signing certificates.
+    pub signatures: Vec<String>,
+}
+
+/// The state of a package, with its system copy and its update.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct SystemAppInfo {
+    /// The package name.
+    pub package_name: String,
+    /// The copy that the package manager runs.
+    pub active: PackageCopy,
+    /// The copy on a system partition (`/system/priv-app/...`): the active one if
+    /// there is no update. `None` for apps that are not system apps.
+    pub system_copy: Option<PackageCopy>,
+    /// The update of a system app, in `/data/app`.
+    pub update: Option<PackageCopy>,
+    /// In a `priv-app` directory.
+    pub privileged: bool,
+    /// `(user id, installed)`. `pm uninstall --user <id>` of a system app only hides
+    /// it: it stays on the device, with `installed=false`.
+    pub users: Vec<(u32, bool)>,
+}
+
+impl SystemAppInfo {
+    pub(crate) fn parse(package_name: &str, dump: &str) -> Result<SystemAppInfo> {
+        let not_found = || Error::PackageNotFoundError(package_name.to_string());
+        let reader = SimplePackageReader::new(dump).map_err(|_| not_found())?;
+        let copy = |reader: &SimplePackageReader| -> Option<PackageCopy> {
+            Some(PackageCopy {
+                code_path: reader.get_code_path()?.to_string(),
+                version_code: reader.get_version_code(),
+                version_name: reader.get_version_name().map(str::to_string),
+                signatures: reader.signatures(),
+            })
+        };
+        let active = copy(&reader).ok_or_else(not_found)?;
+        let is_system = reader.is_system();
+        let (system_copy, update) = if reader.is_updated_system_app() {
+            let hidden = SimplePackageReader::hidden_system_package(dump).and_then(|r| copy(&r));
+            (hidden, Some(active.clone()))
+        } else if is_system {
+            (Some(active.clone()), None)
+        } else {
+            (None, None)
+        };
+        Ok(SystemAppInfo {
+            package_name: package_name.to_string(),
+            active,
+            system_copy,
+            update,
+            privileged: reader.is_privileged(),
+            users: reader.users(),
+        })
+    }
+
+    /// True if the package has a copy on a system partition.
+    pub fn is_system_app(&self) -> bool {
+        self.system_copy.is_some()
+    }
+
+    /// The users for which the package is hidden (`pm uninstall --user <id>`).
+    pub fn hidden_for_users(&self) -> Vec<u32> {
+        self.users
+            .iter()
+            .filter(|(_, installed)| !installed)
+            .map(|(user, _)| *user)
+            .collect()
     }
 }
 

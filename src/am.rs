@@ -15,22 +15,35 @@ pub struct ActivityManager<'a> {
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone)]
+/// The user option of [`ActivityManager::kill`] (`--user <id|all|current>`).
 pub enum UserOption {
+    /// `--user <id>`
     UserId(String),
+    /// `--user all`
     All,
+    /// `--user current`
     Current,
+    /// No `--user` option.
     None,
 }
 
 #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy, strum::Display)]
 #[strum(serialize_all = "SCREAMING_SNAKE_CASE")]
+/// The memory level sent by [`ActivityManager::trim_memory`] (`am send-trim-memory`).
 pub enum MemoryStatus {
+    /// `HIDDEN`
     Hidden,
+    /// `RUNNING_MODERATE`
     RunningModerate,
+    /// `BACKGROUND`
     Background,
+    /// `RUNNING_LOW`
     RunningLow,
+    /// `MODERATE`
     Moderate,
+    /// `RUNNING_CRITICAL`
     RunningCritical,
+    /// `COMPLETE`
     Complete,
 }
 
@@ -69,26 +82,43 @@ pub struct Intent {
     pub receiver_foreground: bool,
     /// `-W`: wait for the launch to complete (activities only)
     pub wait: bool,
+    /// The extras (`--es`, `--ei`...) and the extra flags.
     pub extra: Extra,
 }
 
 /// Intent extras.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct Extra {
+    /// `--es <key> <value>`: string extras.
     pub es: HashMap<String, String>,
+    /// `--ez <key> <value>`: boolean extras.
     pub ez: HashMap<String, bool>,
+    /// `--ei <key> <value>`: int extras.
     pub ei: HashMap<String, i32>,
+    /// `--el <key> <value>`: long extras.
     pub el: HashMap<String, i64>,
+    /// `--ef <key> <value>`: float extras.
     pub ef: HashMap<String, f32>,
+    /// `--eu <key> <value>`: URI extras.
     pub eu: HashMap<String, String>,
+    /// `--ecn <key> <value>`: component name extras.
     pub ecn: HashMap<String, String>,
+    /// `--eia <key> <v1,v2...>`: int array extras.
     pub eia: HashMap<String, Vec<i32>>,
+    /// `--ela <key> <v1,v2...>`: long array extras.
     pub ela: HashMap<String, Vec<i64>>,
+    /// `--efa <key> <v1,v2...>`: float array extras.
     pub efa: HashMap<String, Vec<f32>>,
+    /// `--esa <key> <v1,v2...>`: string array extras. The commas inside the values are
+    /// escaped (`\,`), as `am` expects.
     pub esa: HashMap<String, Vec<String>>,
+    /// `--grant-read-uri-permission`
     pub grant_read_uri_permission: bool,
+    /// `--grant-write-uri-permission`
     pub grant_write_uri_permission: bool,
+    /// `--exclude-stopped-packages`
     pub exclude_stopped_packages: bool,
+    /// `--include-stopped-packages`
     pub include_stopped_packages: bool,
 }
 
@@ -104,23 +134,28 @@ impl<'a> ActivityManager<'a> {
         check_am_output(&command, output)
     }
 
+    /// Stop all the processes of a package (`am force-stop`).
     pub fn force_stop(&self, package_name: &str) -> Result<()> {
         self.am(["force-stop", package_name]).map(|_| ())
     }
 
+    /// Start an activity (`am start`).
     pub fn start(&self, intent: &Intent) -> Result<()> {
         self.am(intent_command("start", intent)).map(|_| ())
     }
 
+    /// Start a service (`am startservice`).
     pub fn start_service(&self, intent: &Intent) -> Result<()> {
         self.am(intent_command("startservice", intent)).map(|_| ())
     }
 
+    /// Start a foreground service (`am start-foreground-service`).
     pub fn start_foreground_service(&self, intent: &Intent) -> Result<()> {
         self.am(intent_command("start-foreground-service", intent))
             .map(|_| ())
     }
 
+    /// Send a broadcast (`am broadcast`).
     pub fn broadcast(&self, intent: &Intent) -> Result<()> {
         self.am(intent_command("broadcast", intent)).map(|_| ())
     }
@@ -138,6 +173,8 @@ impl<'a> ActivityManager<'a> {
         self.am(["kill-all"]).map(|_| ())
     }
 
+    /// Send a memory trim level to a process (`am send-trim-memory`). Fails if the
+    /// process is not running.
     pub fn trim_memory(&self, process_name: &str, status: MemoryStatus) -> Result<()> {
         self.am(["send-trim-memory", process_name, &status.to_string()])
             .map(|_| ())
@@ -193,10 +230,12 @@ impl UserOption {
 }
 
 impl Intent {
+    /// An empty intent.
     pub fn new() -> Intent {
         Intent::default()
     }
 
+    /// An intent with the given action (`-a`).
     pub fn from_action(action: &str) -> Intent {
         Intent {
             action: Some(action.to_string()),
@@ -263,31 +302,37 @@ fn join<T: ToString>(values: &[T]) -> String {
 }
 
 impl Extra {
+    /// Add a string extra (`--es`).
     pub fn put_string_extra(&mut self, name: &str, value: &str) -> &mut Self {
         self.es.insert(name.to_string(), value.to_string());
         self
     }
 
+    /// Add a boolean extra (`--ez`).
     pub fn put_bool_extra(&mut self, name: &str, value: bool) -> &mut Self {
         self.ez.insert(name.to_string(), value);
         self
     }
 
+    /// Add an int extra (`--ei`).
     pub fn put_int_extra(&mut self, name: &str, value: i32) -> &mut Self {
         self.ei.insert(name.to_string(), value);
         self
     }
 
+    /// Add a long extra (`--el`).
     pub fn put_long_extra(&mut self, name: &str, value: i64) -> &mut Self {
         self.el.insert(name.to_string(), value);
         self
     }
 
+    /// Add a float extra (`--ef`).
     pub fn put_float_extra(&mut self, name: &str, value: f32) -> &mut Self {
         self.ef.insert(name.to_string(), value);
         self
     }
 
+    /// Add a string array extra (`--esa`).
     pub fn put_string_array_extra(&mut self, name: &str, value: Vec<String>) -> &mut Self {
         self.esa.insert(name.to_string(), value);
         self

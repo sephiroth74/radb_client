@@ -48,12 +48,17 @@ pub struct Scanner {
 /// A device found by the [`Scanner`].
 #[derive(Debug, Clone)]
 pub struct ClientResult {
+    /// The address of the device (`ip:5555`).
     pub conn: ConnectionType,
+    /// `persist.sys.stb.name`, or `ro.product.name`.
     pub product: Option<String>,
+    /// `ro.product.model`
     pub model: Option<String>,
+    /// `ro.product.device`
     pub device: Option<String>,
     /// SDK version.
     pub version: Option<String>,
+    /// The MAC address of `eth0`, when it is readable.
     pub mac: Option<MacAddress>,
 }
 
@@ -64,6 +69,8 @@ impl Default for Scanner {
 }
 
 impl Scanner {
+    /// A scanner with the given timeouts: see [`Scanner::with_tcp_timeout`] and
+    /// [`Scanner::with_adb_timeout`].
     pub fn new(tcp_timeout: Duration, adb_timeout: Duration, debug: bool) -> Scanner {
         Scanner {
             tcp_timeout,
@@ -72,6 +79,7 @@ impl Scanner {
         }
     }
 
+    /// Log the scan and the adb command lines.
     pub fn with_debug(mut self, debug: bool) -> Self {
         self.debug = debug;
         self
@@ -160,6 +168,8 @@ impl Scanner {
 }
 
 impl ClientResult {
+    /// A result with only the address: something answers on the adb port, but `adb
+    /// connect` failed.
     pub fn new(addr: SocketAddr) -> ClientResult {
         ClientResult {
             conn: ConnectionType::TcpIp(addr),

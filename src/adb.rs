@@ -1,3 +1,5 @@
+//! [`Adb`]: the host `adb` executable, and the devices it knows (`adb devices -l`).
+
 use std::ffi::OsStr;
 use std::fmt::{Debug, Display, Formatter};
 use std::net::SocketAddr;
@@ -26,17 +28,29 @@ pub struct Adb {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum DeviceState {
+    /// Connected and ready (`device`).
     Device,
+    /// Not answering (`offline`): adbd is restarting, or the connection is broken.
     Offline,
+    /// The device has not accepted the RSA key of this host yet (`unauthorized`).
     Unauthorized,
+    /// The device is checking the key of this host (`authorizing`).
     Authorizing,
+    /// The connection is being established (`connecting`).
     Connecting,
+    /// Booted into recovery (`recovery`).
     Recovery,
+    /// Booted in rescue mode (`rescue`).
     Rescue,
+    /// In recovery, waiting for `adb sideload` (`sideload`).
     Sideload,
+    /// In the bootloader (`bootloader`).
     Bootloader,
+    /// The adb host itself (`host`).
     Host,
+    /// The host user cannot open the USB device (`no permissions`: missing udev rules).
     NoPermissions,
+    /// A state that this version does not know.
     Unknown(String),
 }
 
@@ -45,12 +59,18 @@ pub enum DeviceState {
 pub struct AdbDevice {
     /// The serial used by adb: `emulator-5554`, `192.168.1.10:5555`, a USB serial...
     pub serial: String,
+    /// The state reported by `adb devices`.
     pub state: DeviceState,
+    /// `product:` (`ro.product.name`), when reported.
     pub product: Option<String>,
+    /// `model:` (`ro.product.model`), when reported.
     pub model: Option<String>,
+    /// `device:` (`ro.product.device`), when reported.
     pub device: Option<String>,
     /// USB port, for USB devices.
     pub usb: Option<String>,
+    /// `transport_id:`, when reported. It changes every time the connection is
+    /// re-established: see [`ConnectionType::Transport`].
     pub transport_id: Option<u64>,
     /// The connection to use for this device (by serial, which survives adbd restarts).
     pub addr: ConnectionType,
@@ -78,10 +98,12 @@ impl Adb {
         self
     }
 
+    /// The path of the `adb` executable.
     pub fn path(&self) -> &Path {
         &self.path
     }
 
+    /// True if the command lines are logged (see [`Adb::with_debug`]).
     pub fn debug(&self) -> bool {
         self.debug
     }
@@ -151,10 +173,12 @@ impl Adb {
         run(self.command().arg("disconnect")).map(|_| ())
     }
 
+    /// Stop the adb server (`adb kill-server`). The next command starts it again.
     pub fn kill_server(&self) -> Result<()> {
         run(self.command().arg("kill-server")).map(|_| ())
     }
 
+    /// Start the adb server (`adb start-server`).
     pub fn start_server(&self) -> Result<()> {
         run(self.command().arg("start-server")).map(|_| ())
     }
@@ -165,12 +189,14 @@ impl Adb {
         parse_version(&output).ok_or_else(|| Error::ParseError(format!("adb version: {output}")))
     }
 
+    /// The path of the `adb` executable, as an `OsStr`.
     pub fn as_os_str(&self) -> &OsStr {
         self.path.as_os_str()
     }
 }
 
 impl DeviceState {
+    /// True for [`DeviceState::Device`].
     pub fn is_online(&self) -> bool {
         *self == DeviceState::Device
     }
@@ -218,6 +244,7 @@ impl Display for DeviceState {
 }
 
 impl AdbDevice {
+    /// True if the device is connected and ready.
     pub fn is_online(&self) -> bool {
         self.state.is_online()
     }

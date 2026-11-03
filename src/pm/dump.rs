@@ -7,6 +7,7 @@ use crate::pm::{InstallPermission, PackageFlags, RuntimePermission};
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SimplePackageReader<'a> {
     pub(crate) data: &'a str,
+    /// The `Dexopt state:` section.
     pub dexopt: DexoptState<'a>,
 }
 
@@ -60,6 +61,7 @@ impl<'a> SimplePackageReader<'a> {
         })
     }
 
+    /// The `requested permissions:` of the manifest.
     pub fn requested_permissions(&self) -> Vec<String> {
         section(self.data, "requested permissions:")
             .unwrap_or_default()
@@ -69,6 +71,7 @@ impl<'a> SimplePackageReader<'a> {
             .collect()
     }
 
+    /// The `install permissions:`: normal and signature permissions, granted at install time.
     pub fn install_permissions(&self) -> Vec<InstallPermission> {
         section(self.data, "install permissions:")
             .unwrap_or_default()
@@ -83,6 +86,7 @@ impl<'a> SimplePackageReader<'a> {
             .collect()
     }
 
+    /// The `runtime permissions:` of user 0 (dangerous permissions, granted by the user).
     pub fn runtime_permissions(&self) -> Vec<RuntimePermission> {
         section(self.data, "runtime permissions:")
             .unwrap_or_default()
@@ -125,6 +129,7 @@ impl<'a> SimplePackageReader<'a> {
             .unwrap_or_default()
     }
 
+    /// True if `pkgFlags` contains `SYSTEM`.
     pub fn is_system(&self) -> bool {
         self.package_flags().contains(&PackageFlags::System)
     }
@@ -139,6 +144,7 @@ impl<'a> SimplePackageReader<'a> {
             .ok_or_else(|| Error::NameNotFoundError(name.to_string()))
     }
 
+    /// `versionName`
     pub fn get_version_name(&self) -> Option<&'a str> {
         self.get_item("versionName").ok()
     }
@@ -153,18 +159,22 @@ impl<'a> SimplePackageReader<'a> {
             .ok()
     }
 
+    /// `firstInstallTime`, e.g. `2026-11-03 09:09:51`.
     pub fn get_first_install_time(&self) -> Option<&'a str> {
         self.get_item("firstInstallTime").ok()
     }
 
+    /// `lastUpdateTime`
     pub fn get_last_update_time(&self) -> Option<&'a str> {
         self.get_item("lastUpdateTime").ok()
     }
 
+    /// `timeStamp`: the modification time of the APK.
     pub fn get_timestamp(&self) -> Option<&'a str> {
         self.get_item("timeStamp").ok()
     }
 
+    /// `dataDir`: the data directory of user 0.
     pub fn get_data_dir(&self) -> Option<&'a str> {
         self.get_item("dataDir").ok()
     }
@@ -176,12 +186,72 @@ impl<'a> SimplePackageReader<'a> {
             .ok()
     }
 
+    /// `codePath`: the APK directory (or the APK).
     pub fn get_code_path(&self) -> Option<&'a str> {
         self.get_item("codePath").ok()
     }
 
+    /// `resourcePath`
     pub fn get_resource_path(&self) -> Option<&'a str> {
         self.get_item("resourcePath").ok()
+    }
+
+    /// The `Hidden system packages:` section: the system copy of an updated system app.
+    pub fn hidden_system_package(data: &'a str) -> Option<SimplePackageReader<'a>> {
+        Some(SimplePackageReader {
+            data: top_level_section(data, "Hidden system packages:")?,
+            dexopt: DexoptState { data: "" },
+        })
+    }
+
+    /// The raw flags of a `<name>=[ FLAG FLAG ]` line (`pkgFlags`, `privatePkgFlags`...).
+    pub fn flags(&self, name: &str) -> Vec<&'a str> {
+        let prefix = format!("{name}=[");
+        self.data
+            .lines()
+            .find_map(|line| line.trim().strip_prefix(prefix.as_str()))
+            .map(|flags| flags.trim_end_matches(']').split_whitespace().collect())
+            .unwrap_or_default()
+    }
+
+    /// An app in a `priv-app` directory.
+    pub fn is_privileged(&self) -> bool {
+        self.flags("privatePkgFlags").contains(&"PRIVILEGED")
+    }
+
+    /// A system app whose active copy is an update in `/data/app`.
+    pub fn is_updated_system_app(&self) -> bool {
+        self.flags("pkgFlags").contains(&"UPDATED_SYSTEM_APP")
+    }
+
+    /// The signature ids (`signatures:[ecba7274]`), equal for the same signing certificates.
+    pub fn signatures(&self) -> Vec<String> {
+        self.get_item("signatures")
+            .ok()
+            .and_then(|value| value.split_once("signatures:["))
+            .and_then(|(_, rest)| rest.split_once(']'))
+            .map(|(ids, _)| {
+                ids.split(',')
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// `(user id, installed)` for each user (`User 0: ... installed=true ...`).
+    pub fn users(&self) -> Vec<(u32, bool)> {
+        self.data
+            .lines()
+            .filter_map(|line| {
+                let (user, rest) = line.trim().strip_prefix("User ")?.split_once(':')?;
+                let installed = rest
+                    .split_whitespace()
+                    .find_map(|t| t.strip_prefix("installed="))?;
+                Some((user.parse().ok()?, installed == "true"))
+            })
+            .collect()
     }
 }
 

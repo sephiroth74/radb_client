@@ -17,3 +17,4 @@ mod pm;
 #[cfg(feature = "scanner")]
 mod scanner;
 mod shell;
+mod system_app;

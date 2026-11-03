@@ -9,21 +9,29 @@ use crate::shell::Shell;
 /// Read / write / execute permissions.
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct ChmodMode {
+    /// `r` (4)
     pub read: bool,
+    /// `w` (2)
     pub write: bool,
+    /// `x` (1)
     pub execute: bool,
 }
 
 /// Owner / group / other permissions, e.g. `755`.
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
 pub struct ChmodModeSpecs {
+    /// The permissions of the owner.
     pub owner: ChmodMode,
+    /// The permissions of the group.
     pub group: ChmodMode,
+    /// The permissions of the others.
     pub other: ChmodMode,
 }
 
 #[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash)]
+/// Options of [`Shell::chmod`].
 pub struct ChmodOptions {
+    /// The new mode, e.g. `755`.
     pub mode: ChmodModeSpecs,
     /// `-R`: recurse into directories.
     pub recursive: bool,
@@ -61,18 +69,22 @@ impl Shell<'_> {
         self.exec(command).map(|_| ())
     }
 
+    /// True if the path exists (`test -e`).
     pub fn exists<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         self.test_file(path, "e")
     }
 
+    /// True if the path is a regular file (`test -f`).
     pub fn is_file<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         self.test_file(path, "f")
     }
 
+    /// True if the path is a directory (`test -d`).
     pub fn is_dir<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         self.test_file(path, "d")
     }
 
+    /// True if the path is a symbolic link (`test -h`).
     pub fn is_symlink<P: AsRef<str>>(&self, path: P) -> Result<bool> {
         self.test_file(path, "h")
     }
@@ -104,6 +116,7 @@ impl Shell<'_> {
         Ok(file_mode::Mode::from(mode))
     }
 
+    /// Change the permissions of files (`chmod`).
     pub fn chmod<P: AsRef<str>>(&self, options: ChmodOptions, paths: &[P]) -> Result<()> {
         let mut command: Vec<OsString> = vec!["chmod".into()];
         command.extend(options);

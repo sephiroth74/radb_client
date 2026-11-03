@@ -19,9 +19,13 @@ pub struct ApkAnalyzer {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The summary of an APK (`apkanalyzer apk summary`).
 pub struct ApkSummary {
+    /// The package name.
     pub package_name: String,
+    /// The version code.
     pub version_code: String,
+    /// The version name.
     pub version_name: String,
 }
 
@@ -36,6 +40,7 @@ impl ApkAnalyzer {
         })
     }
 
+    /// Use the `apkanalyzer` at `path`, logging the command lines if `debug`.
     pub fn from<P: AsRef<Path>>(path: P, debug: bool) -> Self {
         ApkAnalyzer {
             path: path.as_ref().to_path_buf(),
@@ -67,22 +72,27 @@ impl ApkAnalyzer {
             .collect())
     }
 
+    /// `apkanalyzer manifest version-name`
     pub fn version_name<P: AsRef<Path>>(&self, apk_path: P) -> Result<String> {
         self.trimmed(&["manifest", "version-name"], apk_path)
     }
 
+    /// `apkanalyzer manifest version-code`
     pub fn version_code<P: AsRef<Path>>(&self, apk_path: P) -> Result<String> {
         self.trimmed(&["manifest", "version-code"], apk_path)
     }
 
+    /// `apkanalyzer manifest application-id`: the package name.
     pub fn application_id<P: AsRef<Path>>(&self, apk_path: P) -> Result<String> {
         self.trimmed(&["manifest", "application-id"], apk_path)
     }
 
+    /// `apkanalyzer manifest min-sdk`
     pub fn min_sdk<P: AsRef<Path>>(&self, apk_path: P) -> Result<i64> {
         Ok(self.trimmed(&["manifest", "min-sdk"], apk_path)?.parse()?)
     }
 
+    /// `apkanalyzer manifest target-sdk`
     pub fn target_sdk<P: AsRef<Path>>(&self, apk_path: P) -> Result<i64> {
         Ok(self
             .trimmed(&["manifest", "target-sdk"], apk_path)?
@@ -94,14 +104,17 @@ impl ApkAnalyzer {
         self.trimmed(&["manifest", "print"], apk_path)
     }
 
+    /// `apkanalyzer manifest debuggable`
     pub fn debuggable<P: AsRef<Path>>(&self, apk_path: P) -> Result<bool> {
         Ok(self.trimmed(&["manifest", "debuggable"], apk_path)? == "true")
     }
 
+    /// The `uses-permission` of the manifest (`apkanalyzer manifest permissions`).
     pub fn manifest_permissions<P: AsRef<Path>>(&self, apk_path: P) -> Result<Vec<String>> {
         self.lines(&["manifest", "permissions"], apk_path)
     }
 
+    /// The files of the APK (`apkanalyzer files list`).
     pub fn files_list<P: AsRef<Path>>(&self, apk_path: P) -> Result<Vec<PathBuf>> {
         Ok(self
             .lines(&["files", "list"], apk_path)?
@@ -115,6 +128,7 @@ impl ApkAnalyzer {
         self.trimmed(&["files", "cat", "--file", path.as_ref()], apk_path)
     }
 
+    /// Package name, version code and version name (`apkanalyzer apk summary`).
     pub fn summary<P: AsRef<Path>>(&self, apk_path: P) -> Result<ApkSummary> {
         let output = self.trimmed(&["apk", "summary"], apk_path)?;
         let mut parts = output.splitn(3, char::is_whitespace).map(str::trim);
@@ -128,6 +142,7 @@ impl ApkAnalyzer {
         }
     }
 
+    /// The dex files of the APK (`apkanalyzer dex list`).
     pub fn dex_list<P: AsRef<Path>>(&self, apk_path: P) -> Result<Vec<String>> {
         self.lines(&["dex", "list"], apk_path)
     }

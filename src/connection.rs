@@ -1,3 +1,5 @@
+//! [`ConnectionType`]: how adb selects the target device (`-s`, `-t`, `-d`, `-e`).
+
 use std::ffi::OsString;
 use std::fmt::{Display, Formatter};
 use std::net::{IpAddr, SocketAddr};
@@ -27,6 +29,7 @@ pub enum ConnectionType {
 }
 
 impl ConnectionType {
+    /// A tcp/ip device.
     pub fn from_socket_addr<I: Into<SocketAddr>>(socket_addr: I) -> Self {
         ConnectionType::TcpIp(socket_addr.into())
     }
@@ -49,6 +52,7 @@ impl ConnectionType {
         }
     }
 
+    /// A device by serial (`-s <serial>`).
     pub fn serial<S: Into<String>>(serial: S) -> Self {
         ConnectionType::Serial(serial.into())
     }

@@ -1,3 +1,5 @@
+//! Host helpers: the Android SDK location, and quoting for the device shell.
+
 use std::path::PathBuf;
 
 use crate::adb::Adb;

@@ -9,13 +9,18 @@ use crate::shell::{Property, Shell};
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, IntoStaticStr, EnumIter)]
 #[allow(non_camel_case_types)]
+/// A settings namespace (`settings <command> <namespace>`).
 pub enum SettingsType {
+    /// Device-wide settings (`Settings.Global`).
     global,
+    /// User settings (`Settings.System`).
     system,
+    /// Secure user settings (`Settings.Secure`).
     secure,
 }
 
 impl Shell<'_> {
+    /// All the settings of a namespace (`settings list`), sorted by key.
     pub fn list_settings(&self, settings_type: SettingsType) -> Result<Vec<Property>> {
         let namespace: &str = settings_type.into();
         let output = self.exec(["settings", "list", namespace])?;
@@ -32,12 +37,14 @@ impl Shell<'_> {
         })
     }
 
+    /// Set a setting (`settings put`).
     pub fn put_setting(&self, settings_type: SettingsType, key: &str, value: &str) -> Result<()> {
         let namespace: &str = settings_type.into();
         self.exec(["settings", "put", namespace, key, value])
             .map(|_| ())
     }
 
+    /// Delete a setting (`settings delete`).
     pub fn delete_setting(&self, settings_type: SettingsType, key: &str) -> Result<()> {
         let namespace: &str = settings_type.into();
         self.exec(["settings", "delete", namespace, key])

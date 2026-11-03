@@ -1,3 +1,10 @@
+//! [`Shell`]: the commands run on the device by `adb shell`.
+//!
+//! `adb shell` joins its arguments with spaces and the device `sh` parses the line again,
+//! so [`Shell::exec`] quotes every argument (see [`crate::utils::shell_quote`]). The
+//! submodules group the commands by domain: input events, properties, settings, files,
+//! screen.
+
 use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
 use std::process::{Child, Output, Stdio};
@@ -36,16 +43,23 @@ pub struct Shell<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+/// The SELinux mode (`getenforce` / `setenforce`).
 pub enum SELinuxType {
+    /// The policy is enforced.
     Enforcing,
+    /// The violations are only logged.
     Permissive,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, strum::Display)]
 #[allow(non_camel_case_types)]
+/// `dumpsys --priority`.
 pub enum DumpsysPriority {
+    /// The critical services.
     CRITICAL,
+    /// The high priority services.
     HIGH,
+    /// The other services.
     NORMAL,
 }
 
@@ -67,6 +81,7 @@ pub struct DumpsysOptions {
 }
 
 impl<'a> Shell<'a> {
+    /// The client of this shell.
     pub fn client(&self) -> &'a Client {
         self.parent
     }
@@ -176,10 +191,12 @@ impl<'a> Shell<'a> {
         stdout_string(&self.exec(args)?)
     }
 
+    /// The activity manager (`am`).
     pub fn am(&self) -> ActivityManager<'a> {
         ActivityManager { shell: *self }
     }
 
+    /// The package manager (`pm`).
     pub fn pm(&self) -> PackageManager<'a> {
         PackageManager { shell: *self }
     }
@@ -189,6 +206,7 @@ impl<'a> Shell<'a> {
         self.exec_string(["whoami"])
     }
 
+    /// True if adbd runs as root.
     pub fn is_root(&self) -> Result<bool> {
         Ok(self.whoami()?.eq_ignore_ascii_case("root"))
     }
@@ -223,6 +241,7 @@ impl<'a> Shell<'a> {
         }
     }
 
+    /// True if `avbctl` is available.
     pub fn has_avbctl(&self) -> Result<bool> {
         Ok(self.which("avbctl")?.is_some())
     }
@@ -247,6 +266,7 @@ impl<'a> Shell<'a> {
         self.exec(["avbctl", "enable-verity"]).map(|_| ())
     }
 
+    /// The SELinux mode (`getenforce`).
     pub fn get_enforce(&self) -> Result<SELinuxType> {
         self.exec_string(["getenforce"])?.as_str().try_into()
     }

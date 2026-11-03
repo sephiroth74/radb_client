@@ -13,21 +13,32 @@ static RE_PROP: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"^\[(.*)\]\s*:\s*\[([^\]]*)\]$").unwrap());
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// A system property or a setting.
 pub struct Property {
+    /// The name.
     pub key: String,
+    /// The value (empty if not set).
     pub value: String,
 }
 
 /// The type of a property, as reported by `getprop -T`.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PropType {
+    /// `string`
     String,
+    /// `bool`
     Bool,
+    /// `int`
     Int,
+    /// `uint`
     Uint,
+    /// `double`
     Double,
+    /// `size`
     Size,
+    /// `enum <values>`: one of the values.
     Enum(Vec<String>),
+    /// A type that this version does not know.
     Unknown(String),
 }
 
@@ -68,6 +79,7 @@ impl Shell<'_> {
             .collect())
     }
 
+    /// The type of a property (`getprop -T`).
     pub fn getprop_type(&self, key: &str) -> Result<PropType> {
         Ok(PropType::from(
             self.exec_string(["getprop", "-T", key])?.as_str(),
@@ -79,6 +91,7 @@ impl Shell<'_> {
         self.exec(["setprop", key, value]).map(|_| ())
     }
 
+    /// Clear a property (set it to an empty value).
     pub fn clear_prop(&self, key: &str) -> Result<()> {
         self.setprop(key, "")
     }
