@@ -98,3 +98,5 @@ cargo test --features emulator-tests --test emulator -- --include-ignored   # al
 
 The tests use the first running emulator, or the device in `RADB_TEST_SERIAL`
 (a physical device also needs `RADB_TEST_ALLOW_PHYSICAL=1`).
+
+The CI (`.github/workflows/ci.yml`) runs them on an API 35 emulator, reboot included.

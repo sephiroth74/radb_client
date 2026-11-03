@@ -65,7 +65,7 @@
 - `UninstallOptions::version_code` is an `i64`.
 
 **Crate**
-- MSRV 1.80.
+- MSRV 1.81 (required by `cidr-utils`, feature `scanner`).
 - New features: `clipboard` (`Client::copy_screencap`, pulls in `arboard` and `image`) and
   `emulator-tests`. The `scanner` feature now also covers `cidr-utils` and `itertools`.
 - Removed dependencies: `anyhow`, `cmd_lib`, `crossbeam`, `dirs`, `lazy_static`, `lru`,
